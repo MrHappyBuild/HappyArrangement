@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { getLocalEnv } from "./env.js";
+import { ensureEventShape } from "../event-platform-utils.js";
 
 function getPaths() {
   const { localDataDir } = getLocalEnv();
@@ -73,25 +74,40 @@ export async function listLocalJobs(limit = 50) {
 export async function listEvents() {
   const events = await readEvents();
   return events
+    .map((event) => ensureEventShape(event))
     .slice()
     .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
 }
 
 export async function getEvent(eventId) {
   const events = await readEvents();
-  return events.find((event) => event.id === eventId) ?? null;
+  const event = events.find((entry) => entry.id === eventId);
+  return event ? ensureEventShape(event) : null;
 }
 
 export async function createEvent({ name }) {
   const events = await readEvents();
   const createdAt = new Date().toISOString();
-  const event = {
+  const event = ensureEventShape({
     id: crypto.randomUUID(),
     name,
     created_at: createdAt,
     updated_at: createdAt,
-    members: []
-  };
+    members: [],
+    overview: {
+      title: name,
+      description: "",
+      location: "",
+      startsAt: "",
+      endsAt: "",
+      dressCode: "",
+      practicalInfo: ""
+    },
+    people: [],
+    tasks: [],
+    ledgerEntries: [],
+    submissions: []
+  });
 
   events.push(event);
   await writeEvents(events);
@@ -99,6 +115,33 @@ export async function createEvent({ name }) {
 }
 
 export async function addEventMember(eventId, { name }) {
+  return updateEvent(eventId, (event) => {
+    const createdAt = new Date().toISOString();
+    const personId = crypto.randomUUID();
+    const person = {
+      id: personId,
+      name,
+      created_at: createdAt,
+      rsvpStatus: "pending",
+      planningRole: "viewer",
+      projectRole: "none",
+      financeRole: "member",
+      capabilities: {
+        canCreateEvents: false,
+        canSubmitReceipts: true,
+        canSubmitManualInvoices: true,
+        canSendToAiDirectly: true
+      }
+    };
+
+    return {
+      ...event,
+      people: [...(Array.isArray(event.people) ? event.people : []), person]
+    };
+  });
+}
+
+export async function updateEvent(eventId, updater) {
   const events = await readEvents();
   const index = events.findIndex((event) => event.id === eventId);
 
@@ -106,22 +149,17 @@ export async function addEventMember(eventId, { name }) {
     throw new Error("Fant ikke arrangementet.");
   }
 
-  const createdAt = new Date().toISOString();
-  const member = {
-    id: crypto.randomUUID(),
-    name,
-    created_at: createdAt
-  };
+  const current = ensureEventShape(events[index]);
+  const updated = updater(current);
+  const next = ensureEventShape({
+    ...current,
+    ...(updated && typeof updated === "object" ? updated : {}),
+    updated_at: new Date().toISOString()
+  });
 
-  const event = events[index];
-  events[index] = {
-    ...event,
-    updated_at: createdAt,
-    members: [...(Array.isArray(event.members) ? event.members : []), member]
-  };
-
+  events[index] = next;
   await writeEvents(events);
-  return events[index];
+  return next;
 }
 
 export async function createLocalJob({ fileName, sanitized, eventId = null }) {

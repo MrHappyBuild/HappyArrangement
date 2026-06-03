@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
+
 import { DashboardClient } from "@/components/dashboard-client";
 import { listEvents, listLocalJobs } from "@/lib/local-store";
 
@@ -16,6 +18,16 @@ export default async function HomePage() {
           Appen lagrer bildefiler og resultater lokalt i prosjektmappen og bruker kun lokal Ollama
           for AI-behandling. Ingen Supabase, ingen Vercel og ingen innlogging.
         </p>
+      </section>
+
+      <section className="panel stack">
+        <p className="eyebrow">Ny Versjon</p>
+        <div className="security-list">
+          <div className="security-item">
+            Vil du teste neste generasjon arrangementsplattform? Aapne{" "}
+            <Link href="/workspace">V2-betaen for gjester, oppgaver, planlegging og utvidet oppgjor</Link>.
+          </div>
+        </div>
       </section>
 
       <section className="panel stack">
