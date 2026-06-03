@@ -5,9 +5,14 @@ import Link from "next/link";
 import { DashboardClient } from "@/components/dashboard-client";
 import { listEvents, listLocalJobs } from "@/lib/local-store";
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }) {
+  const params = searchParams ? await searchParams : {};
   const jobs = await listLocalJobs();
   const events = await listEvents();
+  const selectedEventId =
+    typeof params?.eventId === "string" && events.some((event) => event.id === params.eventId)
+      ? params.eventId
+      : null;
 
   return (
     <main className="shell grid">
@@ -47,7 +52,11 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <DashboardClient initialJobs={jobs} initialEvents={events} />
+      <DashboardClient
+        initialJobs={jobs}
+        initialEvents={events}
+        initialSelectedEventId={selectedEventId}
+      />
     </main>
   );
 }

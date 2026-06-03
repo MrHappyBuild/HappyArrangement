@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { DashboardClient } from "@/components/dashboard-client";
 import {
   PERSON_TEMPLATES,
   RSVP_OPTIONS,
@@ -85,6 +86,42 @@ function EmptyState({ title, body }) {
     <div className="notice event-platform-empty">
       <strong>{title}</strong>
       <p>{body}</p>
+    </div>
+  );
+}
+
+function ActionTile({ title, body, actions }) {
+  return (
+    <article className="action-tile">
+      <div className="stack">
+        <strong>{title}</strong>
+        <p className="muted">{body}</p>
+      </div>
+      <div className="button-row">{actions}</div>
+    </article>
+  );
+}
+
+function ModalShell({ title, body, onClose, children }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <div
+        aria-modal="true"
+        className="modal-panel"
+        role="dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="modal-head">
+          <div className="stack">
+            <h3>{title}</h3>
+            {body ? <p className="muted">{body}</p> : null}
+          </div>
+          <button className="secondary-button" type="button" onClick={onClose}>
+            Lukk
+          </button>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
@@ -566,7 +603,16 @@ function PlanningTab({ event, viewerAccess, onSaveOverview }) {
   );
 }
 
-function FinanceTab({ event, jobs, viewerAccess, financeSummary, onAddAdvance, onAddSettlement }) {
+function FinanceTab({
+  event,
+  jobs,
+  viewerAccess,
+  financeSummary,
+  engineOpen,
+  onToggleEngine,
+  onOpenAdvanceModal,
+  onOpenSettlementModal
+}) {
   if (!viewerAccess.canViewFinance) {
     return (
       <EmptyState
@@ -587,74 +633,79 @@ function FinanceTab({ event, jobs, viewerAccess, financeSummary, onAddAdvance, o
         </div>
       </section>
 
-      {viewerAccess.canManageFinance ? (
-        <section className="two-col">
-          <article className="panel stack">
-            <h3>Registrer forskudd / innbetaling</h3>
-            <form className="grid-form compact-grid" onSubmit={onAddAdvance}>
-              <label className="field">
-                <span>Medlem</span>
-                <select defaultValue="" name="memberId" required>
-                  <option value="">Velg medlem</option>
-                  {event.members.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Belop</span>
-                <input min="0" name="amount" required step="0.01" type="number" />
-              </label>
-              <label className="field field-span-full">
-                <span>Notat</span>
-                <input name="note" placeholder="F.eks. forskudd til hytte eller felleskasse" />
-              </label>
-              <button className="secondary-button" type="submit">
-                Registrer innbetaling
-              </button>
-            </form>
-          </article>
+      <section className="panel stack">
+        <div className="panel-header-inline">
+          <div>
+            <h3>Arbeidsrom for faktura</h3>
+            <p className="muted">
+              Kvitteringsmotor, forskudd og oppgjor bor ligge i samme fakturaflyt. Her er det samlet i et tydeligere kontrollrom.
+            </p>
+          </div>
+        </div>
+        <div className="action-tile-grid">
+          <ActionTile
+            title="Kvitteringsmotor"
+            body="Den ble holdt utenfor V2 i forrige steg for aa unnga aa blande ny tilgangsmodell med gammel kvitteringsflyt for tidlig. Na er den koblet direkte inn her for fakturaforvaltere."
+            actions={
+              <>
+                {viewerAccess.canManageFinance ? (
+                  <button className="primary-button" type="button" onClick={onToggleEngine}>
+                    {engineOpen ? "Skjul kvitteringsmotor" : "Aapne kvitteringsmotor"}
+                  </button>
+                ) : (
+                  <span className="muted">Kun fakturaforvaltere kan aapne hele motoren.</span>
+                )}
+                <Link className="secondary-link" href={`/?eventId=${event.id}`}>
+                  Aapne fullskjerm
+                </Link>
+              </>
+            }
+          />
+          <ActionTile
+            title="Registrer forskudd / innbetaling"
+            body="Bruk dette nar noen sender inn penger i forkant. Det teller pa betalt, men ikke pa brukt."
+            actions={
+              viewerAccess.canManageFinance ? (
+                <button className="secondary-button" type="button" onClick={onOpenAdvanceModal}>
+                  Ny innbetaling
+                </button>
+              ) : (
+                <span className="muted">Kun forvaltere kan registrere dette.</span>
+              )
+            }
+          />
+          <ActionTile
+            title="Registrer oppgjor"
+            body="Bruk dette nar medlemmer sender penger til hverandre etter at varene er fordelt."
+            actions={
+              viewerAccess.canManageFinance ? (
+                <button className="secondary-button" type="button" onClick={onOpenSettlementModal}>
+                  Nytt oppgjor
+                </button>
+              ) : (
+                <span className="muted">Kun forvaltere kan registrere dette.</span>
+              )
+            }
+          />
+        </div>
+      </section>
 
-          <article className="panel stack">
-            <h3>Registrer oppgjor</h3>
-            <form className="grid-form compact-grid" onSubmit={onAddSettlement}>
-              <label className="field">
-                <span>Fra</span>
-                <select defaultValue="" name="fromMemberId" required>
-                  <option value="">Velg avsender</option>
-                  {event.members.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Til</span>
-                <select defaultValue="" name="toMemberId" required>
-                  <option value="">Velg mottaker</option>
-                  {event.members.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Belop</span>
-                <input min="0" name="amount" required step="0.01" type="number" />
-              </label>
-              <label className="field field-span-full">
-                <span>Notat</span>
-                <input name="note" placeholder="F.eks. Vipps oppgjor etter arrangementet" />
-              </label>
-              <button className="secondary-button" type="submit">
-                Registrer oppgjor
-              </button>
-            </form>
-          </article>
+      {viewerAccess.canManageFinance && engineOpen ? (
+        <section className="panel stack embedded-engine-panel">
+          <div className="panel-header-inline">
+            <div>
+              <h3>Kvitteringsmotor for {event.name}</h3>
+              <p className="muted">
+                Opplasting, kontroll, fordeling og eksport bruker den eksisterende motoren direkte i denne flaten.
+              </p>
+            </div>
+          </div>
+          <DashboardClient
+            embeddedMode
+            initialEvents={[event]}
+            initialJobs={jobs}
+            initialSelectedEventId={event.id}
+          />
         </section>
       ) : null}
 
@@ -864,6 +915,8 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
   const [viewerId, setViewerId] = useState("organizer-local");
   const [statusMessage, setStatusMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [financeModal, setFinanceModal] = useState(null);
+  const [financeEngineOpen, setFinanceEngineOpen] = useState(false);
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId) || null,
@@ -896,6 +949,18 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     { id: "approvals", label: "Godkjenning", visible: viewerAccess.canViewApprovals }
   ].filter((tab) => tab.visible);
   const currentTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : "overview";
+
+  useEffect(() => {
+    if (currentTab !== "finance") {
+      setFinanceModal(null);
+      setFinanceEngineOpen(false);
+    }
+  }, [currentTab]);
+
+  useEffect(() => {
+    setFinanceModal(null);
+    setFinanceEngineOpen(false);
+  }, [selectedEventId]);
 
   async function patchEvent(action, payload) {
     if (!selectedEvent) {
@@ -1128,6 +1193,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
 
     if (nextEvent) {
       formEvent.currentTarget.reset();
+      setFinanceModal(null);
       setStatusMessage("Forskudd er registrert.");
     }
   }
@@ -1160,6 +1226,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
 
     if (nextEvent) {
       formEvent.currentTarget.reset();
+      setFinanceModal(null);
       setStatusMessage("Oppgjoret er registrert.");
     }
   }
@@ -1244,6 +1311,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                   setSelectedEventId(event.id);
                   setActiveTab("overview");
                   setViewerId("organizer-local");
+                  setFinanceEngineOpen(false);
                 }}
               >
                 <strong>{event.name}</strong>
@@ -1266,7 +1334,13 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                   </div>
                   <label className="field inline-field">
                     <span>Persona</span>
-                    <select value={viewerId} onChange={(event) => setViewerId(event.target.value)}>
+                    <select
+                      value={viewerId}
+                      onChange={(event) => {
+                        setViewerId(event.target.value);
+                        setFinanceEngineOpen(false);
+                      }}
+                    >
                       <option value="organizer-local">Arrangor (lokal full tilgang)</option>
                       {selectedEvent.people.map((person) => (
                         <option key={person.id} value={person.id}>
@@ -1331,11 +1405,13 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
               ) : null}
               {currentTab === "finance" ? (
                 <FinanceTab
+                  engineOpen={financeEngineOpen}
                   event={selectedEvent}
                   financeSummary={financeSummary}
                   jobs={selectedJobs}
-                  onAddAdvance={handleAddAdvance}
-                  onAddSettlement={handleAddSettlement}
+                  onOpenAdvanceModal={() => setFinanceModal("advance")}
+                  onOpenSettlementModal={() => setFinanceModal("settlement")}
+                  onToggleEngine={() => setFinanceEngineOpen((current) => !current)}
                   viewerAccess={viewerAccess}
                 />
               ) : null}
@@ -1360,6 +1436,93 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
           {statusMessage ? <p className="notice">{statusMessage}</p> : null}
         </div>
       </div>
+
+      {selectedEvent && financeModal === "advance" ? (
+        <ModalShell
+          title="Registrer forskudd / innbetaling"
+          body="Dette teller som betalt pa medlemmet, men ikke som brukt."
+          onClose={() => setFinanceModal(null)}
+        >
+          <form className="grid-form compact-grid" onSubmit={handleAddAdvance}>
+            <label className="field">
+              <span>Medlem</span>
+              <select defaultValue="" name="memberId" required>
+                <option value="">Velg medlem</option>
+                {selectedEvent.members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Belop</span>
+              <input min="0" name="amount" required step="0.01" type="number" />
+            </label>
+            <label className="field field-span-full">
+              <span>Notat</span>
+              <input name="note" placeholder="F.eks. forskudd til hytte eller felleskasse" />
+            </label>
+            <div className="button-row">
+              <button className="primary-button" type="submit">
+                Registrer innbetaling
+              </button>
+              <button className="secondary-button" type="button" onClick={() => setFinanceModal(null)}>
+                Avbryt
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {selectedEvent && financeModal === "settlement" ? (
+        <ModalShell
+          title="Registrer oppgjor"
+          body="Bruk dette nar penger faktisk blir sendt mellom medlemmer etter fordeling."
+          onClose={() => setFinanceModal(null)}
+        >
+          <form className="grid-form compact-grid" onSubmit={handleAddSettlement}>
+            <label className="field">
+              <span>Fra</span>
+              <select defaultValue="" name="fromMemberId" required>
+                <option value="">Velg avsender</option>
+                {selectedEvent.members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Til</span>
+              <select defaultValue="" name="toMemberId" required>
+                <option value="">Velg mottaker</option>
+                {selectedEvent.members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Belop</span>
+              <input min="0" name="amount" required step="0.01" type="number" />
+            </label>
+            <label className="field field-span-full">
+              <span>Notat</span>
+              <input name="note" placeholder="F.eks. Vipps oppgjor etter arrangementet" />
+            </label>
+            <div className="button-row">
+              <button className="primary-button" type="submit">
+                Registrer oppgjor
+              </button>
+              <button className="secondary-button" type="button" onClick={() => setFinanceModal(null)}>
+                Avbryt
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
     </section>
   );
 }

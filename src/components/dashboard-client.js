@@ -1484,10 +1484,17 @@ function DistributionView({
   );
 }
 
-export function DashboardClient({ initialJobs, initialEvents }) {
+export function DashboardClient({
+  initialJobs,
+  initialEvents,
+  initialSelectedEventId = null,
+  embeddedMode = false
+}) {
   const [jobs, setJobs] = useState(initialJobs);
   const [events, setEvents] = useState(initialEvents);
-  const [selectedEventId, setSelectedEventId] = useState(initialEvents[0]?.id || null);
+  const [selectedEventId, setSelectedEventId] = useState(
+    initialSelectedEventId || initialEvents[0]?.id || null
+  );
   const [status, setStatus] = useState(
     "Velg et kvitteringsbilde. Appen lagrer det lokalt og analyserer med lokal Ollama."
   );
@@ -1523,6 +1530,14 @@ export function DashboardClient({ initialJobs, initialEvents }) {
     () => (selectedEvent ? buildEventSettlement(selectedEvent, visibleJobs) : null),
     [selectedEvent, visibleJobs]
   );
+
+  useEffect(() => {
+    if (!initialSelectedEventId) {
+      return;
+    }
+
+    setSelectedEventId(initialSelectedEventId);
+  }, [initialSelectedEventId]);
 
   const stats = useMemo(() => {
     return {
@@ -1941,49 +1956,51 @@ export function DashboardClient({ initialJobs, initialEvents }) {
 
   return (
     <div className="grid stack">
-      <section className="dashboard-layout">
-        <aside className="panel stack event-sidebar">
-          <div className="stack">
-            <p className="eyebrow">Hovedmeny</p>
-            <h2>Arrangementer</h2>
-            <p className="muted">
-              Opprett arrangementer, legg til medlemmer, og sorter alle kvitteringer under riktig arrangement.
-            </p>
-          </div>
+      <section className={`dashboard-layout ${embeddedMode ? "embedded-dashboard-layout" : ""}`}>
+        {!embeddedMode ? (
+          <aside className="panel stack event-sidebar">
+            <div className="stack">
+              <p className="eyebrow">Hovedmeny</p>
+              <h2>Arrangementer</h2>
+              <p className="muted">
+                Opprett arrangementer, legg til medlemmer, og sorter alle kvitteringer under riktig arrangement.
+              </p>
+            </div>
 
-          <form className="stack" onSubmit={handleCreateEvent}>
-            <label className="field">
-              <span>Nytt arrangement</span>
-              <input
-                type="text"
-                value={newEventName}
-                onChange={(event) => setNewEventName(event.target.value)}
-                placeholder="Sommerfest 2026"
-              />
-            </label>
-            <button className="button button-primary" type="submit">
-              Opprett arrangement
-            </button>
-          </form>
+            <form className="stack" onSubmit={handleCreateEvent}>
+              <label className="field">
+                <span>Nytt arrangement</span>
+                <input
+                  type="text"
+                  value={newEventName}
+                  onChange={(event) => setNewEventName(event.target.value)}
+                  placeholder="Sommerfest 2026"
+                />
+              </label>
+              <button className="button button-primary" type="submit">
+                Opprett arrangement
+              </button>
+            </form>
 
-          <div className="event-list">
-            {events.length === 0 ? (
-              <p className="notice">Ingen arrangementer ennå. Opprett det første for å komme i gang.</p>
-            ) : (
-              events.map((event) => (
-                <button
-                  key={event.id}
-                  className={`event-list-item ${selectedEventId === event.id ? "active-event" : ""}`}
-                  type="button"
-                  onClick={() => setSelectedEventId(event.id)}
-                >
-                  <strong>{event.name}</strong>
-                  <span>{(event.members || []).length} medlemmer</span>
-                </button>
-              ))
-            )}
-          </div>
-        </aside>
+            <div className="event-list">
+              {events.length === 0 ? (
+                <p className="notice">Ingen arrangementer ennå. Opprett det første for å komme i gang.</p>
+              ) : (
+                events.map((event) => (
+                  <button
+                    key={event.id}
+                    className={`event-list-item ${selectedEventId === event.id ? "active-event" : ""}`}
+                    type="button"
+                    onClick={() => setSelectedEventId(event.id)}
+                  >
+                    <strong>{event.name}</strong>
+                    <span>{(event.members || []).length} medlemmer</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </aside>
+        ) : null}
 
         <div className="grid stack">
       <div className="stats">
@@ -2024,7 +2041,7 @@ export function DashboardClient({ initialJobs, initialEvents }) {
 
       <section className="panel upload-card stack">
         <div className="stack">
-          <p className="eyebrow">Ny analyse</p>
+          <p className="eyebrow">{embeddedMode ? "Kvitteringsmotor" : "Ny analyse"}</p>
           <h2>
             {selectedEvent ? `Legg kvitteringer i ${selectedEvent.name}` : "Velg et arrangement først"}
           </h2>
@@ -2136,19 +2153,21 @@ export function DashboardClient({ initialJobs, initialEvents }) {
           </div>
         </div>
 
-        <form className="button-row member-form" onSubmit={handleAddMember}>
-          <input
-            className="inline-input"
-            type="text"
-            value={newMemberName}
-            onChange={(event) => setNewMemberName(event.target.value)}
-            placeholder="Legg til nytt medlem"
-            disabled={!selectedEvent}
-          />
-          <button className="button button-secondary" type="submit" disabled={!selectedEvent}>
-            Legg til medlem
-          </button>
-        </form>
+        {!embeddedMode ? (
+          <form className="button-row member-form" onSubmit={handleAddMember}>
+            <input
+              className="inline-input"
+              type="text"
+              value={newMemberName}
+              onChange={(event) => setNewMemberName(event.target.value)}
+              placeholder="Legg til nytt medlem"
+              disabled={!selectedEvent}
+            />
+            <button className="button button-secondary" type="submit" disabled={!selectedEvent}>
+              Legg til medlem
+            </button>
+          </form>
+        ) : null}
 
         {selectedEvent ? (
           selectedEvent.members?.length ? (

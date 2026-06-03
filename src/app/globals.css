@@ -940,6 +940,10 @@ p {
   align-items: start;
 }
 
+.embedded-dashboard-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .platform-toolbar {
   display: flex;
   justify-content: space-between;
@@ -1130,6 +1134,58 @@ p {
   gap: 8px;
 }
 
+.action-tile-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.action-tile {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 252, 247, 0.82);
+}
+
+.embedded-engine-panel {
+  overflow: hidden;
+}
+
+.embedded-engine-panel > .grid.stack {
+  gap: 18px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(28, 22, 15, 0.42);
+  backdrop-filter: blur(6px);
+}
+
+.modal-panel {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border-radius: 28px;
+  border: 1px solid rgba(91, 59, 18, 0.14);
+  background: rgba(255, 252, 247, 0.98);
+  box-shadow: 0 26px 70px rgba(28, 22, 15, 0.24);
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
 @media (max-width: 1080px) {
   .dashboard-layout,
   .two-col,
@@ -1147,7 +1203,8 @@ p {
   .detail-list > div,
   .compact-list li,
   .person-card-header,
-  .task-headline {
+  .task-headline,
+  .modal-head {
     flex-direction: column;
   }
 
