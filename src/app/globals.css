@@ -1157,6 +1157,35 @@ p {
   gap: 18px;
 }
 
+.suggestion-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestion-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 252, 247, 0.84);
+}
+
+.suggestion-card span {
+  color: var(--muted);
+}
+
+.suggestion-amount {
+  margin-left: auto;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

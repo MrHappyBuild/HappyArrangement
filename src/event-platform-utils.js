@@ -440,10 +440,12 @@ export function buildEventFinanceSummary(event, jobs) {
       member.id,
       {
         ...member,
+        receiptPaidTotal: roundCurrency(member.paidTotal),
         advanceTotal: 0,
         sentSettlementTotal: 0,
         receivedSettlementTotal: 0,
         adjustmentTotal: 0,
+        totalContributed: roundCurrency(member.paidTotal),
         balanceBeforeSettlements: roundCurrency(member.paidTotal - member.usedTotal),
         remainingBalance: roundCurrency(member.paidTotal - member.usedTotal)
       }
@@ -451,6 +453,7 @@ export function buildEventFinanceSummary(event, jobs) {
   );
 
   let totalAdvances = 0;
+  let totalAdjustments = 0;
   let totalSettlementTransfers = 0;
   let totalReceivedSettlements = 0;
 
@@ -461,6 +464,7 @@ export function buildEventFinanceSummary(event, jobs) {
         const member = members.get(entry.memberId);
         member.advanceTotal = roundCurrency(member.advanceTotal + entry.amount);
         member.paidTotal = roundCurrency(member.paidTotal + entry.amount);
+        member.totalContributed = roundCurrency(member.totalContributed + entry.amount);
         totalAdvances = roundCurrency(totalAdvances + entry.amount);
       }
 
@@ -483,6 +487,8 @@ export function buildEventFinanceSummary(event, jobs) {
         const member = members.get(entry.memberId);
         member.adjustmentTotal = roundCurrency(member.adjustmentTotal + entry.amount);
         member.paidTotal = roundCurrency(member.paidTotal + entry.amount);
+        member.totalContributed = roundCurrency(member.totalContributed + entry.amount);
+        totalAdjustments = roundCurrency(totalAdjustments + entry.amount);
       }
     });
 
@@ -494,14 +500,19 @@ export function buildEventFinanceSummary(event, jobs) {
       usedTotal: 0,
       balance: 0,
       paidReceiptCount: 0,
+      receiptPaidTotal: 0,
       advanceTotal: 0,
       sentSettlementTotal: 0,
       receivedSettlementTotal: 0,
       adjustmentTotal: 0,
+      totalContributed: 0,
       balanceBeforeSettlements: 0,
       remainingBalance: 0
     };
 
+    summary.totalContributed = roundCurrency(
+      summary.receiptPaidTotal + summary.advanceTotal + summary.adjustmentTotal
+    );
     summary.balanceBeforeSettlements = roundCurrency(summary.paidTotal - summary.usedTotal);
     summary.remainingBalance = roundCurrency(
       summary.paidTotal +
@@ -515,9 +526,86 @@ export function buildEventFinanceSummary(event, jobs) {
 
   return {
     ...base,
+    totalContributed: roundCurrency(base.totalPaid + totalAdvances + totalAdjustments),
     totalAdvances,
+    totalAdjustments,
     totalSettlementTransfers,
     totalReceivedSettlements,
     members: memberSummaries
+  };
+}
+
+export function buildSettlementSuggestions(financeSummary) {
+  const members = Array.isArray(financeSummary?.members) ? financeSummary.members : [];
+  const debtors = members
+    .filter((member) => typeof member.remainingBalance === "number" && member.remainingBalance < -0.009)
+    .map((member) => ({
+      id: member.id,
+      name: member.name,
+      amount: roundCurrency(Math.abs(member.remainingBalance))
+    }))
+    .sort((left, right) => right.amount - left.amount);
+  const creditors = members
+    .filter((member) => typeof member.remainingBalance === "number" && member.remainingBalance > 0.009)
+    .map((member) => ({
+      id: member.id,
+      name: member.name,
+      amount: roundCurrency(member.remainingBalance)
+    }))
+    .sort((left, right) => right.amount - left.amount);
+  const suggestions = [];
+
+  let debtorIndex = 0;
+  let creditorIndex = 0;
+
+  while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+    const debtor = debtors[debtorIndex];
+    const creditor = creditors[creditorIndex];
+    const amount = roundCurrency(Math.min(debtor.amount, creditor.amount));
+
+    if (amount > 0.009) {
+      suggestions.push({
+        fromId: debtor.id,
+        fromName: debtor.name,
+        toId: creditor.id,
+        toName: creditor.name,
+        amount
+      });
+    }
+
+    debtor.amount = roundCurrency(debtor.amount - amount);
+    creditor.amount = roundCurrency(creditor.amount - amount);
+
+    if (debtor.amount <= 0.009) {
+      debtorIndex += 1;
+    }
+
+    if (creditor.amount <= 0.009) {
+      creditorIndex += 1;
+    }
+  }
+
+  const unmatchedOutgoing = debtors
+    .filter((member) => member.amount > 0.009)
+    .map((member) => ({
+      id: member.id,
+      name: member.name,
+      amount: roundCurrency(member.amount)
+    }));
+  const unmatchedIncoming = creditors
+    .filter((member) => member.amount > 0.009)
+    .map((member) => ({
+      id: member.id,
+      name: member.name,
+      amount: roundCurrency(member.amount)
+    }));
+
+  return {
+    suggestions,
+    unmatchedOutgoing,
+    unmatchedIncoming,
+    totalOutgoing: roundCurrency(suggestions.reduce((sum, entry) => sum + entry.amount, 0)),
+    totalIncoming: roundCurrency(suggestions.reduce((sum, entry) => sum + entry.amount, 0)),
+    alreadyBalanced: suggestions.length === 0 && unmatchedOutgoing.length === 0 && unmatchedIncoming.length === 0
   };
 }

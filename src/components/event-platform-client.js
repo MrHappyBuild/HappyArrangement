@@ -13,6 +13,7 @@ import {
   buildEventFinanceSummary,
   buildGuestSummary,
   buildProjectSummary,
+  buildSettlementSuggestions,
   buildViewerAccess,
   ensureEventShape
 } from "@/event-platform-utils";
@@ -609,6 +610,9 @@ function FinanceTab({
   viewerAccess,
   financeSummary,
   engineOpen,
+  settlementPlan,
+  showSettlementPlan,
+  onToggleSettlementPlan,
   onToggleEngine,
   onOpenAdvanceModal,
   onOpenSettlementModal
@@ -626,11 +630,16 @@ function FinanceTab({
     <div className="stack">
       <section className="panel stack">
         <div className="overview-grid">
-          <InfoCard label="Betalt" value={formatCurrency(financeSummary.totalPaid)} />
+          <InfoCard label="Kvitteringer betalt" value={formatCurrency(financeSummary.totalPaid)} />
+          <InfoCard label="Totalt innbetalt" value={formatCurrency(financeSummary.totalContributed)} />
           <InfoCard label="Brukt" value={formatCurrency(financeSummary.totalUsed)} />
           <InfoCard label="Forskudd" value={formatCurrency(financeSummary.totalAdvances)} />
           <InfoCard label="Ufordelt" value={formatCurrency(financeSummary.unassignedTotal)} tone="warning" />
         </div>
+        <p className="notice">
+          Forskudd lagres som egen post og brukes automatisk i `totalt innbetalt`, `balanse for oppgjor`
+          og `gjenstaende`. Du skal ikke trekke det fra manuelt senere.
+        </p>
       </section>
 
       <section className="panel stack">
@@ -687,6 +696,19 @@ function FinanceTab({
               )
             }
           />
+          <ActionTile
+            title="Regn ut oppgjor"
+            body="Bruk gjenstaende balanse for aa foresla hvem som skal overfore hva til hvem for at arrangementet skal ga i null."
+            actions={
+              viewerAccess.canManageFinance ? (
+                <button className="secondary-button" type="button" onClick={onToggleSettlementPlan}>
+                  {showSettlementPlan ? "Skjul oppgjorsforslag" : "Regn ut oppgjorsforslag"}
+                </button>
+              ) : (
+                <span className="muted">Kun forvaltere kan se hele oppgjorsforslaget.</span>
+              )
+            }
+          />
         </div>
       </section>
 
@@ -709,6 +731,42 @@ function FinanceTab({
         </section>
       ) : null}
 
+      {showSettlementPlan ? (
+        <section className="panel stack">
+          <div className="panel-header-inline">
+            <div>
+              <h3>Oppgjorsforslag</h3>
+              <p className="muted">
+                Forslaget bruker `gjenstaende balanse` etter at forskudd og registrerte oppgjor er tatt med.
+              </p>
+            </div>
+          </div>
+          {settlementPlan.alreadyBalanced ? (
+            <p className="notice success">Arrangementet ser allerede oppgjort ut. Ingen nye overforinger trengs.</p>
+          ) : settlementPlan.suggestions.length ? (
+            <div className="stack">
+              <ul className="suggestion-list">
+                {settlementPlan.suggestions.map((suggestion, index) => (
+                  <li className="suggestion-card" key={`${suggestion.fromId}-${suggestion.toId}-${index}`}>
+                    <strong>{suggestion.fromName}</strong>
+                    <span>betaler</span>
+                    <strong>{suggestion.toName}</strong>
+                    <span className="suggestion-amount">{formatCurrency(suggestion.amount)} kr</span>
+                  </li>
+                ))}
+              </ul>
+              {settlementPlan.unmatchedOutgoing.length || settlementPlan.unmatchedIncoming.length ? (
+                <p className="notice warning">
+                  Det er et lite restavvik etter avrunding. Sjekk oppgjor og balanse en gang til.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="notice">Fant ingen konkrete overforinger akkurat na.</p>
+          )}
+        </section>
+      ) : null}
+
       <section className="panel stack">
         <h3>Medlemsbalanse</h3>
         {financeSummary.members.length === 0 ? (
@@ -721,7 +779,9 @@ function FinanceTab({
             <thead>
               <tr>
                 <th>Medlem</th>
-                <th>Betalt</th>
+                <th>Kvitt. betalt</th>
+                <th>Forskudd</th>
+                <th>Totalt innbetalt</th>
                 <th>Brukt</th>
                 <th>Mottatt</th>
                 <th>Sendt</th>
@@ -733,7 +793,9 @@ function FinanceTab({
               {financeSummary.members.map((member) => (
                 <tr key={member.id}>
                   <td>{member.name}</td>
-                  <td>{formatCurrency(member.paidTotal)}</td>
+                  <td>{formatCurrency(member.receiptPaidTotal)}</td>
+                  <td>{formatCurrency(member.advanceTotal)}</td>
+                  <td>{formatCurrency(member.totalContributed)}</td>
                   <td>{formatCurrency(member.usedTotal)}</td>
                   <td>{formatCurrency(member.receivedSettlementTotal)}</td>
                   <td>{formatCurrency(member.sentSettlementTotal)}</td>
@@ -917,6 +979,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
   const [isSaving, setIsSaving] = useState(false);
   const [financeModal, setFinanceModal] = useState(null);
   const [financeEngineOpen, setFinanceEngineOpen] = useState(false);
+  const [showSettlementPlan, setShowSettlementPlan] = useState(false);
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId) || null,
@@ -939,6 +1002,10 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
   const financeSummary = selectedEvent
     ? buildEventFinanceSummary(selectedEvent, selectedJobs)
     : buildEventFinanceSummary(null, []);
+  const settlementPlan = useMemo(
+    () => buildSettlementSuggestions(financeSummary),
+    [financeSummary]
+  );
 
   const tabs = [
     { id: "overview", label: "Oversikt", visible: true },
@@ -954,12 +1021,14 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     if (currentTab !== "finance") {
       setFinanceModal(null);
       setFinanceEngineOpen(false);
+      setShowSettlementPlan(false);
     }
   }, [currentTab]);
 
   useEffect(() => {
     setFinanceModal(null);
     setFinanceEngineOpen(false);
+    setShowSettlementPlan(false);
   }, [selectedEventId]);
 
   async function patchEvent(action, payload) {
@@ -1194,6 +1263,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     if (nextEvent) {
       formEvent.currentTarget.reset();
       setFinanceModal(null);
+      setShowSettlementPlan(true);
       setStatusMessage("Forskudd er registrert.");
     }
   }
@@ -1227,6 +1297,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     if (nextEvent) {
       formEvent.currentTarget.reset();
       setFinanceModal(null);
+      setShowSettlementPlan(true);
       setStatusMessage("Oppgjoret er registrert.");
     }
   }
@@ -1409,9 +1480,12 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                   event={selectedEvent}
                   financeSummary={financeSummary}
                   jobs={selectedJobs}
+                  onToggleSettlementPlan={() => setShowSettlementPlan((current) => !current)}
                   onOpenAdvanceModal={() => setFinanceModal("advance")}
                   onOpenSettlementModal={() => setFinanceModal("settlement")}
                   onToggleEngine={() => setFinanceEngineOpen((current) => !current)}
+                  settlementPlan={settlementPlan}
+                  showSettlementPlan={showSettlementPlan}
                   viewerAccess={viewerAccess}
                 />
               ) : null}

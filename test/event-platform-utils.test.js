@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildEventFinanceSummary, ensureEventShape } from "../src/event-platform-utils.js";
+import {
+  buildEventFinanceSummary,
+  buildSettlementSuggestions,
+  ensureEventShape
+} from "../src/event-platform-utils.js";
 
 test("ensureEventShape upgrades legacy finance members into shared people structure", () => {
   const event = ensureEventShape({
@@ -97,6 +101,10 @@ test("buildEventFinanceSummary includes advances and settlement transfers in mem
 
   assert.equal(summary.totalAdvances, 100);
   assert.equal(summary.totalSettlementTransfers, 50);
+  assert.equal(summary.totalContributed, 300);
+  assert.equal(ola.receiptPaidTotal, 200);
+  assert.equal(ola.advanceTotal, 100);
+  assert.equal(ola.totalContributed, 300);
   assert.equal(ola.paidTotal, 300);
   assert.equal(ola.balanceBeforeSettlements, 200);
   assert.equal(ola.receivedSettlementTotal, 50);
@@ -104,4 +112,30 @@ test("buildEventFinanceSummary includes advances and settlement transfers in mem
   assert.equal(kari.usedTotal, 100);
   assert.equal(kari.sentSettlementTotal, 50);
   assert.equal(kari.remainingBalance, -50);
+});
+
+test("buildSettlementSuggestions proposes who should pay whom based on remaining balances", () => {
+  const plan = buildSettlementSuggestions({
+    members: [
+      { id: "a", name: "Person A", remainingBalance: 1500 },
+      { id: "b", name: "Person B", remainingBalance: 500 },
+      { id: "c", name: "Person C", remainingBalance: -1000 },
+      { id: "d", name: "Person D", remainingBalance: -1000 }
+    ]
+  });
+
+  assert.equal(plan.alreadyBalanced, false);
+  assert.equal(plan.suggestions.length, 3);
+  assert.deepEqual(
+    plan.suggestions.map((entry) => ({
+      from: entry.fromName,
+      to: entry.toName,
+      amount: entry.amount
+    })),
+    [
+      { from: "Person C", to: "Person A", amount: 1000 },
+      { from: "Person D", to: "Person A", amount: 500 },
+      { from: "Person D", to: "Person B", amount: 500 }
+    ]
+  );
 });
