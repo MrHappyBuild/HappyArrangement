@@ -10,9 +10,12 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3000",
     "test": "node --test",
-    "smoke": "node scripts/smoke-test-local.mjs"
+    "smoke": "node scripts/smoke-test-local.mjs",
+    "worker:once": "node --env-file=.env.local scripts/receipt-worker.mjs",
+    "worker:watch": "node --env-file=.env.local scripts/receipt-worker.mjs --watch"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.0",
     "next": "^16.2.7",
     "postcss": "^8.5.15",
     "react": "^19.2.7",

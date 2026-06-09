@@ -17,7 +17,7 @@ export function sha256(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-export async function sanitizeReceiptUpload(file) {
+async function sanitizeImageUpload(file, tooLargeMessage) {
   if (!file) {
     throw new Error("Mangler bildefil.");
   }
@@ -32,7 +32,7 @@ export async function sanitizeReceiptUpload(file) {
   }
 
   if (sourceBuffer.length > maxBytes) {
-    throw new Error("Bildet er for stort. Maks størrelse er 10 MB.");
+    throw new Error(tooLargeMessage);
   }
 
   const pipeline = sharp(sourceBuffer, {
@@ -62,4 +62,12 @@ export async function sanitizeReceiptUpload(file) {
     height: metadata.height,
     sha256: sha256(buffer)
   };
+}
+
+export async function sanitizeReceiptUpload(file) {
+  return sanitizeImageUpload(file, "Bildet er for stort. Maks størrelse er 10 MB.");
+}
+
+export async function sanitizeGuestPageUpload(file) {
+  return sanitizeImageUpload(file, "Bildet er for stort. Maks størrelse er 10 MB.");
 }

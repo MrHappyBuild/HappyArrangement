@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getLocalEnv } from "@/lib/env";
 import { analyzeReceiptWithOllama } from "@/lib/local-ai";
 import { createLocalJob, getEvent, listLocalJobs, updateLocalJob } from "@/lib/local-store";
 import { sanitizeReceiptUpload } from "@/lib/uploads";
@@ -22,6 +23,7 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    const env = getLocalEnv();
     const formData = await request.formData();
     const files = formData.getAll("receipt").filter((file) => file instanceof File);
     const eventIdRaw = formData.get("eventId");
@@ -43,15 +45,25 @@ export async function POST(request) {
 
     for (const file of files) {
       const sanitized = await sanitizeReceiptUpload(file);
-      const job = await createLocalJob({
+      const initialJob = await createLocalJob({
         fileName: file.name,
         sanitized,
         eventId
       });
 
+      if (env.receiptProcessingMode === "queue") {
+        const queuedJob = await updateLocalJob(initialJob.id, () => ({
+          status: "queued",
+          error_message: null,
+          completed_at: null
+        }));
+        jobs.push(queuedJob);
+        continue;
+      }
+
       try {
         const result = await analyzeReceiptWithOllama(sanitized.buffer);
-        const completedJob = await updateLocalJob(job.id, () => ({
+        const completedJob = await updateLocalJob(initialJob.id, () => ({
           status: "completed",
           result,
           error_message: null,
@@ -59,7 +71,7 @@ export async function POST(request) {
         }));
         jobs.push(completedJob);
       } catch (error) {
-        const failedJob = await updateLocalJob(job.id, () => ({
+        const failedJob = await updateLocalJob(initialJob.id, () => ({
           status: "failed",
           error_message: error instanceof Error ? error.message : "Ukjent lokal analysefeil.",
           completed_at: new Date().toISOString()

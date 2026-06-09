@@ -3,6 +3,13 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { getEvent, updateEvent } from "@/lib/local-store";
+import { buildTaskAgenda } from "@/event-platform-utils";
+import { normalizeVenuePlan } from "@/venue-layout-utils";
+import {
+  applyTaskRelationshipUpdates,
+  deriveFollowingTaskIds
+} from "@/task-dependency-utils";
+import { applyTaskHierarchyUpdates, moveTaskSubtree } from "@/task-hierarchy-utils";
 
 function errorResponse(message, status) {
   return NextResponse.json({ error: message }, { status });
@@ -10,6 +17,62 @@ function errorResponse(message, status) {
 
 function cleanString(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function cleanIdList(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(values.map((value) => cleanString(value)).filter(Boolean))
+  );
+}
+
+function normalizeGuestPageVisibility(value) {
+  return cleanString(value) === "guests" ? "guests" : "open";
+}
+
+function normalizeGuestPageFontPreset(value) {
+  const normalized = cleanString(value);
+  return ["clean", "editorial", "classic"].includes(normalized) ? normalized : "clean";
+}
+
+function normalizeGuestPageTextSize(value) {
+  const normalized = cleanString(value);
+  return ["sm", "md", "lg"].includes(normalized) ? normalized : "md";
+}
+
+function normalizeGuestPageTextWeight(value) {
+  return cleanString(value) === "bold" ? "bold" : "regular";
+}
+
+function normalizeGuestPageShowImageCaption(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = cleanString(value).toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "on";
+}
+
+function normalizeBooleanInput(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = cleanString(value).toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "on";
+}
+
+function normalizeDuration(value, fallback = 60) {
+  const numeric = typeof value === "number" ? value : Number.parseInt(String(value || ""), 10);
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return fallback;
+  }
+
+  return numeric;
 }
 
 export async function GET(_request, context) {
@@ -57,6 +120,104 @@ export async function PATCH(request, context) {
         };
       }
 
+      if (action === "add_guest_page") {
+        const title = cleanString(payload?.page?.title);
+
+        if (!title) {
+          throw new Error("Skriv inn navn pa siden.");
+        }
+
+        const currentPages = Array.isArray(current.guestPages) ? current.guestPages : [];
+        const createdAt = new Date().toISOString();
+
+        return {
+          ...current,
+          guestPages: [
+            ...currentPages,
+            {
+              id: crypto.randomUUID(),
+              title,
+              menuLabel: cleanString(payload?.page?.menuLabel) || title,
+              content: cleanString(payload?.page?.content),
+              visibility: normalizeGuestPageVisibility(payload?.page?.visibility),
+              fontPreset: normalizeGuestPageFontPreset(payload?.page?.fontPreset),
+              textSize: normalizeGuestPageTextSize(payload?.page?.textSize),
+              textWeight: normalizeGuestPageTextWeight(payload?.page?.textWeight),
+              showImageCaption: normalizeGuestPageShowImageCaption(
+                payload?.page?.showImageCaption
+              ),
+              orderIndex: currentPages.length,
+              created_at: createdAt,
+              updated_at: createdAt
+            }
+          ]
+        };
+      }
+
+      if (action === "update_guest_page") {
+        const pageId = cleanString(payload?.pageId);
+
+        if (!pageId) {
+          throw new Error("Mangler side.");
+        }
+
+        return {
+          ...current,
+          guestPages: (current.guestPages || []).map((page) =>
+            page.id === pageId
+              ? {
+                  ...page,
+                  ...(payload?.changes && typeof payload.changes === "object" ? payload.changes : {}),
+                  visibility: normalizeGuestPageVisibility(
+                    payload?.changes && typeof payload.changes === "object"
+                      ? payload.changes.visibility
+                      : page.visibility
+                  ),
+                  fontPreset: normalizeGuestPageFontPreset(
+                    payload?.changes && typeof payload.changes === "object"
+                      ? payload.changes.fontPreset
+                      : page.fontPreset
+                  ),
+                  textSize: normalizeGuestPageTextSize(
+                    payload?.changes && typeof payload.changes === "object"
+                      ? payload.changes.textSize
+                      : page.textSize
+                  ),
+                  textWeight: normalizeGuestPageTextWeight(
+                    payload?.changes && typeof payload.changes === "object"
+                      ? payload.changes.textWeight
+                      : page.textWeight
+                  ),
+                  showImageCaption: normalizeGuestPageShowImageCaption(
+                    payload?.changes && typeof payload.changes === "object"
+                      ? payload.changes.showImageCaption
+                      : page.showImageCaption
+                  ),
+                  updated_at: new Date().toISOString()
+                }
+              : page
+          )
+        };
+      }
+
+      if (action === "delete_guest_page") {
+        const pageId = cleanString(payload?.pageId);
+
+        if (!pageId) {
+          throw new Error("Mangler side som skal slettes.");
+        }
+
+        return {
+          ...current,
+          guestPages: (current.guestPages || [])
+            .filter((page) => page.id !== pageId)
+            .map((page, index) => ({
+              ...page,
+              orderIndex: index
+            }))
+        };
+      }
+
       if (action === "add_person") {
         const name = cleanString(payload?.person?.name);
 
@@ -75,6 +236,9 @@ export async function PATCH(request, context) {
               name,
               email: cleanString(payload?.person?.email),
               note: cleanString(payload?.person?.note),
+              allergies: cleanString(payload?.person?.allergies),
+              dietaryNotes: cleanString(payload?.person?.dietaryNotes),
+              seatingNote: cleanString(payload?.person?.seatingNote),
               created_at: createdAt,
               invitedAt: payload?.person?.invitedAt || null,
               respondedAt: payload?.person?.respondedAt || null,
@@ -88,6 +252,13 @@ export async function PATCH(request, context) {
                   : {}
             }
           ]
+        };
+      }
+
+      if (action === "update_venue_plan") {
+        return {
+          ...current,
+          venuePlan: normalizeVenuePlan(payload?.venuePlan)
         };
       }
 
@@ -121,47 +292,287 @@ export async function PATCH(request, context) {
 
       if (action === "add_task") {
         const title = cleanString(payload?.task?.title);
+        const taskId = crypto.randomUUID();
+        const baseTasks = [...(current.tasks || [])];
+        const dependencyIds = cleanIdList(payload?.task?.dependencyIds);
+        const followingTaskIds = cleanIdList(payload?.task?.followingTaskIds);
+        const subprojectIds = (current.subprojects || []).map((subproject) => subproject.id);
 
         if (!title) {
           throw new Error("Skriv inn en oppgave.");
         }
 
+        baseTasks.push({
+          id: taskId,
+          title,
+          description: cleanString(payload?.task?.description),
+          agendaComment: cleanString(payload?.task?.agendaComment),
+          dueDate: cleanString(payload?.task?.dueDate),
+          desiredStartAt: cleanString(payload?.task?.desiredStartAt),
+          isFixedTime: normalizeBooleanInput(payload?.task?.isFixedTime),
+          showOnAgenda: normalizeBooleanInput(payload?.task?.showOnAgenda),
+          durationMinutes: normalizeDuration(payload?.task?.durationMinutes),
+          status: cleanString(payload?.task?.status) || "todo",
+          orderIndex: Array.isArray(current.tasks) ? current.tasks.length : 0,
+          dependencyIds,
+          subprojectId: cleanString(payload?.task?.subprojectId),
+          parentTaskId: cleanString(payload?.task?.parentTaskId),
+          assigneeIds: cleanIdList(payload?.task?.assigneeIds),
+          created_at: new Date().toISOString()
+        });
+
+        const hierarchyTasks = applyTaskHierarchyUpdates(
+          baseTasks,
+          taskId,
+          cleanString(payload?.task?.parentTaskId),
+          cleanString(payload?.task?.subprojectId),
+          subprojectIds
+        );
+
         return {
           ...current,
-          tasks: [
-            ...(current.tasks || []),
+          tasks: applyTaskRelationshipUpdates(
+            hierarchyTasks,
+            taskId,
+            dependencyIds,
+            followingTaskIds
+          )
+        };
+      }
+
+      if (action === "add_subproject") {
+        const name = cleanString(payload?.subproject?.name);
+
+        if (!name) {
+          throw new Error("Skriv inn navn pa delprosjektet.");
+        }
+
+        return {
+          ...current,
+          subprojects: [
+            ...(current.subprojects || []),
             {
               id: crypto.randomUUID(),
-              title,
-              description: cleanString(payload?.task?.description),
-              dueDate: cleanString(payload?.task?.dueDate),
-              status: cleanString(payload?.task?.status) || "todo",
-              assigneeIds: Array.isArray(payload?.task?.assigneeIds)
-                ? payload.task.assigneeIds.filter((assigneeId) => typeof assigneeId === "string")
-                : [],
+              name,
+              description: cleanString(payload?.subproject?.description),
+              orderIndex: Array.isArray(current.subprojects) ? current.subprojects.length : 0,
               created_at: new Date().toISOString()
             }
           ]
         };
       }
 
+      if (action === "update_subproject") {
+        const subprojectId = cleanString(payload?.subprojectId);
+
+        if (!subprojectId) {
+          throw new Error("Mangler delprosjekt.");
+        }
+
+        return {
+          ...current,
+          subprojects: (current.subprojects || []).map((subproject) =>
+            subproject.id === subprojectId
+              ? {
+                  ...subproject,
+                  ...(payload?.changes && typeof payload.changes === "object" ? payload.changes : {}),
+                  name:
+                    cleanString(payload?.changes?.name) || subproject.name,
+                  description:
+                    Object.prototype.hasOwnProperty.call(payload?.changes || {}, "description")
+                      ? cleanString(payload?.changes?.description)
+                      : subproject.description
+                }
+              : subproject
+          )
+        };
+      }
+
+      if (action === "delete_subproject") {
+        const subprojectId = cleanString(payload?.subprojectId);
+
+        if (!subprojectId) {
+          throw new Error("Mangler delprosjekt som skal slettes.");
+        }
+
+        return {
+          ...current,
+          subprojects: (current.subprojects || [])
+            .filter((subproject) => subproject.id !== subprojectId)
+            .map((subproject, index) => ({
+              ...subproject,
+              orderIndex: index
+            })),
+          tasks: (current.tasks || []).map((task) =>
+            cleanString(task?.subprojectId) === subprojectId
+              ? {
+                  ...task,
+                  subprojectId: ""
+                }
+              : task
+          )
+        };
+      }
+
       if (action === "update_task") {
         const taskId = cleanString(payload?.taskId);
+        const currentTasks = current.tasks || [];
+        const existingTask = currentTasks.find((task) => task.id === taskId);
+        const rawChanges =
+          payload?.changes && typeof payload.changes === "object" ? payload.changes : {};
+        const hasDependencyIds = Object.prototype.hasOwnProperty.call(rawChanges, "dependencyIds");
+        const hasFollowingTaskIds = Object.prototype.hasOwnProperty.call(rawChanges, "followingTaskIds");
+        const {
+          dependencyIds: _ignoredDependencyIds,
+          followingTaskIds: _ignoredFollowingTaskIds,
+          assigneeIds: _ignoredAssigneeIds,
+          durationMinutes: _ignoredDurationMinutes,
+          isFixedTime: _ignoredIsFixedTime,
+          showOnAgenda: _ignoredShowOnAgenda,
+          agendaComment: _ignoredAgendaComment,
+          parentTaskId: _ignoredParentTaskId,
+          subprojectId: _ignoredSubprojectId,
+          ...directChanges
+        } = rawChanges;
 
         if (!taskId) {
           throw new Error("Mangler oppgave.");
         }
 
+        if (!existingTask) {
+          throw new Error("Fant ikke oppgaven.");
+        }
+
+        const nextDependencyIds = hasDependencyIds
+          ? cleanIdList(rawChanges.dependencyIds)
+          : cleanIdList(existingTask.dependencyIds);
+        const nextFollowingTaskIds = hasFollowingTaskIds
+          ? cleanIdList(rawChanges.followingTaskIds)
+          : deriveFollowingTaskIds(currentTasks, taskId);
+        const baseTasks = currentTasks.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                ...directChanges,
+                durationMinutes:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "durationMinutes")
+                    ? normalizeDuration(rawChanges.durationMinutes, task.durationMinutes || 60)
+                    : task.durationMinutes,
+                isFixedTime:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "isFixedTime")
+                    ? normalizeBooleanInput(rawChanges.isFixedTime)
+                    : task.isFixedTime,
+                showOnAgenda:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "showOnAgenda")
+                    ? normalizeBooleanInput(rawChanges.showOnAgenda)
+                    : task.showOnAgenda,
+                agendaComment:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "agendaComment")
+                    ? cleanString(rawChanges.agendaComment)
+                    : task.agendaComment,
+                dependencyIds: nextDependencyIds.filter((dependencyId) => dependencyId !== task.id),
+                assigneeIds:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "assigneeIds")
+                    ? cleanIdList(rawChanges.assigneeIds)
+                    : task.assigneeIds
+              }
+            : task
+        );
+        const hierarchyTasks = applyTaskHierarchyUpdates(
+          baseTasks,
+          taskId,
+          Object.prototype.hasOwnProperty.call(rawChanges, "parentTaskId")
+            ? cleanString(rawChanges.parentTaskId)
+            : cleanString(existingTask.parentTaskId),
+          Object.prototype.hasOwnProperty.call(rawChanges, "subprojectId")
+            ? cleanString(rawChanges.subprojectId)
+            : cleanString(existingTask.subprojectId),
+          (current.subprojects || []).map((subproject) => subproject.id)
+        );
+
         return {
           ...current,
-          tasks: (current.tasks || []).map((task) =>
-            task.id === taskId
-              ? {
-                  ...task,
-                  ...(payload?.changes && typeof payload.changes === "object" ? payload.changes : {})
-                }
-              : task
+          tasks: applyTaskRelationshipUpdates(
+            hierarchyTasks,
+            taskId,
+            nextDependencyIds,
+            nextFollowingTaskIds
           )
+        };
+      }
+
+      if (action === "reorder_tasks") {
+        const orderedTaskIds = cleanIdList(payload?.taskIds);
+
+        if (orderedTaskIds.length === 0) {
+          throw new Error("Mangler ny rekkefolge pa oppgavene.");
+        }
+
+        const tasksById = new Map((current.tasks || []).map((task) => [task.id, task]));
+        const reordered = orderedTaskIds
+          .map((taskId) => tasksById.get(taskId))
+          .filter(Boolean);
+        const missingTasks = (current.tasks || []).filter((task) => !orderedTaskIds.includes(task.id));
+        const nextTasks = [...reordered, ...missingTasks].map((task, index) => ({
+          ...task,
+          orderIndex: index
+        }));
+
+        return {
+          ...current,
+          tasks: nextTasks
+        };
+      }
+
+      if (action === "move_task_tree") {
+        const sourceTaskId = cleanString(payload?.sourceTaskId);
+        const targetTaskId = cleanString(payload?.targetTaskId);
+        const placement = cleanString(payload?.placement);
+
+        if (!sourceTaskId || !targetTaskId) {
+          throw new Error("Mangler oppgave som skal flyttes eller slippmal.");
+        }
+
+        return {
+          ...current,
+          tasks: moveTaskSubtree(
+            current.tasks || [],
+            sourceTaskId,
+            targetTaskId,
+            placement,
+            current.subprojects || []
+          )
+        };
+      }
+
+      if (action === "scale_tasks") {
+        const scopedTaskIds = cleanIdList(payload?.taskIds);
+        const scopedTaskIdSet = scopedTaskIds.length > 0 ? new Set(scopedTaskIds) : null;
+        const agenda = buildTaskAgenda(current);
+
+        return {
+          ...current,
+          tasks: (current.tasks || []).map((task) => {
+            if (
+              !task ||
+              typeof task !== "object" ||
+              (scopedTaskIdSet && !scopedTaskIdSet.has(task.id)) ||
+              normalizeBooleanInput(task.isFixedTime)
+            ) {
+              return task;
+            }
+
+            const agendaTask = agenda.tasks.find((candidate) => candidate.id === task.id);
+
+            if (!agendaTask?.scheduledStartAt) {
+              return task;
+            }
+
+            return {
+              ...task,
+              desiredStartAt: agendaTask.scheduledStartAt
+            };
+          })
         };
       }
 
@@ -211,6 +622,19 @@ export async function PATCH(request, context) {
                 }
               : entry
           )
+        };
+      }
+
+      if (action === "delete_ledger_entry") {
+        const entryId = cleanString(payload?.entryId);
+
+        if (!entryId) {
+          throw new Error("Mangler post som skal slettes.");
+        }
+
+        return {
+          ...current,
+          ledgerEntries: (current.ledgerEntries || []).filter((entry) => entry.id !== entryId)
         };
       }
 
