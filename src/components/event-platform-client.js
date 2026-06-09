@@ -394,7 +394,7 @@ function OverviewTab({ event, jobs, financeSummary, guestSummary, projectSummary
             <p className="eyebrow">Arrangement</p>
             <h2>{event.overview.title || event.name}</h2>
           </div>
-          <Link className="secondary-link" href="/">
+          <Link className="secondary-link" href="/receipts">
             Aapne dagens kvitteringsmotor
           </Link>
         </div>
@@ -5530,7 +5530,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
           </p>
         </div>
         <div className="stack">
-          <Link className="secondary-link" href="/">
+          <Link className="secondary-link" href="/receipts">
             Tilbake til dagens app
           </Link>
           <p className="muted">Git-baseline: `main` og arbeidsgren `feature/event-platform-v2`.</p>
