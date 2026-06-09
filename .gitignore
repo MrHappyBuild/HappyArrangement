@@ -4,3 +4,4 @@ node_modules
 .next
 local-data
 npm-debug.log*
+.vercel
