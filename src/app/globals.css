@@ -1589,6 +1589,67 @@ p {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
+.person-list {
+  display: grid;
+  gap: 12px;
+}
+
+.person-list-header,
+.person-list-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1.35fr) minmax(110px, 0.7fr) minmax(170px, 1fr) minmax(130px, 0.8fr) minmax(170px, 1fr) auto;
+  align-items: center;
+}
+
+.person-list-header {
+  padding: 0 16px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.person-list-item {
+  display: grid;
+  gap: 0;
+  border-radius: 22px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 252, 247, 0.86);
+  overflow: hidden;
+}
+
+.person-list-item.is-open {
+  border-color: rgba(36, 95, 82, 0.18);
+  box-shadow: 0 16px 28px rgba(28, 22, 15, 0.08);
+}
+
+.person-list-row {
+  padding: 16px;
+}
+
+.person-list-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.person-list-main span,
+.person-list-summary {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.person-list-summary {
+  min-width: 0;
+}
+
+.person-list-detail {
+  padding: 0 16px 16px;
+  border-top: 1px solid rgba(91, 59, 18, 0.08);
+}
+
 .person-card,
 .task-card {
   display: grid;
@@ -2154,6 +2215,28 @@ p {
   font-weight: 700;
 }
 
+.role-pill-rsvp-pending {
+  color: var(--muted);
+}
+
+.role-pill-rsvp-accepted {
+  color: #1f6a54;
+  border-color: rgba(31, 106, 84, 0.18);
+  background: rgba(225, 247, 238, 0.92);
+}
+
+.role-pill-rsvp-maybe {
+  color: #946200;
+  border-color: rgba(148, 98, 0, 0.18);
+  background: rgba(255, 244, 214, 0.92);
+}
+
+.role-pill-rsvp-declined {
+  color: #9a3412;
+  border-color: rgba(154, 52, 18, 0.18);
+  background: rgba(255, 231, 223, 0.94);
+}
+
 .agenda-card-title {
   display: flex;
   flex-wrap: wrap;
@@ -2392,33 +2475,79 @@ p {
 
 .guest-site-public-links {
   display: grid;
-  gap: 16px;
-  padding: 18px;
+  gap: 18px;
+  padding: 20px;
   border-radius: 24px;
   border: 1px solid rgba(91, 59, 18, 0.1);
   background: rgba(255, 252, 247, 0.88);
 }
 
-.guest-site-public-link-list {
+.guest-site-public-links-summary {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
-.guest-site-public-link-row {
+.guest-site-public-link-grid {
   display: grid;
-  gap: 4px;
-  padding: 12px 14px;
+  gap: 14px;
+}
+
+.guest-site-public-link-card {
+  display: grid;
+  gap: 18px;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 16px;
   border-radius: 18px;
   border: 1px solid rgba(91, 59, 18, 0.1);
   background: rgba(255, 250, 242, 0.72);
-  color: var(--text);
-  text-decoration: none;
 }
 
-.guest-site-public-link-row span {
+.guest-site-public-link-url {
+  color: var(--text);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.guest-site-public-link-card span,
+.guest-site-public-link-url {
   color: var(--muted);
   font-size: 0.82rem;
-  word-break: break-all;
+}
+
+.guest-site-link-actions {
+  align-items: center;
+}
+
+.guest-site-public-link-qr {
+  display: grid;
+  place-items: center;
+  width: 196px;
+  min-height: 196px;
+  padding: 8px;
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.96);
+  border: 1px solid rgba(91, 59, 18, 0.08);
+}
+
+.guest-site-public-link-qr img {
+  width: 180px;
+  height: 180px;
+  border-radius: 12px;
+}
+
+.guest-site-public-link-qr-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
+  font-size: 0.86rem;
+  text-align: center;
+}
+
+.guest-site-intro-editor {
+  padding-top: 6px;
 }
 
 .guest-site-public-shell {
@@ -2442,6 +2571,29 @@ p {
 .guest-site-event-facts span {
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+@media (max-width: 860px) {
+  .guest-site-public-link-card {
+    grid-template-columns: 1fr;
+  }
+
+  .guest-site-public-link-qr {
+    width: 100%;
+  }
+
+  .person-list-header {
+    display: none;
+  }
+
+  .person-list-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .person-list-detail {
+    padding-top: 16px;
+  }
 }
 
 .guest-site-copy {

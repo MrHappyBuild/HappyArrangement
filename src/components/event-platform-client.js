@@ -5,6 +5,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardClient } from "@/components/dashboard-client";
 import { GuestPageContentView } from "@/components/guest-page-content-view";
+import { GuestSiteLinksPanel } from "@/components/guest-site-links-panel";
 import { VenueTab } from "@/components/venue-tab";
 import {
   GUEST_PAGE_FONT_OPTIONS,
@@ -210,6 +211,20 @@ function getGuestPageTextWeightLabel(value) {
   );
 }
 
+function getRsvpLabel(value) {
+  return RSVP_OPTIONS.find((option) => option.value === value)?.label || RSVP_OPTIONS[0].label;
+}
+
+function buildPersonDietarySummary(person) {
+  const details = [person.allergies, person.dietaryNotes].filter(Boolean);
+  return details.length > 0 ? details.join(" · ") : "Ingen registrert";
+}
+
+function buildPersonContextSummary(person) {
+  const details = [person.note, person.seatingNote].filter(Boolean);
+  return details.length > 0 ? details.join(" · ") : "Ingen ekstra info";
+}
+
 function personTemplateValue(person) {
   const entry = Object.entries(PERSON_TEMPLATES).find(([, template]) => {
     return (
@@ -390,6 +405,9 @@ function GuestTab({
   const [inlineStyleStatus, setInlineStyleStatus] = useState("");
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [guestSiteOrigin, setGuestSiteOrigin] = useState("");
+  const [guestSiteIntroDraft, setGuestSiteIntroDraft] = useState("");
+  const [guestSiteNavigationLabelDraft, setGuestSiteNavigationLabelDraft] = useState("Navigasjon");
+  const [openPersonId, setOpenPersonId] = useState("");
   const [textSelection, setTextSelection] = useState({ start: 0, end: 0 });
   const [inlineStyleControls, setInlineStyleControls] = useState({
     fontPreset: "",
@@ -443,6 +461,11 @@ function GuestTab({
       setGuestSiteOrigin(window.location.origin);
     }
   }, []);
+
+  useEffect(() => {
+    setGuestSiteIntroDraft(event.guestSite?.introText || "");
+    setGuestSiteNavigationLabelDraft(event.guestSite?.navigationLabel || "Navigasjon");
+  }, [event.guestSite?.introText, event.guestSite?.navigationLabel, event.id]);
 
   useEffect(() => {
     if (!selectedPage) {
@@ -605,6 +628,23 @@ function GuestTab({
     }
   }
 
+  async function handleSaveGuestSiteIntro() {
+    if (!viewerAccess.canManageGuest) {
+      return;
+    }
+
+    const nextEvent = await patchEvent("update_guest_site", {
+      guestSite: {
+        introText: guestSiteIntroDraft,
+        navigationLabel: guestSiteNavigationLabelDraft
+      }
+    });
+
+    if (nextEvent) {
+      setStatusMessage("Gjestenettsiden ble oppdatert.");
+    }
+  }
+
   return (
     <div className="stack">
       <section className="panel stack">
@@ -616,35 +656,20 @@ function GuestTab({
             </p>
           </div>
         </div>
-        <div className="guest-site-public-links">
-          <div className="stack">
-            <p className="eyebrow">Offentlig URL</p>
-            <a className="secondary-link" href={guestSiteBaseUrl} rel="noreferrer" target="_blank">
-              {guestSiteBaseUrl}
-            </a>
-            <p className="muted">
-              Første side åpnes på grunnlenken. Undersidene får egne URL-er under samme arrangement.
-            </p>
-          </div>
-          <div className="guest-site-public-link-list">
-            {guestPageLinks.map((page) => (
-              <a
-                className="guest-site-public-link-row"
-                href={page.url}
-                key={page.id}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <strong>{page.menuLabel || page.title}</strong>
-                <span>{page.url}</span>
-              </a>
-            ))}
-          </div>
-        </div>
+        <GuestSiteLinksPanel
+          baseUrl={guestSiteBaseUrl}
+          canManageGuest={viewerAccess.canManageGuest}
+          introText={guestSiteIntroDraft}
+          navigationLabel={guestSiteNavigationLabelDraft}
+          pageLinks={guestPageLinks}
+          onIntroTextChange={setGuestSiteIntroDraft}
+          onNavigationLabelChange={setGuestSiteNavigationLabelDraft}
+          onSaveIntro={handleSaveGuestSiteIntro}
+        />
         <div className="guest-site-shell">
           <aside className="guest-site-sidebar">
             <div className="stack">
-              <p className="eyebrow">Meny</p>
+              <p className="eyebrow">{guestSiteNavigationLabelDraft || "Navigasjon"}</p>
               <nav className="guest-site-menu">
                 {visiblePages.map((page) => (
                   <button
@@ -1089,151 +1114,202 @@ function GuestTab({
             body="Legg til gjester, hjelpere eller fakturamedlemmer for aa styre tilgangene."
           />
         ) : (
-          <div className="person-grid">
+          <div className="person-list">
+            <div className="person-list-header">
+              <span>Person</span>
+              <span>RSVP</span>
+              <span>Allergier og mat</span>
+              <span>Rolle</span>
+              <span>Merknader</span>
+              <span>Detaljer</span>
+            </div>
             {event.people.map((person) => {
               const canEditSelf = !viewerAccess.canManageGuest && viewerPerson?.id === person.id;
               const canSave = viewerAccess.canManageGuest || canEditSelf;
+              const isOpen = openPersonId === person.id;
+              const roleLabel = PERSON_TEMPLATES[personTemplateValue(person)]?.label || "Gjest";
+              const dietarySummary = buildPersonDietarySummary(person);
+              const contextSummary = buildPersonContextSummary(person);
 
               return (
-                <form
-                  className="person-card"
-                  key={person.id}
-                  onSubmit={(eventObject) => onUpdatePerson(eventObject, person)}
-                >
-                  <div className="person-card-header">
-                    <div>
+                <article className={`person-list-item ${isOpen ? "is-open" : ""}`} key={person.id}>
+                  <div className="person-list-row">
+                    <div className="person-list-main">
                       <strong>{person.name}</strong>
                       <span>{person.email || "Ingen e-post registrert"}</span>
                     </div>
-                    <span className="role-pill">
-                      {PERSON_TEMPLATES[personTemplateValue(person)]?.label}
+                    <span className={`role-pill role-pill-rsvp role-pill-rsvp-${person.rsvpStatus || "pending"}`}>
+                      {getRsvpLabel(person.rsvpStatus)}
                     </span>
-                  </div>
-                  <input name="personId" type="hidden" value={person.id} />
-                  <div className="compact-grid">
-                    <label className="field">
-                      <span>RSVP</span>
-                      <select defaultValue={person.rsvpStatus} disabled={!canSave} name="rsvpStatus">
-                        {RSVP_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="field">
-                      <span>Planlegging</span>
-                      <select
-                        defaultValue={person.planningRole}
-                        disabled={!viewerAccess.canManageGuest}
-                        name="planningRole"
-                      >
-                        <option value="none">Ingen</option>
-                        <option value="viewer">Se</option>
-                        <option value="manager">Forvalte</option>
-                        <option value="owner">Fullt ansvar</option>
-                      </select>
-                    </label>
-                    <label className="field">
-                      <span>Oppgaver</span>
-                      <select
-                        defaultValue={person.projectRole}
-                        disabled={!viewerAccess.canManageGuest}
-                        name="projectRole"
-                      >
-                        <option value="none">Ingen</option>
-                        <option value="helper">Hjelper</option>
-                        <option value="manager">Forvalte</option>
-                        <option value="owner">Fullt ansvar</option>
-                      </select>
-                    </label>
-                    <label className="field">
-                      <span>Faktura</span>
-                      <select
-                        defaultValue={person.financeRole}
-                        disabled={!viewerAccess.canManageGuest}
-                        name="financeRole"
-                      >
-                        <option value="none">Ingen tilgang</option>
-                        <option value="member">Medlem</option>
-                        <option value="manager">Forvalter</option>
-                        <option value="owner">Fullt ansvar</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className="toggle-row">
-                    <label>
-                      <input
-                        defaultChecked={person.capabilities.canSubmitReceipts}
-                        disabled={!viewerAccess.canManageGuest}
-                        name="canSubmitReceipts"
-                        type="checkbox"
-                      />
-                      Kan sende inn kvittering
-                    </label>
-                    <label>
-                      <input
-                        defaultChecked={person.capabilities.canSubmitManualInvoices}
-                        disabled={!viewerAccess.canManageGuest}
-                        name="canSubmitManualInvoices"
-                        type="checkbox"
-                      />
-                      Kan lage manuell faktura
-                    </label>
-                    <label>
-                      <input
-                        defaultChecked={person.capabilities.canSendToAiDirectly}
-                        disabled={!viewerAccess.canManageGuest}
-                        name="canSendToAiDirectly"
-                        type="checkbox"
-                      />
-                      Kan sende rett til AI
-                    </label>
-                  </div>
-                  <label className="field">
-                    <span>Notat</span>
-                    <input
-                      defaultValue={person.note}
-                      disabled={!canSave}
-                      name="note"
-                      placeholder="Rolle, ansvar eller info"
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Allergier</span>
-                    <input
-                      defaultValue={person.allergies}
-                      disabled={!canSave}
-                      name="allergies"
-                      placeholder="F.eks. gluten eller notter"
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Matpreferanser</span>
-                    <input
-                      defaultValue={person.dietaryNotes}
-                      disabled={!canSave}
-                      name="dietaryNotes"
-                      placeholder="F.eks. vegetar eller alkoholfritt"
-                    />
-                  </label>
-                  <label className="field field-span-full">
-                    <span>Sitteinfo</span>
-                    <input
-                      defaultValue={person.seatingNote}
-                      disabled={!canSave}
-                      name="seatingNote"
-                      placeholder="F.eks. narmt scene, ved partner eller unna trekk"
-                    />
-                  </label>
-                  {canSave ? (
-                    <button className="secondary-button" type="submit">
-                      {viewerAccess.canManageGuest ? "Lagre person" : "Oppdater mitt svar"}
+                    <span className="person-list-summary">{dietarySummary}</span>
+                    <span className="role-pill">{roleLabel}</span>
+                    <span className="person-list-summary">{contextSummary}</span>
+                    <button
+                      className="secondary-button compact-action-button"
+                      type="button"
+                      onClick={() =>
+                        setOpenPersonId((currentValue) => (currentValue === person.id ? "" : person.id))
+                      }
+                    >
+                      {isOpen ? "Lukk" : "Åpne"}
                     </button>
-                  ) : (
-                    <p className="muted">Lesetilgang for denne visningen.</p>
-                  )}
-                </form>
+                  </div>
+                  {isOpen ? (
+                    <form
+                      className="person-list-detail stack"
+                      onSubmit={(eventObject) => onUpdatePerson(eventObject, person)}
+                    >
+                      <input name="personId" type="hidden" value={person.id} />
+                      <div className="compact-grid">
+                        <label className="field">
+                          <span>Navn</span>
+                          <input
+                            defaultValue={person.name}
+                            disabled={!canSave}
+                            name="name"
+                            placeholder="Fornavn Etternavn"
+                            required
+                          />
+                        </label>
+                        <label className="field">
+                          <span>E-post</span>
+                          <input
+                            defaultValue={person.email}
+                            disabled={!canSave}
+                            name="email"
+                            placeholder="navn@epost.no"
+                            type="email"
+                          />
+                        </label>
+                        <label className="field">
+                          <span>RSVP</span>
+                          <select defaultValue={person.rsvpStatus} disabled={!canSave} name="rsvpStatus">
+                            {RSVP_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Planlegging</span>
+                          <select
+                            defaultValue={person.planningRole}
+                            disabled={!viewerAccess.canManageGuest}
+                            name="planningRole"
+                          >
+                            <option value="none">Ingen</option>
+                            <option value="viewer">Se</option>
+                            <option value="manager">Forvalte</option>
+                            <option value="owner">Fullt ansvar</option>
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Oppgaver</span>
+                          <select
+                            defaultValue={person.projectRole}
+                            disabled={!viewerAccess.canManageGuest}
+                            name="projectRole"
+                          >
+                            <option value="none">Ingen</option>
+                            <option value="helper">Hjelper</option>
+                            <option value="manager">Forvalte</option>
+                            <option value="owner">Fullt ansvar</option>
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Faktura</span>
+                          <select
+                            defaultValue={person.financeRole}
+                            disabled={!viewerAccess.canManageGuest}
+                            name="financeRole"
+                          >
+                            <option value="none">Ingen tilgang</option>
+                            <option value="member">Medlem</option>
+                            <option value="manager">Forvalter</option>
+                            <option value="owner">Fullt ansvar</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="toggle-row">
+                        <label>
+                          <input
+                            defaultChecked={person.capabilities.canSubmitReceipts}
+                            disabled={!viewerAccess.canManageGuest}
+                            name="canSubmitReceipts"
+                            type="checkbox"
+                          />
+                          Kan sende inn kvittering
+                        </label>
+                        <label>
+                          <input
+                            defaultChecked={person.capabilities.canSubmitManualInvoices}
+                            disabled={!viewerAccess.canManageGuest}
+                            name="canSubmitManualInvoices"
+                            type="checkbox"
+                          />
+                          Kan lage manuell faktura
+                        </label>
+                        <label>
+                          <input
+                            defaultChecked={person.capabilities.canSendToAiDirectly}
+                            disabled={!viewerAccess.canManageGuest}
+                            name="canSendToAiDirectly"
+                            type="checkbox"
+                          />
+                          Kan sende rett til AI
+                        </label>
+                      </div>
+                      <div className="compact-grid">
+                        <label className="field">
+                          <span>Notat</span>
+                          <input
+                            defaultValue={person.note}
+                            disabled={!canSave}
+                            name="note"
+                            placeholder="Rolle, ansvar eller info"
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Allergier</span>
+                          <input
+                            defaultValue={person.allergies}
+                            disabled={!canSave}
+                            name="allergies"
+                            placeholder="F.eks. gluten eller notter"
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Matpreferanser</span>
+                          <input
+                            defaultValue={person.dietaryNotes}
+                            disabled={!canSave}
+                            name="dietaryNotes"
+                            placeholder="F.eks. vegetar eller alkoholfritt"
+                          />
+                        </label>
+                        <label className="field field-span-full">
+                          <span>Sitteinfo</span>
+                          <input
+                            defaultValue={person.seatingNote}
+                            disabled={!canSave}
+                            name="seatingNote"
+                            placeholder="F.eks. narmt scene, ved partner eller unna trekk"
+                          />
+                        </label>
+                      </div>
+                      {canSave ? (
+                        <div className="button-row">
+                          <button className="secondary-button" type="submit">
+                            {viewerAccess.canManageGuest ? "Lagre person" : "Oppdater mitt svar"}
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="muted">Lesetilgang for denne visningen.</p>
+                      )}
+                    </form>
+                  ) : null}
+                </article>
               );
             })}
           </div>
@@ -4997,9 +5073,12 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     }
 
     const formData = new FormData(formEvent.currentTarget);
+    const nextName = String(formData.get("name") || person.name).trim() || person.name;
     const nextEvent = await patchEvent("update_person", {
       personId: person.id,
       changes: {
+        name: nextName,
+        email: String(formData.get("email") || "").trim(),
         rsvpStatus: String(formData.get("rsvpStatus") || person.rsvpStatus),
         planningRole: String(formData.get("planningRole") || person.planningRole),
         projectRole: String(formData.get("projectRole") || person.projectRole),
@@ -5020,7 +5099,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     });
 
     if (nextEvent) {
-      setStatusMessage(`Oppdaterte ${person.name}.`);
+      setStatusMessage(`Oppdaterte ${nextName}.`);
     }
   }
 

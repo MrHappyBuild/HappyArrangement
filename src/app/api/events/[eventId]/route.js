@@ -120,6 +120,19 @@ export async function PATCH(request, context) {
         };
       }
 
+      if (action === "update_guest_site") {
+        return {
+          ...current,
+          guestSite: {
+            ...(current.guestSite && typeof current.guestSite === "object"
+              ? current.guestSite
+              : {}),
+            introText: cleanString(payload?.guestSite?.introText),
+            navigationLabel: cleanString(payload?.guestSite?.navigationLabel) || "Navigasjon"
+          }
+        };
+      }
+
       if (action === "add_guest_page") {
         const title = cleanString(payload?.page?.title);
 

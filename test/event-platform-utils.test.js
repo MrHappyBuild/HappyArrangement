@@ -51,6 +51,8 @@ test("ensureEventShape creates a default guest page when none exists", () => {
   assert.equal(event.guestPages[0].textSize, "md");
   assert.equal(event.guestPages[0].textWeight, "regular");
   assert.equal(event.guestPages[0].showImageCaption, false);
+  assert.equal(event.guestSite.introText, "");
+  assert.equal(event.guestSite.navigationLabel, "Navigasjon");
   assert.equal(event.slug, "sommerfest-2026");
   assert.equal(event.guestPages[0].slug, "velkommen");
   assert.match(event.guestPages[0].content, /Velkommen til sommerfest/);
@@ -110,6 +112,10 @@ test("ensureEventShape normalizes guest page design settings", () => {
   const event = ensureEventShape({
     id: "event-pages-design",
     name: "Sommerfest",
+    guestSite: {
+      introText: "Alt dere trenger å vite før dagen.",
+      navigationLabel: "Menyvalg"
+    },
     guestPages: [
       {
         id: "page-1",
@@ -143,6 +149,8 @@ test("ensureEventShape normalizes guest page design settings", () => {
   assert.equal(event.guestPages[1].textSize, "md");
   assert.equal(event.guestPages[1].textWeight, "regular");
   assert.equal(event.guestPages[1].showImageCaption, false);
+  assert.equal(event.guestSite.introText, "Alt dere trenger å vite før dagen.");
+  assert.equal(event.guestSite.navigationLabel, "Menyvalg");
 });
 
 test("canViewerSeeGuestPage hides guest-only pages from finance members", () => {

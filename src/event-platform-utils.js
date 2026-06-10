@@ -141,6 +141,11 @@ const DEFAULT_OVERVIEW = {
   practicalInfo: ""
 };
 
+const DEFAULT_GUEST_SITE = {
+  introText: "",
+  navigationLabel: "Navigasjon"
+};
+
 const DEFAULT_TASK_DURATION_MINUTES = 60;
 const DEFAULT_GUEST_PAGE_ID = "guest-page-default";
 const PROJECT_DUE_SOON_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -604,6 +609,8 @@ function buildDefaultGuestPage(source) {
 export function ensureEventShape(event) {
   const source = event && typeof event === "object" ? event : {};
   const overviewSource = source.overview && typeof source.overview === "object" ? source.overview : {};
+  const guestSiteSource =
+    source.guestSite && typeof source.guestSite === "object" ? source.guestSite : {};
   const eventSlug =
     typeof source.slug === "string" && source.slug.trim()
       ? slugifySegment(source.slug, "arrangement")
@@ -660,6 +667,16 @@ export function ensureEventShape(event) {
     overview: {
       ...DEFAULT_OVERVIEW,
       ...(source.overview && typeof source.overview === "object" ? source.overview : {})
+    },
+    guestSite: {
+      ...DEFAULT_GUEST_SITE,
+      ...guestSiteSource,
+      introText:
+        typeof guestSiteSource.introText === "string" ? guestSiteSource.introText : "",
+      navigationLabel:
+        typeof guestSiteSource.navigationLabel === "string" && guestSiteSource.navigationLabel.trim()
+          ? guestSiteSource.navigationLabel.trim()
+          : "Navigasjon"
     },
     guestPages: guestPagesWithSlugs,
     people,

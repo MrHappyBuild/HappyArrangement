@@ -45,22 +45,23 @@ export default async function GuestSitePage({ params }) {
   }
 
   const basePath = buildGuestSiteBasePath(normalizedEvent);
+  const guestSiteIntro =
+    normalizedEvent.guestSite?.introText ||
+    normalizedEvent.overview.description ||
+    "Her finner gjestene praktisk informasjon og undersider for arrangementet.";
+  const navigationLabel = normalizedEvent.guestSite?.navigationLabel || "Navigasjon";
 
   return (
     <main className="shell grid">
       <section className="hero">
-        <p className="eyebrow">Gjestenettside</p>
         <h1>{normalizedEvent.overview.title || normalizedEvent.name}</h1>
-        <p className="lede">
-          {normalizedEvent.overview.description ||
-            "Her finner gjestene praktisk informasjon og undersider for arrangementet."}
-        </p>
+        <p className="lede">{guestSiteIntro}</p>
       </section>
 
       <section className="guest-site-shell guest-site-public-shell">
         <aside className="guest-site-sidebar">
           <div className="stack">
-            <p className="eyebrow">Navigasjon</p>
+            <p className="eyebrow">{navigationLabel}</p>
             <nav className="guest-site-menu">
               {pages.map((page, index) => {
                 const href = index === 0 ? basePath : buildGuestSitePagePath(normalizedEvent, page);
@@ -108,7 +109,6 @@ export default async function GuestSitePage({ params }) {
 
         <div className="guest-site-stage stack">
           <article className="guest-site-preview guest-site-public-preview">
-            <p className="eyebrow">For gjestene</p>
             <h2>{selectedPage.title}</h2>
             <div
               className={`guest-site-copy guest-page-font-${selectedPage.fontPreset || "clean"} guest-page-size-${
