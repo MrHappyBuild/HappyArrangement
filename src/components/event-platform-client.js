@@ -216,6 +216,21 @@ function getRsvpLabel(value) {
   return RSVP_OPTIONS.find((option) => option.value === value)?.label || RSVP_OPTIONS[0].label;
 }
 
+function buildGuestSiteBackgroundStyle(backgroundImageUrl) {
+  if (!backgroundImageUrl) {
+    return undefined;
+  }
+
+  return {
+    backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    padding: "18px",
+    borderRadius: "32px"
+  };
+}
+
 function buildPersonDietarySummary(person) {
   const details = [person.allergies, person.dietaryNotes].filter(Boolean);
   return details.length > 0 ? details.join(" · ") : "Ingen registrert";
@@ -409,6 +424,9 @@ function GuestTab({
   const [guestSiteOrigin, setGuestSiteOrigin] = useState("");
   const [guestSiteIntroDraft, setGuestSiteIntroDraft] = useState("");
   const [guestSiteNavigationLabelDraft, setGuestSiteNavigationLabelDraft] = useState("Navigasjon");
+  const [guestSiteBackgroundImageUrlDraft, setGuestSiteBackgroundImageUrlDraft] = useState("");
+  const [guestSiteBackgroundStatus, setGuestSiteBackgroundStatus] = useState("");
+  const [isUploadingGuestSiteBackground, setIsUploadingGuestSiteBackground] = useState(false);
   const [openPersonId, setOpenPersonId] = useState("");
   const [textSelection, setTextSelection] = useState({ start: 0, end: 0 });
   const [inlineStyleControls, setInlineStyleControls] = useState({
@@ -436,6 +454,10 @@ function GuestTab({
     viewerAccess.canManageGuest && draftPage && editablePage ? { ...editablePage, ...draftPage } : editablePage;
   const guestSiteBasePath = useMemo(() => buildGuestSiteBasePath(event), [event]);
   const guestSiteBaseUrl = guestSiteOrigin ? `${guestSiteOrigin}${guestSiteBasePath}` : guestSiteBasePath;
+  const guestSiteShellStyle = useMemo(
+    () => buildGuestSiteBackgroundStyle(guestSiteBackgroundImageUrlDraft),
+    [guestSiteBackgroundImageUrlDraft]
+  );
   const guestPageLinks = useMemo(
     () =>
       buildGuestSiteNavigationEntries(event).map((page) => ({
@@ -460,7 +482,9 @@ function GuestTab({
   useEffect(() => {
     setGuestSiteIntroDraft(event.guestSite?.introText || "");
     setGuestSiteNavigationLabelDraft(event.guestSite?.navigationLabel || "Navigasjon");
-  }, [event.guestSite?.introText, event.guestSite?.navigationLabel, event.id]);
+    setGuestSiteBackgroundImageUrlDraft(event.guestSite?.backgroundImageUrl || "");
+    setGuestSiteBackgroundStatus("");
+  }, [event.guestSite?.backgroundImageUrl, event.guestSite?.introText, event.guestSite?.navigationLabel, event.id]);
 
   useEffect(() => {
     if (!editablePage) {
@@ -631,13 +655,61 @@ function GuestTab({
     const nextEvent = await patchEvent("update_guest_site", {
       guestSite: {
         introText: guestSiteIntroDraft,
-        navigationLabel: guestSiteNavigationLabelDraft
+        navigationLabel: guestSiteNavigationLabelDraft,
+        backgroundImageUrl: guestSiteBackgroundImageUrlDraft
       }
     });
 
     if (nextEvent) {
       setStatusMessage("Gjestenettsiden ble oppdatert.");
     }
+  }
+
+  async function handleGuestSiteBackgroundUpload(eventObject) {
+    const file = eventObject.currentTarget.files?.[0];
+
+    if (!file || !viewerAccess.canManageGuest) {
+      return;
+    }
+
+    setIsUploadingGuestSiteBackground(true);
+    setGuestSiteBackgroundStatus("");
+
+    try {
+      const formData = new FormData();
+      formData.set("image", file);
+
+      const response = await fetch(`/api/events/${event.id}/guest-media`, {
+        method: "POST",
+        body: formData
+      });
+      const body = await response.json();
+
+      if (!response.ok) {
+        throw new Error(body?.error || "Kunne ikke laste opp bakgrunnsbildet.");
+      }
+
+      setGuestSiteBackgroundImageUrlDraft(body.url);
+      setGuestSiteBackgroundStatus(
+        "Bakgrunnsbildet er valgt. Lagre gjestenettsiden for å publisere det."
+      );
+    } catch (error) {
+      setGuestSiteBackgroundStatus(
+        error instanceof Error ? error.message : "Kunne ikke laste opp bakgrunnsbildet."
+      );
+    } finally {
+      eventObject.currentTarget.value = "";
+      setIsUploadingGuestSiteBackground(false);
+    }
+  }
+
+  function handleRemoveGuestSiteBackgroundImage() {
+    if (!viewerAccess.canManageGuest) {
+      return;
+    }
+
+    setGuestSiteBackgroundImageUrlDraft("");
+    setGuestSiteBackgroundStatus("Bakgrunnsbildet er fjernet. Lagre gjestenettsiden for å oppdatere publiseringen.");
   }
 
   return (
@@ -656,12 +728,17 @@ function GuestTab({
           canManageGuest={viewerAccess.canManageGuest}
           introText={guestSiteIntroDraft}
           navigationLabel={guestSiteNavigationLabelDraft}
+          backgroundImageUrl={guestSiteBackgroundImageUrlDraft}
+          backgroundUploadStatus={guestSiteBackgroundStatus}
+          isUploadingBackground={isUploadingGuestSiteBackground}
           pageLinks={guestPageLinks}
           onIntroTextChange={setGuestSiteIntroDraft}
           onNavigationLabelChange={setGuestSiteNavigationLabelDraft}
+          onBackgroundUpload={handleGuestSiteBackgroundUpload}
+          onRemoveBackgroundImage={handleRemoveGuestSiteBackgroundImage}
           onSaveIntro={handleSaveGuestSiteIntro}
         />
-        <div className="guest-site-shell">
+        <div className="guest-site-shell" style={guestSiteShellStyle}>
           <aside className="guest-site-sidebar">
             <div className="stack">
               <p className="eyebrow">{guestSiteNavigationLabelDraft || "Navigasjon"}</p>

@@ -128,7 +128,8 @@ export async function PATCH(request, context) {
               ? current.guestSite
               : {}),
             introText: cleanString(payload?.guestSite?.introText),
-            navigationLabel: cleanString(payload?.guestSite?.navigationLabel) || "Navigasjon"
+            navigationLabel: cleanString(payload?.guestSite?.navigationLabel) || "Navigasjon",
+            backgroundImageUrl: cleanString(payload?.guestSite?.backgroundImageUrl)
           }
         };
       }

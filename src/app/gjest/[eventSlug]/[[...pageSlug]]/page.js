@@ -12,6 +12,21 @@ import {
 } from "@/event-platform-utils";
 import { getEventBySlug } from "@/lib/local-store";
 
+function buildGuestSiteBackgroundStyle(backgroundImageUrl) {
+  if (!backgroundImageUrl) {
+    return undefined;
+  }
+
+  return {
+    backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    padding: "18px",
+    borderRadius: "32px"
+  };
+}
+
 function visibleGuestPages(event) {
   const normalized = ensureEventShape(event);
   return buildGuestSiteNavigationEntries(normalized);
@@ -51,6 +66,9 @@ export default async function GuestSitePage({ params }) {
     normalizedEvent.overview.description ||
     "Her finner gjestene praktisk informasjon og undersider for arrangementet.";
   const navigationLabel = normalizedEvent.guestSite?.navigationLabel || "Navigasjon";
+  const guestSiteShellStyle = buildGuestSiteBackgroundStyle(
+    normalizedEvent.guestSite?.backgroundImageUrl || ""
+  );
 
   return (
     <main className="shell grid">
@@ -59,7 +77,7 @@ export default async function GuestSitePage({ params }) {
         <p className="lede">{guestSiteIntro}</p>
       </section>
 
-      <section className="guest-site-shell guest-site-public-shell">
+      <section className="guest-site-shell guest-site-public-shell" style={guestSiteShellStyle}>
         <aside className="guest-site-sidebar">
           <div className="stack">
             <p className="eyebrow">{navigationLabel}</p>

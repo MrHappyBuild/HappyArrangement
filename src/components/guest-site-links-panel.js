@@ -37,8 +37,13 @@ export function GuestSiteLinksPanel({
   pageLinks,
   introText,
   navigationLabel,
+  backgroundImageUrl,
+  backgroundUploadStatus,
+  isUploadingBackground,
   onIntroTextChange,
   onNavigationLabelChange,
+  onBackgroundUpload,
+  onRemoveBackgroundImage,
   onSaveIntro,
   canManageGuest
 }) {
@@ -209,6 +214,44 @@ export function GuestSiteLinksPanel({
                   }
                 />
               </label>
+              <div className="stack guest-site-background-editor">
+                <div className="panel-header-inline">
+                  <div>
+                    <span>Bakgrunnsbilde</span>
+                    <p className="muted">
+                      Legg inn ett felles bakgrunnsbilde for hele gjestenettsiden. Husk å lagre etter opplasting.
+                    </p>
+                  </div>
+                </div>
+                {backgroundImageUrl ? (
+                  <div className="guest-site-background-preview">
+                    <img alt="Forhåndsvisning av bakgrunnsbilde" src={backgroundImageUrl} />
+                  </div>
+                ) : (
+                  <div className="notice">
+                    <strong>Ingen bakgrunn valgt</strong>
+                    <p>Last opp et bilde hvis du vil gi gjestenettsiden et tydelig visuelt uttrykk.</p>
+                  </div>
+                )}
+                <div className="button-row">
+                  <label className="secondary-button guest-page-upload-button">
+                    {isUploadingBackground ? "Laster opp…" : backgroundImageUrl ? "Bytt bakgrunnsbilde" : "Last opp bakgrunnsbilde"}
+                    <input
+                      accept="image/jpeg,image/png,image/webp"
+                      disabled={isUploadingBackground}
+                      hidden
+                      type="file"
+                      onChange={onBackgroundUpload}
+                    />
+                  </label>
+                  {backgroundImageUrl ? (
+                    <button className="secondary-button" type="button" onClick={onRemoveBackgroundImage}>
+                      Fjern bakgrunn
+                    </button>
+                  ) : null}
+                </div>
+                {backgroundUploadStatus ? <p className="muted">{backgroundUploadStatus}</p> : null}
+              </div>
               <div className="button-row">
                 <button className="secondary-button" type="button" onClick={onSaveIntro}>
                   Lagre gjestenettside

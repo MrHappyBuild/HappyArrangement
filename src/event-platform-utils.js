@@ -143,7 +143,8 @@ const DEFAULT_OVERVIEW = {
 
 const DEFAULT_GUEST_SITE = {
   introText: "",
-  navigationLabel: "Navigasjon"
+  navigationLabel: "Navigasjon",
+  backgroundImageUrl: ""
 };
 const DEFAULT_GUEST_SEATING_PAGE = {
   isPublished: false,
@@ -680,7 +681,11 @@ export function ensureEventShape(event) {
       navigationLabel:
         typeof guestSiteSource.navigationLabel === "string" && guestSiteSource.navigationLabel.trim()
           ? guestSiteSource.navigationLabel.trim()
-          : "Navigasjon"
+          : "Navigasjon",
+      backgroundImageUrl:
+        typeof guestSiteSource.backgroundImageUrl === "string"
+          ? guestSiteSource.backgroundImageUrl.trim()
+          : ""
     },
     guestPages: guestPagesWithSlugs,
     people,

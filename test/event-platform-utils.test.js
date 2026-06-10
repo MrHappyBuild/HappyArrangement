@@ -143,7 +143,8 @@ test("ensureEventShape normalizes guest page design settings", () => {
     name: "Sommerfest",
     guestSite: {
       introText: "Alt dere trenger å vite før dagen.",
-      navigationLabel: "Menyvalg"
+      navigationLabel: "Menyvalg",
+      backgroundImageUrl: "/api/events/event-pages-design/guest-media/bg-1"
     },
     guestPages: [
       {
@@ -180,6 +181,10 @@ test("ensureEventShape normalizes guest page design settings", () => {
   assert.equal(event.guestPages[1].showImageCaption, false);
   assert.equal(event.guestSite.introText, "Alt dere trenger å vite før dagen.");
   assert.equal(event.guestSite.navigationLabel, "Menyvalg");
+  assert.equal(
+    event.guestSite.backgroundImageUrl,
+    "/api/events/event-pages-design/guest-media/bg-1"
+  );
 });
 
 test("canViewerSeeGuestPage hides guest-only pages from finance members", () => {
