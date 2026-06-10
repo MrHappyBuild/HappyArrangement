@@ -137,6 +137,81 @@ test("ensureEventShape keeps guest allergies and creates a normalized venue plan
   assert.deepEqual(event.venuePlan.items, []);
 });
 
+test("ensureEventShape preserves phone numbers and merges multiple assigned roles", () => {
+  const event = ensureEventShape({
+    id: "event-roles",
+    name: "Bryllup",
+    roles: [
+      {
+        id: "role-host",
+        name: "Vertskap",
+        planningRole: "manager",
+        projectRole: "helper",
+        financeRole: "none",
+        capabilities: {
+          canCreateEvents: false,
+          canSubmitReceipts: false,
+          canSubmitManualInvoices: false,
+          canSendToAiDirectly: false
+        }
+      },
+      {
+        id: "role-finance",
+        name: "Regnskap",
+        planningRole: "none",
+        projectRole: "none",
+        financeRole: "manager",
+        capabilities: {
+          canCreateEvents: false,
+          canSubmitReceipts: true,
+          canSubmitManualInvoices: true,
+          canSendToAiDirectly: true
+        }
+      }
+    ],
+    people: [
+      {
+        id: "person-1",
+        name: "Anna",
+        phone: "+47 900 00 000",
+        roleIds: ["role-host", "role-finance"],
+        planningRole: "none",
+        projectRole: "none",
+        financeRole: "none",
+        useDirectAccessOverrides: false
+      }
+    ]
+  });
+
+  assert.equal(event.people[0].phone, "+47 900 00 000");
+  assert.equal(event.people[0].assignedRoles.length, 2);
+  assert.equal(event.people[0].effectivePlanningRole, "manager");
+  assert.equal(event.people[0].effectiveProjectRole, "helper");
+  assert.equal(event.people[0].effectiveFinanceRole, "manager");
+  assert.equal(event.people[0].effectiveCapabilities.canSendToAiDirectly, true);
+  assert.equal(event.members.length, 1);
+});
+
+test("ensureEventShape migrates matching legacy access into role assignments", () => {
+  const event = ensureEventShape({
+    id: "event-legacy-role",
+    name: "Middag",
+    people: [
+      {
+        id: "person-legacy",
+        name: "Ola",
+        planningRole: "viewer",
+        projectRole: "none",
+        financeRole: "member"
+      }
+    ]
+  });
+
+  assert.ok(event.people[0].roleIds.length >= 1);
+  assert.equal(event.people[0].useDirectAccessOverrides, false);
+  assert.equal(event.people[0].effectiveFinanceRole, "member");
+});
+
 test("ensureEventShape normalizes guest page design settings", () => {
   const event = ensureEventShape({
     id: "event-pages-design",
@@ -238,6 +313,45 @@ test("canViewerSeeGuestPage hides guest-only pages from finance members", () => 
     canViewerSeeGuestPage(guestOnlyPage, buildViewerAccess(null), null),
     true
   );
+});
+
+test("buildViewerAccess uses effective access from assigned roles", () => {
+  const event = ensureEventShape({
+    id: "event-viewer-role",
+    name: "Weekend",
+    roles: [
+      {
+        id: "role-planner",
+        name: "Planlegger",
+        planningRole: "manager",
+        projectRole: "manager",
+        financeRole: "none",
+        capabilities: {
+          canCreateEvents: false,
+          canSubmitReceipts: false,
+          canSubmitManualInvoices: false,
+          canSendToAiDirectly: false
+        }
+      }
+    ],
+    people: [
+      {
+        id: "planner-1",
+        name: "Kari",
+        roleIds: ["role-planner"],
+        planningRole: "none",
+        projectRole: "none",
+        financeRole: "none",
+        useDirectAccessOverrides: false
+      }
+    ]
+  });
+
+  const access = buildViewerAccess(event.people[0]);
+
+  assert.equal(access.canManageGuest, true);
+  assert.equal(access.canManageProject, true);
+  assert.equal(access.canViewFinance, false);
 });
 
 test("ensureEventShape keeps receipt submission attachment metadata", () => {

@@ -1602,6 +1602,11 @@ p {
   align-items: center;
 }
 
+.person-role-list-header,
+.person-role-list-row {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(120px, 0.7fr) minmax(120px, 0.7fr) minmax(120px, 0.7fr) minmax(220px, 1.2fr) auto;
+}
+
 .person-list-header {
   padding: 0 16px;
   color: var(--muted);

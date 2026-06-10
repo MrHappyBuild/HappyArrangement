@@ -9,11 +9,15 @@ import { GuestSeatingPageView } from "@/components/guest-seating-page-view";
 import { GuestSiteLinksPanel } from "@/components/guest-site-links-panel";
 import { VenueTab } from "@/components/venue-tab";
 import {
+  CAPABILITY_OPTIONS,
+  FINANCE_ROLE_OPTIONS,
   GUEST_PAGE_FONT_OPTIONS,
   GUEST_PAGE_TEXT_SIZE_OPTIONS,
   GUEST_PAGE_TEXT_WEIGHT_OPTIONS,
   GUEST_PAGE_VISIBILITY_OPTIONS,
   PERSON_TEMPLATES,
+  PLANNING_ROLE_OPTIONS,
+  PROJECT_ROLE_OPTIONS,
   RSVP_OPTIONS,
   SUBMISSION_STATUS_OPTIONS,
   TASK_STATUS_OPTIONS,
@@ -184,6 +188,18 @@ function templateOptions() {
   }));
 }
 
+function accessRoleOptions(kind) {
+  if (kind === "planning") {
+    return PLANNING_ROLE_OPTIONS;
+  }
+
+  if (kind === "project") {
+    return PROJECT_ROLE_OPTIONS;
+  }
+
+  return FINANCE_ROLE_OPTIONS;
+}
+
 function getGuestPageVisibilityLabel(value) {
   return (
     GUEST_PAGE_VISIBILITY_OPTIONS.find((option) => option.value === value)?.label ||
@@ -244,9 +260,9 @@ function buildPersonContextSummary(person) {
 function personTemplateValue(person) {
   const entry = Object.entries(PERSON_TEMPLATES).find(([, template]) => {
     return (
-      person.planningRole === template.planningRole &&
-      person.projectRole === template.projectRole &&
-      person.financeRole === template.financeRole
+      (person.effectivePlanningRole || person.planningRole) === template.planningRole &&
+      (person.effectiveProjectRole || person.projectRole) === template.projectRole &&
+      (person.effectiveFinanceRole || person.financeRole) === template.financeRole
     );
   });
 
@@ -255,6 +271,56 @@ function personTemplateValue(person) {
 
 function applyTemplate(key) {
   return PERSON_TEMPLATES[key] || PERSON_TEMPLATES.guest;
+}
+
+function buildRoleSummary(role) {
+  const details = [];
+
+  if ((role.planningRole || "none") !== "none") {
+    details.push(`Planlegging: ${accessRoleOptions("planning").find((option) => option.value === role.planningRole)?.label || role.planningRole}`);
+  }
+
+  if ((role.projectRole || "none") !== "none") {
+    details.push(`Oppgaver: ${accessRoleOptions("project").find((option) => option.value === role.projectRole)?.label || role.projectRole}`);
+  }
+
+  if ((role.financeRole || "none") !== "none") {
+    details.push(`Faktura: ${accessRoleOptions("finance").find((option) => option.value === role.financeRole)?.label || role.financeRole}`);
+  }
+
+  const capabilityLabels = CAPABILITY_OPTIONS.filter(
+    (option) => role.capabilities?.[option.key]
+  ).map((option) => option.label);
+
+  if (capabilityLabels.length) {
+    details.push(capabilityLabels.join(" · "));
+  }
+
+  return details.length ? details.join(" • ") : "Ingen ekstra tilgang";
+}
+
+function buildPersonRoleNames(person, eventRoles) {
+  const roles = Array.isArray(eventRoles) ? eventRoles : [];
+  const assignedRoleNames = roles
+    .filter((role) => (person.roleIds || []).includes(role.id))
+    .map((role) => role.name);
+
+  if (assignedRoleNames.length) {
+    return assignedRoleNames;
+  }
+
+  const templateLabel = PERSON_TEMPLATES[personTemplateValue(person)]?.label;
+  return templateLabel ? [templateLabel] : ["Tilpasset tilgang"];
+}
+
+function buildPersonRoleSummary(person, eventRoles) {
+  const names = buildPersonRoleNames(person, eventRoles);
+
+  if (names.length <= 2) {
+    return names.join(" · ");
+  }
+
+  return `${names.length} roller`;
 }
 
 function syncEvent(events, nextEvent) {
@@ -406,6 +472,8 @@ function GuestTab({
   onAddGuestPage,
   onUpdateGuestPage,
   onDeleteGuestPage,
+  onAddRole,
+  onUpdateRole,
   onAddPerson,
   onUpdatePerson
 }) {
@@ -427,6 +495,7 @@ function GuestTab({
   const [guestSiteBackgroundImageUrlDraft, setGuestSiteBackgroundImageUrlDraft] = useState("");
   const [guestSiteBackgroundStatus, setGuestSiteBackgroundStatus] = useState("");
   const [isUploadingGuestSiteBackground, setIsUploadingGuestSiteBackground] = useState(false);
+  const [openRoleId, setOpenRoleId] = useState("");
   const [openPersonId, setOpenPersonId] = useState("");
   const [textSelection, setTextSelection] = useState({ start: 0, end: 0 });
   const [inlineStyleControls, setInlineStyleControls] = useState({
@@ -1152,51 +1221,199 @@ function GuestTab({
       </section>
 
       {viewerAccess.canManageGuest ? (
-        <section className="panel stack">
-          <h3>Inviter ny person</h3>
-          <form className="grid-form compact-grid" onSubmit={onAddPerson}>
-            <label className="field">
-              <span>Navn</span>
-              <input name="name" placeholder="Fornavn Etternavn" required />
-            </label>
-            <label className="field">
-              <span>E-post</span>
-              <input name="email" placeholder="navn@epost.no" type="email" />
-            </label>
-            <label className="field">
-              <span>Mal</span>
-              <select defaultValue="guest" name="template">
-                {templateList.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Notat</span>
-              <input name="note" placeholder="F.eks. toastmaster eller sjafor" />
-            </label>
-            <label className="field">
-              <span>Allergier</span>
-              <input name="allergies" placeholder="F.eks. notter, skalldyr eller laktose" />
-            </label>
-            <label className="field">
-              <span>Matpreferanser</span>
-              <input name="dietaryNotes" placeholder="F.eks. vegetar, halal eller alkoholfritt" />
-            </label>
-            <label className="field field-span-full">
-              <span>Sitteinfo</span>
-              <input
-                name="seatingNote"
-                placeholder="F.eks. bor sitte narmt familien, unna hoy musikk eller ved barnestol"
-              />
-            </label>
-            <button className="primary-button" type="submit">
-              Legg til person
-            </button>
-          </form>
-        </section>
+        <>
+          <section className="panel stack">
+            <h3>Roller og tilganger</h3>
+            <p className="muted">
+              Lag roller for arrangementet og gi dem tilgang til planlegging, oppgaver, faktura og ekstra handlinger.
+            </p>
+            <form className="grid-form compact-grid" onSubmit={onAddRole}>
+              <label className="field">
+                <span>Navn på rolle</span>
+                <input name="name" placeholder="F.eks. Toastmaster, Familiekoordinator eller Regnskapsansvarlig" required />
+              </label>
+              <label className="field">
+                <span>Start fra</span>
+                <select defaultValue="guest" name="template">
+                  {templateList.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field field-span-full">
+                <span>Beskrivelse</span>
+                <input name="description" placeholder="Hva skal denne rollen brukes til?" />
+              </label>
+              <button className="primary-button" type="submit">
+                Opprett rolle
+              </button>
+            </form>
+            <div className="person-list">
+              <div className="person-list-header person-role-list-header">
+                <span>Rolle</span>
+                <span>Planlegging</span>
+                <span>Oppgaver</span>
+                <span>Faktura</span>
+                <span>Tilganger</span>
+                <span>Detaljer</span>
+              </div>
+              {event.roles.map((role) => {
+                const isOpen = openRoleId === role.id;
+                const capabilitySummary = CAPABILITY_OPTIONS.filter(
+                  (option) => role.capabilities?.[option.key]
+                )
+                  .map((option) => option.label)
+                  .join(" · ");
+
+                return (
+                  <article className={`person-list-item ${isOpen ? "is-open" : ""}`} key={role.id}>
+                    <div className="person-list-row person-role-list-row">
+                      <div className="person-list-main">
+                        <strong>{role.name}</strong>
+                        <span>{role.description || "Ingen beskrivelse enda"}</span>
+                      </div>
+                      <span className="role-pill">
+                        {PLANNING_ROLE_OPTIONS.find((option) => option.value === role.planningRole)?.label || "Ingen"}
+                      </span>
+                      <span className="role-pill">
+                        {PROJECT_ROLE_OPTIONS.find((option) => option.value === role.projectRole)?.label || "Ingen"}
+                      </span>
+                      <span className="role-pill">
+                        {FINANCE_ROLE_OPTIONS.find((option) => option.value === role.financeRole)?.label || "Ingen"}
+                      </span>
+                      <span className="person-list-summary">{capabilitySummary || "Ingen ekstra"}</span>
+                      <button
+                        className="secondary-button compact-action-button"
+                        type="button"
+                        onClick={() =>
+                          setOpenRoleId((currentValue) => (currentValue === role.id ? "" : role.id))
+                        }
+                      >
+                        {isOpen ? "Lukk" : "Åpne"}
+                      </button>
+                    </div>
+                    {isOpen ? (
+                      <form
+                        className="person-list-detail stack"
+                        onSubmit={(eventObject) => onUpdateRole(eventObject, role)}
+                      >
+                        <div className="compact-grid">
+                          <label className="field">
+                            <span>Navn</span>
+                            <input defaultValue={role.name} name="name" required />
+                          </label>
+                          <label className="field field-span-full">
+                            <span>Beskrivelse</span>
+                            <input defaultValue={role.description} name="description" placeholder="Hva rollen skal brukes til" />
+                          </label>
+                          <label className="field">
+                            <span>Planlegging</span>
+                            <select defaultValue={role.planningRole} name="planningRole">
+                              {PLANNING_ROLE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="field">
+                            <span>Oppgaver</span>
+                            <select defaultValue={role.projectRole} name="projectRole">
+                              {PROJECT_ROLE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="field">
+                            <span>Faktura</span>
+                            <select defaultValue={role.financeRole} name="financeRole">
+                              {FINANCE_ROLE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="toggle-row">
+                          {CAPABILITY_OPTIONS.map((option) => (
+                            <label key={option.key}>
+                              <input
+                                defaultChecked={Boolean(role.capabilities?.[option.key])}
+                                name={option.key}
+                                type="checkbox"
+                              />
+                              {option.label}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="button-row">
+                          <button className="secondary-button" type="submit">
+                            Lagre rolle
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="panel stack">
+            <h3>Inviter ny person</h3>
+            <form className="grid-form compact-grid" onSubmit={onAddPerson}>
+              <label className="field">
+                <span>Navn</span>
+                <input name="name" placeholder="Fornavn Etternavn" required />
+              </label>
+              <label className="field">
+                <span>E-post</span>
+                <input name="email" placeholder="navn@epost.no" type="email" />
+              </label>
+              <label className="field">
+                <span>Mobilnummer</span>
+                <input name="phone" placeholder="+47 900 00 000" type="tel" />
+              </label>
+              <label className="field">
+                <span>Startrolle</span>
+                <select defaultValue="guest" name="template">
+                  {templateList.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Notat</span>
+                <input name="note" placeholder="F.eks. toastmaster eller sjafor" />
+              </label>
+              <label className="field">
+                <span>Allergier</span>
+                <input name="allergies" placeholder="F.eks. notter, skalldyr eller laktose" />
+              </label>
+              <label className="field">
+                <span>Matpreferanser</span>
+                <input name="dietaryNotes" placeholder="F.eks. vegetar, halal eller alkoholfritt" />
+              </label>
+              <label className="field field-span-full">
+                <span>Sitteinfo</span>
+                <input
+                  name="seatingNote"
+                  placeholder="F.eks. bor sitte narmt familien, unna hoy musikk eller ved barnestol"
+                />
+              </label>
+              <button className="primary-button" type="submit">
+                Legg til person
+              </button>
+            </form>
+          </section>
+        </>
       ) : null}
 
       <section className="panel stack">
@@ -1212,7 +1429,7 @@ function GuestTab({
               <span>Person</span>
               <span>RSVP</span>
               <span>Allergier og mat</span>
-              <span>Rolle</span>
+              <span>Roller</span>
               <span>Merknader</span>
               <span>Detaljer</span>
             </div>
@@ -1220,7 +1437,7 @@ function GuestTab({
               const canEditSelf = !viewerAccess.canManageGuest && viewerPerson?.id === person.id;
               const canSave = viewerAccess.canManageGuest || canEditSelf;
               const isOpen = openPersonId === person.id;
-              const roleLabel = PERSON_TEMPLATES[personTemplateValue(person)]?.label || "Gjest";
+              const roleLabel = buildPersonRoleSummary(person, event.roles);
               const dietarySummary = buildPersonDietarySummary(person);
               const contextSummary = buildPersonContextSummary(person);
 
@@ -1229,7 +1446,7 @@ function GuestTab({
                   <div className="person-list-row">
                     <div className="person-list-main">
                       <strong>{person.name}</strong>
-                      <span>{person.email || "Ingen e-post registrert"}</span>
+                      <span>{[person.email || "Ingen e-post", person.phone || "Ingen mobil"].join(" · ")}</span>
                     </div>
                     <span className={`role-pill role-pill-rsvp role-pill-rsvp-${person.rsvpStatus || "pending"}`}>
                       {getRsvpLabel(person.rsvpStatus)}
@@ -1275,6 +1492,16 @@ function GuestTab({
                           />
                         </label>
                         <label className="field">
+                          <span>Mobilnummer</span>
+                          <input
+                            defaultValue={person.phone}
+                            disabled={!canSave}
+                            name="phone"
+                            placeholder="+47 900 00 000"
+                            type="tel"
+                          />
+                        </label>
+                        <label className="field">
                           <span>RSVP</span>
                           <select defaultValue={person.rsvpStatus} disabled={!canSave} name="rsvpStatus">
                             {RSVP_OPTIONS.map((option) => (
@@ -1284,75 +1511,94 @@ function GuestTab({
                             ))}
                           </select>
                         </label>
-                        <label className="field">
-                          <span>Planlegging</span>
-                          <select
-                            defaultValue={person.planningRole}
-                            disabled={!viewerAccess.canManageGuest}
-                            name="planningRole"
-                          >
-                            <option value="none">Ingen</option>
-                            <option value="viewer">Se</option>
-                            <option value="manager">Forvalte</option>
-                            <option value="owner">Fullt ansvar</option>
-                          </select>
-                        </label>
-                        <label className="field">
-                          <span>Oppgaver</span>
-                          <select
-                            defaultValue={person.projectRole}
-                            disabled={!viewerAccess.canManageGuest}
-                            name="projectRole"
-                          >
-                            <option value="none">Ingen</option>
-                            <option value="helper">Hjelper</option>
-                            <option value="manager">Forvalte</option>
-                            <option value="owner">Fullt ansvar</option>
-                          </select>
-                        </label>
-                        <label className="field">
-                          <span>Faktura</span>
-                          <select
-                            defaultValue={person.financeRole}
-                            disabled={!viewerAccess.canManageGuest}
-                            name="financeRole"
-                          >
-                            <option value="none">Ingen tilgang</option>
-                            <option value="member">Medlem</option>
-                            <option value="manager">Forvalter</option>
-                            <option value="owner">Fullt ansvar</option>
-                          </select>
-                        </label>
+                        {viewerAccess.canManageGuest ? (
+                          <label className="field field-span-full">
+                            <span>Roller</span>
+                            <RoleChecklist
+                              disabled={!viewerAccess.canManageGuest}
+                              roles={event.roles}
+                              selectedIds={person.roleIds || []}
+                            />
+                          </label>
+                        ) : null}
                       </div>
-                      <div className="toggle-row">
-                        <label>
-                          <input
-                            defaultChecked={person.capabilities.canSubmitReceipts}
-                            disabled={!viewerAccess.canManageGuest}
-                            name="canSubmitReceipts"
-                            type="checkbox"
-                          />
-                          Kan sende inn kvittering
-                        </label>
-                        <label>
-                          <input
-                            defaultChecked={person.capabilities.canSubmitManualInvoices}
-                            disabled={!viewerAccess.canManageGuest}
-                            name="canSubmitManualInvoices"
-                            type="checkbox"
-                          />
-                          Kan lage manuell faktura
-                        </label>
-                        <label>
-                          <input
-                            defaultChecked={person.capabilities.canSendToAiDirectly}
-                            disabled={!viewerAccess.canManageGuest}
-                            name="canSendToAiDirectly"
-                            type="checkbox"
-                          />
-                          Kan sende rett til AI
-                        </label>
-                      </div>
+                      {viewerAccess.canManageGuest ? (
+                        <>
+                          <div className="notice">
+                            <strong>Direkte overstyring</strong>
+                            <p>
+                              Roller styrer normalt tilgangen. Bruk feltene under bare hvis denne personen skal ha ekstra eller avvikende tilgang utover rollene sine.
+                            </p>
+                          </div>
+                          <div className="toggle-row">
+                            <label>
+                              <input
+                                defaultChecked={Boolean(person.useDirectAccessOverrides)}
+                                name="useDirectAccessOverrides"
+                                type="checkbox"
+                              />
+                              Bruk direkte overstyring i tillegg til rollene
+                            </label>
+                          </div>
+                          <div className="compact-grid">
+                            <label className="field">
+                              <span>Planlegging</span>
+                              <select
+                                defaultValue={person.planningRole}
+                                disabled={!viewerAccess.canManageGuest}
+                                name="planningRole"
+                              >
+                                {PLANNING_ROLE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="field">
+                              <span>Oppgaver</span>
+                              <select
+                                defaultValue={person.projectRole}
+                                disabled={!viewerAccess.canManageGuest}
+                                name="projectRole"
+                              >
+                                {PROJECT_ROLE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="field">
+                              <span>Faktura</span>
+                              <select
+                                defaultValue={person.financeRole}
+                                disabled={!viewerAccess.canManageGuest}
+                                name="financeRole"
+                              >
+                                {FINANCE_ROLE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <div className="toggle-row">
+                            {CAPABILITY_OPTIONS.map((option) => (
+                              <label key={option.key}>
+                                <input
+                                  defaultChecked={Boolean(person.capabilities?.[option.key])}
+                                  disabled={!viewerAccess.canManageGuest}
+                                  name={option.key}
+                                  type="checkbox"
+                                />
+                                {option.label}
+                              </label>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
                       <div className="compact-grid">
                         <label className="field">
                           <span>Notat</span>
@@ -1432,6 +1678,61 @@ function DependencyChecklist({ options, selectedIds, disabled, inputName }) {
         </label>
       ))}
     </div>
+  );
+}
+
+function RoleChecklist({ roles, selectedIds, disabled, inputName = "roleIds" }) {
+  const [checkedIds, setCheckedIds] = useState(selectedIds);
+
+  useEffect(() => {
+    setCheckedIds(selectedIds);
+  }, [selectedIds]);
+
+  if (roles.length === 0) {
+    return <p className="muted">Ingen roller er opprettet for arrangementet enda.</p>;
+  }
+
+  const selectedNames = roles
+    .filter((role) => checkedIds.includes(role.id))
+    .map((role) => role.name);
+  const summaryLabel =
+    selectedNames.length === 0
+      ? "Velg roller"
+      : selectedNames.length <= 2
+        ? selectedNames.join(", ")
+        : `${selectedNames.length} roller valgt`;
+
+  return (
+    <details className={`assignee-dropdown ${disabled ? "is-disabled" : ""}`}>
+      <summary className="assignee-dropdown-summary">
+        <span className="assignee-dropdown-label">{summaryLabel}</span>
+        <span className="assignee-dropdown-meta">
+          {selectedNames.length ? `${selectedNames.length} valgt` : "Ingen valgt"}
+        </span>
+      </summary>
+      <div className="assignee-dropdown-panel">
+        {roles.map((role) => (
+          <label className="assignee-dropdown-option" key={role.id}>
+            <input
+              checked={checkedIds.includes(role.id)}
+              disabled={disabled}
+              name={inputName}
+              onChange={(eventObject) => {
+                const nextChecked = eventObject.currentTarget.checked;
+                setCheckedIds((currentValue) =>
+                  nextChecked
+                    ? [...currentValue, role.id]
+                    : currentValue.filter((candidateId) => candidateId !== role.id)
+                );
+              }}
+              type="checkbox"
+              value={role.id}
+            />
+            <span>{role.name}</span>
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -1787,7 +2088,7 @@ function buildTaskAssignmentRows(tasks, people) {
       id: person.id,
       label: person.name,
       kind: "person",
-      role: person.projectRole || "none",
+      role: person.effectiveProjectRole || person.projectRole || "none",
       tasks: []
     }));
   const personRowMap = new Map(personRows.map((row) => [row.id, row]));
@@ -5125,6 +5426,70 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     }
   }
 
+  async function handleAddRole(formEvent) {
+    formEvent.preventDefault();
+
+    if (!viewerAccess.canManageGuest) {
+      return;
+    }
+
+    const form = formEvent.currentTarget;
+    const formData = new FormData(form);
+    const templateKey = String(formData.get("template") || "guest");
+    const template = applyTemplate(templateKey);
+    const nextName = String(formData.get("name") || "").trim();
+
+    if (!nextName) {
+      return;
+    }
+
+    const nextEvent = await patchEvent("add_role", {
+      role: {
+        key: templateKey,
+        name: nextName,
+        description: String(formData.get("description") || "").trim(),
+        planningRole: template.planningRole,
+        projectRole: template.projectRole,
+        financeRole: template.financeRole,
+        capabilities: template.capabilities
+      }
+    });
+
+    if (nextEvent) {
+      form.reset();
+      setStatusMessage(`Rollen "${nextName}" er opprettet.`);
+    }
+  }
+
+  async function handleUpdateRole(formEvent, role) {
+    formEvent.preventDefault();
+
+    if (!viewerAccess.canManageGuest) {
+      return;
+    }
+
+    const formData = new FormData(formEvent.currentTarget);
+    const nextName = String(formData.get("name") || role.name).trim() || role.name;
+    const nextEvent = await patchEvent("update_role", {
+      roleId: role.id,
+      changes: {
+        name: nextName,
+        description: String(formData.get("description") || "").trim(),
+        planningRole: String(formData.get("planningRole") || role.planningRole),
+        projectRole: String(formData.get("projectRole") || role.projectRole),
+        financeRole: String(formData.get("financeRole") || role.financeRole),
+        capabilities: CAPABILITY_OPTIONS.reduce((nextCapabilities, option) => {
+          nextCapabilities[option.key] = formData.get(option.key) === "on";
+          return nextCapabilities;
+        }, {})
+      }
+    });
+
+    if (nextEvent) {
+      setStatusMessage(`Rollen "${nextName}" ble oppdatert.`);
+    }
+  }
+
   async function handleAddPerson(formEvent) {
     formEvent.preventDefault();
     if (!viewerAccess.canManageGuest) {
@@ -5133,11 +5498,14 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
 
     const form = formEvent.currentTarget;
     const formData = new FormData(form);
-    const template = applyTemplate(String(formData.get("template") || "guest"));
+    const templateKey = String(formData.get("template") || "guest");
+    const template = applyTemplate(templateKey);
+    const templateRoleId = selectedEvent?.roles.find((role) => role.key === templateKey)?.id || "";
     const nextEvent = await patchEvent("add_person", {
       person: {
         name: String(formData.get("name") || "").trim(),
         email: String(formData.get("email") || "").trim(),
+        phone: String(formData.get("phone") || "").trim(),
         note: String(formData.get("note") || "").trim(),
         allergies: String(formData.get("allergies") || "").trim(),
         dietaryNotes: String(formData.get("dietaryNotes") || "").trim(),
@@ -5147,6 +5515,8 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
         planningRole: template.planningRole,
         projectRole: template.projectRole,
         financeRole: template.financeRole,
+        roleIds: templateRoleId ? [templateRoleId] : [],
+        useDirectAccessOverrides: false,
         capabilities: template.capabilities
       }
     });
@@ -5172,21 +5542,25 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
       changes: {
         name: nextName,
         email: String(formData.get("email") || "").trim(),
+        phone: String(formData.get("phone") || "").trim(),
         rsvpStatus: String(formData.get("rsvpStatus") || person.rsvpStatus),
         planningRole: String(formData.get("planningRole") || person.planningRole),
         projectRole: String(formData.get("projectRole") || person.projectRole),
         financeRole: String(formData.get("financeRole") || person.financeRole),
+        roleIds: viewerAccess.canManageGuest ? collectFormList(formData, "roleIds") : person.roleIds,
+        useDirectAccessOverrides: viewerAccess.canManageGuest
+          ? formData.get("useDirectAccessOverrides") === "on"
+          : person.useDirectAccessOverrides,
         note: String(formData.get("note") || "").trim(),
         allergies: String(formData.get("allergies") || "").trim(),
         dietaryNotes: String(formData.get("dietaryNotes") || "").trim(),
         seatingNote: String(formData.get("seatingNote") || "").trim(),
         respondedAt: new Date().toISOString(),
         capabilities: viewerAccess.canManageGuest
-          ? {
-              canSubmitReceipts: formData.get("canSubmitReceipts") === "on",
-              canSubmitManualInvoices: formData.get("canSubmitManualInvoices") === "on",
-              canSendToAiDirectly: formData.get("canSendToAiDirectly") === "on"
-            }
+          ? CAPABILITY_OPTIONS.reduce((nextCapabilities, option) => {
+              nextCapabilities[option.key] = formData.get(option.key) === "on";
+              return nextCapabilities;
+            }, {})
           : person.capabilities
       }
     });
@@ -5754,9 +6128,11 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                 <GuestTab
                   event={selectedEvent}
                   onAddGuestPage={handleAddGuestPage}
+                  onAddRole={handleAddRole}
                   onAddPerson={handleAddPerson}
                   onDeleteGuestPage={handleDeleteGuestPage}
                   onUpdateGuestPage={handleUpdateGuestPage}
+                  onUpdateRole={handleUpdateRole}
                   onUpdatePerson={handleUpdatePerson}
                   viewerAccess={viewerAccess}
                   viewerPerson={viewerPerson}

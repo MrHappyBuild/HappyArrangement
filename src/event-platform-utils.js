@@ -78,6 +78,34 @@ export const PERSON_TEMPLATES = {
   }
 };
 
+export const PLANNING_ROLE_OPTIONS = [
+  { value: "none", label: "Ingen" },
+  { value: "viewer", label: "Se" },
+  { value: "manager", label: "Forvalte" },
+  { value: "owner", label: "Fullt ansvar" }
+];
+
+export const PROJECT_ROLE_OPTIONS = [
+  { value: "none", label: "Ingen" },
+  { value: "helper", label: "Hjelper" },
+  { value: "manager", label: "Forvalte" },
+  { value: "owner", label: "Fullt ansvar" }
+];
+
+export const FINANCE_ROLE_OPTIONS = [
+  { value: "none", label: "Ingen tilgang" },
+  { value: "member", label: "Medlem" },
+  { value: "manager", label: "Forvalter" },
+  { value: "owner", label: "Fullt ansvar" }
+];
+
+export const CAPABILITY_OPTIONS = [
+  { key: "canCreateEvents", label: "Kan opprette arrangementer" },
+  { key: "canSubmitReceipts", label: "Kan sende inn kvittering" },
+  { key: "canSubmitManualInvoices", label: "Kan lage manuell faktura" },
+  { key: "canSendToAiDirectly", label: "Kan sende rett til AI" }
+];
+
 export const RSVP_OPTIONS = [
   { value: "pending", label: "Ikke svart" },
   { value: "accepted", label: "Kommer" },
@@ -192,6 +220,43 @@ function normalizeCapabilities(input) {
     ...DEFAULT_CAPABILITIES,
     ...(input && typeof input === "object" ? input : {})
   };
+}
+
+const PLANNING_ROLE_ORDER = ["none", "viewer", "manager", "owner"];
+const PROJECT_ROLE_ORDER = ["none", "helper", "manager", "owner"];
+const FINANCE_ROLE_ORDER = ["none", "member", "manager", "owner"];
+
+function resolveHighestRole(currentValue, nextValue, allowedOrder, fallback = "none") {
+  const currentIndex = allowedOrder.indexOf(currentValue);
+  const nextIndex = allowedOrder.indexOf(nextValue);
+
+  if (currentIndex === -1 && nextIndex === -1) {
+    return fallback;
+  }
+
+  if (currentIndex === -1) {
+    return nextValue;
+  }
+
+  if (nextIndex === -1) {
+    return currentValue;
+  }
+
+  return nextIndex > currentIndex ? nextValue : currentValue;
+}
+
+function mergeCapabilities(...capabilitySets) {
+  return capabilitySets.reduce((merged, entry) => {
+    const normalized = normalizeCapabilities(entry);
+
+    CAPABILITY_OPTIONS.forEach((option) => {
+      if (normalized[option.key]) {
+        merged[option.key] = true;
+      }
+    });
+
+    return merged;
+  }, normalizeCapabilities(null));
 }
 
 function normalizeDateTimeString(value) {
@@ -363,6 +428,70 @@ function compareHierarchyDisplayOrder(left, right) {
   return compareTaskMoments(left, right);
 }
 
+function templateKeyFromDirectAccess(person) {
+  const directPerson = person && typeof person === "object" ? person : {};
+
+  const match = Object.entries(PERSON_TEMPLATES).find(([, template]) => {
+    return (
+      normalizeRole(directPerson.planningRole, PLANNING_ROLE_ORDER, "none") === template.planningRole &&
+      normalizeRole(directPerson.projectRole, PROJECT_ROLE_ORDER, "none") === template.projectRole &&
+      normalizeRole(directPerson.financeRole, FINANCE_ROLE_ORDER, "none") === template.financeRole
+    );
+  });
+
+  return match?.[0] || "";
+}
+
+function buildDefaultEventRoles() {
+  const createdAt = new Date(0).toISOString();
+
+  return Object.entries(PERSON_TEMPLATES).map(([key, template], index) => ({
+    id: `role-${key}`,
+    key,
+    name: template.label,
+    description: "",
+    planningRole: template.planningRole,
+    projectRole: template.projectRole,
+    financeRole: template.financeRole,
+    capabilities: normalizeCapabilities(template.capabilities),
+    isSystemRole: true,
+    orderIndex: index,
+    created_at: createdAt
+  }));
+}
+
+function normalizeEventRole(role, fallbackRole, fallbackIndex = 0) {
+  const normalized = role && typeof role === "object" ? role : {};
+  const fallback = fallbackRole && typeof fallbackRole === "object" ? fallbackRole : PERSON_TEMPLATES.guest;
+
+  return {
+    id:
+      typeof normalized.id === "string" && normalized.id
+        ? normalized.id
+        : `role-${fallbackIndex + 1}`,
+    key: typeof normalized.key === "string" ? normalized.key : "",
+    name:
+      typeof normalized.name === "string" && normalized.name.trim()
+        ? normalized.name.trim()
+        : fallback.label,
+    description: typeof normalized.description === "string" ? normalized.description.trim() : "",
+    planningRole: normalizeRole(normalized.planningRole, PLANNING_ROLE_ORDER, fallback.planningRole),
+    projectRole: normalizeRole(normalized.projectRole, PROJECT_ROLE_ORDER, fallback.projectRole),
+    financeRole: normalizeRole(normalized.financeRole, FINANCE_ROLE_ORDER, fallback.financeRole),
+    capabilities: normalizeCapabilities(
+      normalized.capabilities && typeof normalized.capabilities === "object"
+        ? normalized.capabilities
+        : fallback.capabilities
+    ),
+    isSystemRole:
+      typeof normalized.isSystemRole === "boolean"
+        ? normalized.isSystemRole
+        : Boolean(normalized.key && PERSON_TEMPLATES[normalized.key]),
+    orderIndex: Number.isFinite(normalized.orderIndex) ? normalized.orderIndex : fallbackIndex,
+    created_at: normalized.created_at || new Date(0).toISOString()
+  };
+}
+
 function normalizePerson(person, fallbackTemplateKey = "guest") {
   const template = PERSON_TEMPLATES[fallbackTemplateKey] || PERSON_TEMPLATES.guest;
   const normalized = person && typeof person === "object" ? person : {};
@@ -371,6 +500,7 @@ function normalizePerson(person, fallbackTemplateKey = "guest") {
     id: typeof normalized.id === "string" ? normalized.id : "",
     name: typeof normalized.name === "string" ? normalized.name : "",
     email: typeof normalized.email === "string" ? normalized.email : "",
+    phone: typeof normalized.phone === "string" ? normalized.phone : "",
     note: typeof normalized.note === "string" ? normalized.note : "",
     allergies: typeof normalized.allergies === "string" ? normalized.allergies : "",
     dietaryNotes: typeof normalized.dietaryNotes === "string" ? normalized.dietaryNotes : "",
@@ -382,12 +512,79 @@ function normalizePerson(person, fallbackTemplateKey = "guest") {
     planningRole: normalizeRole(normalized.planningRole, ["none", "viewer", "manager", "owner"], template.planningRole),
     projectRole: normalizeRole(normalized.projectRole, ["none", "helper", "manager", "owner"], template.projectRole),
     financeRole: normalizeRole(normalized.financeRole, ["none", "member", "manager", "owner"], template.financeRole),
+    roleIds: uniqueIds(Array.isArray(normalized.roleIds) ? normalized.roleIds : []),
+    useDirectAccessOverrides:
+      typeof normalized.useDirectAccessOverrides === "boolean"
+        ? normalized.useDirectAccessOverrides
+        : undefined,
     capabilities: normalizeCapabilities({
       ...template.capabilities,
       ...(normalized.capabilities && typeof normalized.capabilities === "object"
         ? normalized.capabilities
         : {})
     })
+  };
+}
+
+function attachRoleAccessToPerson(person, roleMap) {
+  const safePerson = person && typeof person === "object" ? person : {};
+  const normalizedRoleMap = roleMap instanceof Map ? roleMap : new Map();
+  let roleIds = uniqueIds(Array.isArray(safePerson.roleIds) ? safePerson.roleIds : []).filter((roleId) =>
+    normalizedRoleMap.has(roleId)
+  );
+
+  if (roleIds.length === 0) {
+    const templateKey = templateKeyFromDirectAccess(safePerson);
+    const fallbackRole = Array.from(normalizedRoleMap.values()).find((role) => role.key === templateKey);
+
+    if (fallbackRole) {
+      roleIds = [fallbackRole.id];
+    }
+  }
+
+  const assignedRoles = roleIds.map((roleId) => normalizedRoleMap.get(roleId)).filter(Boolean);
+  const useDirectAccessOverrides =
+    typeof safePerson.useDirectAccessOverrides === "boolean"
+      ? safePerson.useDirectAccessOverrides
+      : roleIds.length === 0;
+  const directPlanningRole = useDirectAccessOverrides
+    ? normalizeRole(safePerson.planningRole, PLANNING_ROLE_ORDER, "none")
+    : "none";
+  const directProjectRole = useDirectAccessOverrides
+    ? normalizeRole(safePerson.projectRole, PROJECT_ROLE_ORDER, "none")
+    : "none";
+  const directFinanceRole = useDirectAccessOverrides
+    ? normalizeRole(safePerson.financeRole, FINANCE_ROLE_ORDER, "none")
+    : "none";
+  const effectivePlanningRole = assignedRoles.reduce(
+    (currentValue, role) =>
+      resolveHighestRole(currentValue, role.planningRole, PLANNING_ROLE_ORDER, "none"),
+    directPlanningRole
+  );
+  const effectiveProjectRole = assignedRoles.reduce(
+    (currentValue, role) =>
+      resolveHighestRole(currentValue, role.projectRole, PROJECT_ROLE_ORDER, "none"),
+    directProjectRole
+  );
+  const effectiveFinanceRole = assignedRoles.reduce(
+    (currentValue, role) =>
+      resolveHighestRole(currentValue, role.financeRole, FINANCE_ROLE_ORDER, "none"),
+    directFinanceRole
+  );
+  const effectiveCapabilities = mergeCapabilities(
+    useDirectAccessOverrides ? safePerson.capabilities : null,
+    ...assignedRoles.map((role) => role.capabilities)
+  );
+
+  return {
+    ...safePerson,
+    roleIds,
+    assignedRoles,
+    useDirectAccessOverrides,
+    effectivePlanningRole,
+    effectiveProjectRole,
+    effectiveFinanceRole,
+    effectiveCapabilities
   };
 }
 
@@ -623,6 +820,19 @@ export function ensureEventShape(event) {
   const peopleMap = new Map();
   const sourcePeople = Array.isArray(source.people) ? source.people : [];
   const sourceMembers = Array.isArray(source.members) ? source.members : [];
+  const sourceRoles = Array.isArray(source.roles) ? source.roles : [];
+  const defaultEventRoles = buildDefaultEventRoles();
+  const roles =
+    (sourceRoles.length ? sourceRoles : defaultEventRoles)
+      .map((role, index) =>
+        normalizeEventRole(
+          role,
+          role?.key && PERSON_TEMPLATES[role.key] ? PERSON_TEMPLATES[role.key] : PERSON_TEMPLATES.guest,
+          index
+        )
+      )
+      .sort((left, right) => left.orderIndex - right.orderIndex || left.name.localeCompare(right.name, "nb"));
+  const roleMap = new Map(roles.map((role) => [role.id, role]));
 
   sourcePeople.forEach((person) => {
     const normalized = normalizePerson(person, "guest");
@@ -646,7 +856,7 @@ export function ensureEventShape(event) {
     const leftTime = new Date(left.created_at).getTime();
     const rightTime = new Date(right.created_at).getTime();
     return leftTime - rightTime || left.name.localeCompare(right.name, "nb");
-  });
+  }).map((person) => attachRoleAccessToPerson(person, roleMap));
   const guestPages = Array.isArray(source.guestPages)
     ? source.guestPages.map((page, index) => createGuestPage(page, index))
     : [];
@@ -688,9 +898,10 @@ export function ensureEventShape(event) {
           : ""
     },
     guestPages: guestPagesWithSlugs,
+    roles,
     people,
     members: people
-      .filter((person) => person.financeRole !== "none")
+      .filter((person) => person.effectiveFinanceRole !== "none")
       .map((person) => createFinanceMember(person)),
     subprojects: [...subprojects].sort((left, right) => left.orderIndex - right.orderIndex),
     tasks: normalizedTasks,
@@ -770,29 +981,40 @@ export function buildViewerAccess(person) {
       canViewFinance: true,
       canManageFinance: true,
       canViewApprovals: true,
-      canSelfRespondGuest: true
+      canSelfRespondGuest: true,
+      capabilities: normalizeCapabilities({
+        canCreateEvents: true,
+        canSubmitReceipts: true,
+        canSubmitManualInvoices: true,
+        canSendToAiDirectly: true
+      })
     };
   }
 
-  const planningManager = person.planningRole === "manager" || person.planningRole === "owner";
-  const projectManager = person.projectRole === "manager" || person.projectRole === "owner";
-  const financeManager = person.financeRole === "manager" || person.financeRole === "owner";
+  const planningRole = person.effectivePlanningRole || person.planningRole || "none";
+  const projectRole = person.effectiveProjectRole || person.projectRole || "none";
+  const financeRole = person.effectiveFinanceRole || person.financeRole || "none";
+  const capabilities = normalizeCapabilities(person.effectiveCapabilities || person.capabilities);
+  const planningManager = planningRole === "manager" || planningRole === "owner";
+  const projectManager = projectRole === "manager" || projectRole === "owner";
+  const financeManager = financeRole === "manager" || financeRole === "owner";
 
   return {
     key: person.id,
     label: person.name || "Bruker",
     canViewGuest: true,
     canManageGuest: planningManager,
-    canViewProject: person.projectRole !== "none" || projectManager,
+    canViewProject: projectRole !== "none" || projectManager,
     canManageProject: projectManager,
     canUpdateAssignedTasks:
-      person.projectRole === "helper" || person.projectRole === "manager" || person.projectRole === "owner",
-    canViewPlanning: person.planningRole !== "none" || planningManager,
+      projectRole === "helper" || projectRole === "manager" || projectRole === "owner",
+    canViewPlanning: planningRole !== "none" || planningManager,
     canManagePlanning: planningManager,
-    canViewFinance: person.financeRole !== "none" || financeManager,
+    canViewFinance: financeRole !== "none" || financeManager,
     canManageFinance: financeManager,
     canViewApprovals: planningManager || financeManager,
-    canSelfRespondGuest: true
+    canSelfRespondGuest: true,
+    capabilities
   };
 }
 
@@ -801,9 +1023,21 @@ export function isGuestAudiencePerson(person) {
     return false;
   }
 
-  const planningRole = normalizeRole(person.planningRole, ["none", "viewer", "manager", "owner"], "none");
-  const projectRole = normalizeRole(person.projectRole, ["none", "helper", "manager", "owner"], "none");
-  const financeRole = normalizeRole(person.financeRole, ["none", "member", "manager", "owner"], "none");
+  const planningRole = normalizeRole(
+    person.effectivePlanningRole || person.planningRole,
+    ["none", "viewer", "manager", "owner"],
+    "none"
+  );
+  const projectRole = normalizeRole(
+    person.effectiveProjectRole || person.projectRole,
+    ["none", "helper", "manager", "owner"],
+    "none"
+  );
+  const financeRole = normalizeRole(
+    person.effectiveFinanceRole || person.financeRole,
+    ["none", "member", "manager", "owner"],
+    "none"
+  );
 
   return (
     (planningRole === "none" || planningRole === "viewer") &&
@@ -1669,7 +1903,8 @@ export function buildProjectDashboard(event, options = {}) {
   );
   const workloadPeople = normalized.people.filter(
     (person) =>
-      person.projectRole !== "none" || tasks.some((task) => task.assigneeIds.includes(person.id))
+      person.effectiveProjectRole !== "none" ||
+      tasks.some((task) => task.assigneeIds.includes(person.id))
   );
   const workload = workloadPeople
     .map((person) =>
@@ -1678,7 +1913,7 @@ export function buildProjectDashboard(event, options = {}) {
           id: person.id,
           label: person.name,
           kind: "person",
-          role: person.projectRole
+          role: person.effectiveProjectRole
         },
         tasks.filter((task) => task.assigneeIds.includes(person.id))
       )

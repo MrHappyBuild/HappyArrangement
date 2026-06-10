@@ -249,6 +249,7 @@ export async function PATCH(request, context) {
               id: crypto.randomUUID(),
               name,
               email: cleanString(payload?.person?.email),
+              phone: cleanString(payload?.person?.phone),
               note: cleanString(payload?.person?.note),
               allergies: cleanString(payload?.person?.allergies),
               dietaryNotes: cleanString(payload?.person?.dietaryNotes),
@@ -260,10 +261,45 @@ export async function PATCH(request, context) {
               planningRole: cleanString(payload?.person?.planningRole) || "viewer",
               projectRole: cleanString(payload?.person?.projectRole) || "none",
               financeRole: cleanString(payload?.person?.financeRole) || "none",
+              roleIds: cleanIdList(payload?.person?.roleIds),
+              useDirectAccessOverrides: normalizeBooleanInput(
+                payload?.person?.useDirectAccessOverrides
+              ),
               capabilities:
                 payload?.person?.capabilities && typeof payload.person.capabilities === "object"
                   ? payload.person.capabilities
                   : {}
+            }
+          ]
+        };
+      }
+
+      if (action === "add_role") {
+        const name = cleanString(payload?.role?.name);
+
+        if (!name) {
+          throw new Error("Skriv inn navn for rollen.");
+        }
+
+        const createdAt = new Date().toISOString();
+
+        return {
+          ...current,
+          roles: [
+            ...(Array.isArray(current.roles) ? current.roles : []),
+            {
+              id: crypto.randomUUID(),
+              key: cleanString(payload?.role?.key),
+              name,
+              description: cleanString(payload?.role?.description),
+              planningRole: cleanString(payload?.role?.planningRole) || "none",
+              projectRole: cleanString(payload?.role?.projectRole) || "none",
+              financeRole: cleanString(payload?.role?.financeRole) || "none",
+              capabilities:
+                payload?.role?.capabilities && typeof payload.role.capabilities === "object"
+                  ? payload.role.capabilities
+                  : {},
+              created_at: createdAt
             }
           ]
         };
@@ -290,6 +326,18 @@ export async function PATCH(request, context) {
               ? {
                   ...person,
                   ...(payload?.changes && typeof payload.changes === "object" ? payload.changes : {}),
+                  phone:
+                    payload?.changes && typeof payload.changes === "object"
+                      ? cleanString(payload.changes.phone)
+                      : person.phone,
+                  roleIds:
+                    payload?.changes && typeof payload.changes === "object"
+                      ? cleanIdList(payload.changes.roleIds)
+                      : cleanIdList(person.roleIds),
+                  useDirectAccessOverrides:
+                    payload?.changes && typeof payload.changes === "object"
+                      ? normalizeBooleanInput(payload.changes.useDirectAccessOverrides)
+                      : normalizeBooleanInput(person.useDirectAccessOverrides),
                   capabilities:
                     payload?.changes?.capabilities &&
                     typeof payload.changes.capabilities === "object"
@@ -300,6 +348,42 @@ export async function PATCH(request, context) {
                       : person.capabilities
                 }
               : person
+          )
+        };
+      }
+
+      if (action === "update_role") {
+        const roleId = cleanString(payload?.roleId);
+
+        if (!roleId) {
+          throw new Error("Mangler rolle.");
+        }
+
+        return {
+          ...current,
+          roles: (current.roles || []).map((role) =>
+            role.id === roleId
+              ? {
+                  ...role,
+                  ...(payload?.changes && typeof payload.changes === "object" ? payload.changes : {}),
+                  name:
+                    payload?.changes && typeof payload.changes === "object"
+                      ? cleanString(payload.changes.name) || role.name
+                      : role.name,
+                  description:
+                    payload?.changes && typeof payload.changes === "object"
+                      ? cleanString(payload.changes.description)
+                      : role.description,
+                  capabilities:
+                    payload?.changes?.capabilities &&
+                    typeof payload.changes.capabilities === "object"
+                      ? {
+                          ...(role.capabilities || {}),
+                          ...payload.changes.capabilities
+                        }
+                      : role.capabilities
+                }
+              : role
           )
         };
       }
