@@ -664,10 +664,11 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     "--venue-room-width": roomWidthMeters,
     "--venue-room-height": roomHeightMeters
   };
-  const baseCanvasMinWidth = getMinimumVenueCanvasWidth(roomWidthMeters, roomHeightMeters);
+  const baseCanvasWidth = getMinimumVenueCanvasWidth(roomWidthMeters, roomHeightMeters);
+  const scaledCanvasWidth = Math.max(320, Math.round(baseCanvasWidth * (zoomPercent / 100)));
   const canvasScaleStyle = {
-    width: `${zoomPercent}%`,
-    minWidth: `${Math.max(baseCanvasMinWidth, Math.round(720 * (zoomPercent / 100)))}px`
+    width: `${scaledCanvasWidth}px`,
+    minWidth: `${scaledCanvasWidth}px`
   };
   const zoomMax = isFocusMode ? 240 : 180;
 
