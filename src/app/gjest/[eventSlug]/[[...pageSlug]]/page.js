@@ -16,13 +16,13 @@ import { getEventBySlug } from "@/lib/local-store";
 function buildGuestSiteBackgroundStyles(backgroundImageUrl) {
   if (!backgroundImageUrl) {
     return {
-      frameStyle: undefined,
+      pageLayerStyle: undefined,
       shellStyle: undefined
     };
   }
 
   return {
-    frameStyle: {
+    pageLayerStyle: {
       backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
       backgroundSize: "cover",
       backgroundPosition: "center",
@@ -83,16 +83,22 @@ export default async function GuestSitePage({ params }) {
   const guestSiteBackgroundStyles = buildGuestSiteBackgroundStyles(
     normalizedEvent.guestSite?.backgroundImageUrl || ""
   );
-  const guestSiteFrameStyle =
-    guestSiteBackgroundMode === "page" ? guestSiteBackgroundStyles.frameStyle : undefined;
+  const guestSitePageLayerStyle =
+    guestSiteBackgroundMode === "page" ? guestSiteBackgroundStyles.pageLayerStyle : undefined;
   const guestSiteShellStyle =
     guestSiteBackgroundMode === "shell" ? guestSiteBackgroundStyles.shellStyle : undefined;
 
   return (
     <main
-      className={`shell grid ${guestSiteBackgroundMode === "page" ? "guest-site-page-background-frame" : ""}`}
-      style={guestSiteFrameStyle}
+      className={`shell grid ${guestSiteBackgroundMode === "page" ? "guest-site-page-background-frame guest-site-page-background-host" : ""}`}
     >
+      {guestSitePageLayerStyle ? (
+        <div
+          aria-hidden="true"
+          className="guest-site-page-background-layer"
+          style={guestSitePageLayerStyle}
+        />
+      ) : null}
       <section className="hero">
         <h1>{normalizedEvent.overview.title || normalizedEvent.name}</h1>
         {guestSiteIntro ? <p className="lede">{guestSiteIntro}</p> : null}

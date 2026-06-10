@@ -236,13 +236,13 @@ function getRsvpLabel(value) {
 function buildGuestSiteBackgroundStyle(backgroundImageUrl) {
   if (!backgroundImageUrl) {
     return {
-      frameStyle: undefined,
+      pageLayerStyle: undefined,
       shellStyle: undefined
     };
   }
 
   return {
-    frameStyle: {
+    pageLayerStyle: {
       backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
       backgroundSize: "cover",
       backgroundPosition: "center",
@@ -546,8 +546,8 @@ function GuestTab({
     () => buildGuestSiteBackgroundStyle(guestSiteBackgroundImageUrlDraft),
     [guestSiteBackgroundImageUrlDraft]
   );
-  const guestSiteFrameStyle =
-    guestSiteBackgroundModeDraft === "page" ? guestSiteBackgroundStyles.frameStyle : undefined;
+  const guestSitePageLayerStyle =
+    guestSiteBackgroundModeDraft === "page" ? guestSiteBackgroundStyles.pageLayerStyle : undefined;
   const guestSiteShellStyle =
     guestSiteBackgroundModeDraft === "shell" ? guestSiteBackgroundStyles.shellStyle : undefined;
   const guestPageLinks = useMemo(
@@ -917,9 +917,15 @@ function GuestTab({
           }}
         />
         <div
-          className={`guest-site-preview-frame ${guestSiteBackgroundModeDraft === "page" ? "is-page-background" : ""}`}
-          style={guestSiteFrameStyle}
+          className={`guest-site-preview-frame ${guestSiteBackgroundModeDraft === "page" ? "is-page-background guest-site-page-background-host" : ""}`}
         >
+        {guestSitePageLayerStyle ? (
+          <div
+            aria-hidden="true"
+            className="guest-site-page-background-layer"
+            style={guestSitePageLayerStyle}
+          />
+        ) : null}
         <div className="guest-site-shell" style={guestSiteShellStyle}>
           <aside className="guest-site-sidebar">
             <div className="stack">

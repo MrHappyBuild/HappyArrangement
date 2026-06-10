@@ -2415,8 +2415,21 @@ p {
   gap: 18px;
 }
 
+.guest-site-page-background-host {
+  position: relative;
+  isolation: isolate;
+}
+
+.guest-site-page-background-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
 .guest-site-page-background-frame {
   min-height: calc(100vh - 48px);
+  align-content: start;
 }
 
 .guest-site-sidebar {
