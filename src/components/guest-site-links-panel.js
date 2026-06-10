@@ -43,6 +43,7 @@ export function GuestSiteLinksPanel({
   canManageGuest
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [baseQrCode, setBaseQrCode] = useState("");
   const [qrCodes, setQrCodes] = useState({});
   const [qrStatus, setQrStatus] = useState("");
 
@@ -57,6 +58,14 @@ export function GuestSiteLinksPanel({
       try {
         const qrCodeModule = await import("qrcode");
         const QRCode = qrCodeModule.default || qrCodeModule;
+        const nextBaseQrCode = await QRCode.toDataURL(baseUrl, {
+          width: 180,
+          margin: 1,
+          color: {
+            dark: "#245f52",
+            light: "#fffdf8"
+          }
+        });
         const entries = await Promise.all(
           pageLinks.map(async (page) => [
             page.id,
@@ -72,6 +81,7 @@ export function GuestSiteLinksPanel({
         );
 
         if (!cancelled) {
+          setBaseQrCode(nextBaseQrCode);
           setQrCodes(Object.fromEntries(entries));
           setQrStatus("");
         }
@@ -89,7 +99,7 @@ export function GuestSiteLinksPanel({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, pageLinks]);
+  }, [baseUrl, isOpen, pageLinks]);
 
   return (
     <section className="stack">
@@ -112,14 +122,32 @@ export function GuestSiteLinksPanel({
 
       {isOpen ? (
         <div className="guest-site-public-links">
-          <div className="guest-site-public-links-summary">
-            <p className="eyebrow">Hovedlenke</p>
-            <a className="secondary-link" href={baseUrl} rel="noreferrer" target="_blank">
-              {baseUrl}
-            </a>
-            <p className="muted">
-              Startsiden åpnes på hovedlenken. Undersidene under får egne adresser og QR-koder.
-            </p>
+          <div className="guest-site-public-link-card guest-site-public-link-card-main">
+            <div className="stack guest-site-public-links-summary">
+              <p className="eyebrow">Hovedlenke</p>
+              <strong>Startsiden til gjestenettsiden</strong>
+              <a className="guest-site-public-link-url" href={baseUrl} rel="noreferrer" target="_blank">
+                {baseUrl}
+              </a>
+              <CopyLinkButton url={baseUrl} />
+              <p className="muted">
+                Startsiden åpnes på hovedlenken. Undersidene under får egne adresser og QR-koder.
+              </p>
+            </div>
+            <div className="guest-site-public-link-qr">
+              {baseQrCode ? (
+                <img
+                  alt="QR-kode for hovedlenken til gjestenettsiden"
+                  height="180"
+                  src={baseQrCode}
+                  width="180"
+                />
+              ) : (
+                <div className="guest-site-public-link-qr-placeholder">
+                  <span>Lager QR-kode…</span>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="guest-site-public-link-grid">

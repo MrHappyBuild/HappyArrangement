@@ -2489,6 +2489,12 @@ p {
   gap: 8px;
 }
 
+.guest-site-public-link-card-main {
+  background:
+    radial-gradient(circle at top right, rgba(36, 95, 82, 0.08), transparent 34%),
+    rgba(255, 250, 242, 0.78);
+}
+
 .guest-site-public-link-grid {
   display: grid;
   gap: 14px;
