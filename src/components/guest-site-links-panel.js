@@ -45,6 +45,8 @@ export function GuestSiteLinksPanel({
   onBackgroundUpload,
   onRemoveBackgroundImage,
   onSaveIntro,
+  onIntroBlur,
+  onNavigationLabelBlur,
   canManageGuest
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -201,6 +203,7 @@ export function GuestSiteLinksPanel({
                   rows={4}
                   value={introText}
                   onChange={(eventObject) => onIntroTextChange(eventObject.currentTarget.value)}
+                  onBlur={onIntroBlur}
                 />
               </label>
               <label className="field">
@@ -212,6 +215,7 @@ export function GuestSiteLinksPanel({
                   onChange={(eventObject) =>
                     onNavigationLabelChange(eventObject.currentTarget.value)
                   }
+                  onBlur={onNavigationLabelBlur}
                 />
               </label>
               <div className="stack guest-site-background-editor">

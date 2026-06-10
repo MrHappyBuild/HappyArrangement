@@ -718,7 +718,7 @@ function GuestTab({
 
   async function handleSaveGuestSiteIntro() {
     if (!viewerAccess.canManageGuest) {
-      return;
+      return null;
     }
 
     const nextEvent = await patchEvent("update_guest_site", {
@@ -732,6 +732,28 @@ function GuestTab({
     if (nextEvent) {
       setStatusMessage("Gjestenettsiden ble oppdatert.");
     }
+
+    return nextEvent;
+  }
+
+  async function persistGuestSiteBackground(nextBackgroundImageUrl, successMessage) {
+    if (!viewerAccess.canManageGuest) {
+      return null;
+    }
+
+    const nextEvent = await patchEvent("update_guest_site", {
+      guestSite: {
+        introText: guestSiteIntroDraft,
+        navigationLabel: guestSiteNavigationLabelDraft,
+        backgroundImageUrl: nextBackgroundImageUrl
+      }
+    });
+
+    if (nextEvent) {
+      setStatusMessage(successMessage);
+    }
+
+    return nextEvent;
   }
 
   async function handleGuestSiteBackgroundUpload(eventObject) {
@@ -759,9 +781,18 @@ function GuestTab({
       }
 
       setGuestSiteBackgroundImageUrlDraft(body.url);
-      setGuestSiteBackgroundStatus(
-        "Bakgrunnsbildet er valgt. Lagre gjestenettsiden for å publisere det."
+      const nextEvent = await persistGuestSiteBackground(
+        body.url,
+        "Bakgrunnsbildet ble publisert på gjestenettsiden."
       );
+
+      if (nextEvent) {
+        setGuestSiteBackgroundStatus("Bakgrunnsbildet er lagret og publisert.");
+      } else {
+        setGuestSiteBackgroundStatus(
+          "Bakgrunnsbildet er valgt lokalt, men kunne ikke publiseres. Prøv å lagre gjestenettsiden på nytt."
+        );
+      }
     } catch (error) {
       setGuestSiteBackgroundStatus(
         error instanceof Error ? error.message : "Kunne ikke laste opp bakgrunnsbildet."
@@ -778,7 +809,15 @@ function GuestTab({
     }
 
     setGuestSiteBackgroundImageUrlDraft("");
-    setGuestSiteBackgroundStatus("Bakgrunnsbildet er fjernet. Lagre gjestenettsiden for å oppdatere publiseringen.");
+    setGuestSiteBackgroundStatus("Fjerner bakgrunnsbildet…");
+    void persistGuestSiteBackground("", "Bakgrunnsbildet ble fjernet fra gjestenettsiden.")
+      .then((nextEvent) => {
+        setGuestSiteBackgroundStatus(
+          nextEvent
+            ? "Bakgrunnsbildet er fjernet."
+            : "Kunne ikke fjerne bakgrunnsbildet akkurat nå."
+        );
+      });
   }
 
   return (
@@ -806,6 +845,16 @@ function GuestTab({
           onBackgroundUpload={handleGuestSiteBackgroundUpload}
           onRemoveBackgroundImage={handleRemoveGuestSiteBackgroundImage}
           onSaveIntro={handleSaveGuestSiteIntro}
+          onIntroBlur={() => {
+            if (guestSiteIntroDraft !== (event.guestSite?.introText || "")) {
+              void handleSaveGuestSiteIntro();
+            }
+          }}
+          onNavigationLabelBlur={() => {
+            if (guestSiteNavigationLabelDraft !== (event.guestSite?.navigationLabel || "Navigasjon")) {
+              void handleSaveGuestSiteIntro();
+            }
+          }}
         />
         <div className="guest-site-shell" style={guestSiteShellStyle}>
           <aside className="guest-site-sidebar">
