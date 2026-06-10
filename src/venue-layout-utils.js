@@ -356,6 +356,7 @@ export function normalizeVenuePlan(plan) {
 export function updateVenueItemInPlan(venuePlan, itemId, changes) {
   const normalizedPlan = normalizeVenuePlan(venuePlan);
   const safeChanges = changes && typeof changes === "object" ? changes : {};
+  const itemIndex = normalizedPlan.items.findIndex((candidate) => candidate.id === itemId);
 
   return {
     ...normalizedPlan,
@@ -366,7 +367,8 @@ export function updateVenueItemInPlan(venuePlan, itemId, changes) {
               ...item,
               ...safeChanges
             },
-            normalizedPlan.items.findIndex((candidate) => candidate.id === itemId)
+            itemIndex,
+            normalizedPlan.room
           )
         : item
     )

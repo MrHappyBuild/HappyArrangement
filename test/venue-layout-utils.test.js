@@ -79,6 +79,34 @@ test("legacy percent-based venue items are converted into meter sizes from the r
   assert.equal(plan.items[0].heightPercent, 10);
 });
 
+test("updateVenueItemInPlan keeps using the current room dimensions when resizing", () => {
+  const plan = normalizeVenuePlan({
+    room: {
+      name: "Festsal",
+      widthMeters: 20,
+      heightMeters: 12
+    },
+    items: [
+      {
+        id: "table-1",
+        type: "long_table",
+        widthMeters: 4,
+        heightMeters: 1
+      }
+    ]
+  });
+
+  const updated = updateVenueItemInPlan(plan, "table-1", {
+    widthMeters: 10,
+    heightMeters: 2
+  });
+
+  assert.equal(updated.items[0].widthMeters, 10);
+  assert.equal(updated.items[0].heightMeters, 2);
+  assert.equal(updated.items[0].widthPercent, 50);
+  assert.ok(Math.abs(updated.items[0].heightPercent - 16.666666666666664) < 0.0001);
+});
+
 test("restroom is available as a non-seatable venue item", () => {
   const restroom = createVenueItem("restroom", 0);
   const plan = normalizeVenuePlan({

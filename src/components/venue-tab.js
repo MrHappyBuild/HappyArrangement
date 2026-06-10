@@ -119,6 +119,20 @@ function formatItemDimensions(item) {
   )} m`;
 }
 
+function mapResizeDeltaByRotation(rotation, deltaWidthMeters, deltaHeightMeters) {
+  if (rotation === 90 || rotation === 270) {
+    return {
+      widthDelta: deltaHeightMeters,
+      heightDelta: deltaWidthMeters
+    };
+  }
+
+  return {
+    widthDelta: deltaWidthMeters,
+    heightDelta: deltaHeightMeters
+  };
+}
+
 function VenueEmptyState({ title, body }) {
   return (
     <div className="notice event-platform-empty">
@@ -149,6 +163,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   const isGuestMode = venueMode === "guest";
   const canEditLayout = canManageVenue && isRoomMode;
   const canPlaceGuests = canManageVenue && isGuestMode;
+  const canMoveVenueItems = canManageVenue;
 
   useEffect(() => {
     const nextPlan = normalizeVenuePlan(event.venuePlan);
@@ -246,7 +261,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   }
 
   useEffect(() => {
-    if (!itemDrag || !canEditLayout) {
+    if (!itemDrag || !canMoveVenueItems) {
       return undefined;
     }
 
@@ -293,10 +308,10 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [canEditLayout, itemDrag, onSaveVenuePlan]);
+  }, [canMoveVenueItems, itemDrag, onSaveVenuePlan]);
 
   useEffect(() => {
-    if (!resizeDrag || !canEditLayout) {
+    if (!resizeDrag || !canMoveVenueItems) {
       return undefined;
     }
 
@@ -315,11 +330,16 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
 
       const deltaWidthMeters = ((eventObject.clientX - resizeDrag.startClientX) / rect.width) * roomWidthMeters;
       const deltaHeightMeters = ((eventObject.clientY - resizeDrag.startClientY) / rect.height) * roomHeightMeters;
+      const { widthDelta, heightDelta } = mapResizeDeltaByRotation(
+        resizeDrag.rotation,
+        deltaWidthMeters,
+        deltaHeightMeters
+      );
 
       applyPreviewPlan((currentPlan) =>
         updateVenueItemInPlan(currentPlan, resizeDrag.itemId, {
-          widthMeters: resizeDrag.startWidth + deltaWidthMeters,
-          heightMeters: resizeDrag.startHeight + deltaHeightMeters
+          widthMeters: resizeDrag.startWidth + widthDelta,
+          heightMeters: resizeDrag.startHeight + heightDelta
         })
       );
     }
@@ -343,7 +363,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [canEditLayout, onSaveVenuePlan, resizeDrag, roomHeightMeters, roomWidthMeters]);
+  }, [canMoveVenueItems, onSaveVenuePlan, resizeDrag, roomHeightMeters, roomWidthMeters]);
 
   useEffect(() => {
     if (!seatDrag || !canEditLayout) {
@@ -906,7 +926,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
               <p className="muted">
                 {isRoomMode
                   ? "Dra pa elementene for aa plassere dem. Klikk et bord for aa justere detaljer og seteoppsett."
-                  : "Velg et bord eller en stol i lokalet, og dra gjester til plassene der de skal sitte."}
+                  : "Velg et bord eller en stol i lokalet, dra gjester til plassene, og flytt eller skaler fortsatt bordene direkte i tegningen ved behov."}
               </p>
             </div>
           </div>
@@ -942,7 +962,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                     }}
                     onClick={() => setSelectedItemId(item.id)}
                     onPointerDown={(eventObject) => {
-                      if (!canEditLayout) {
+                      if (!canMoveVenueItems) {
                         return;
                       }
 
@@ -963,6 +983,27 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                       });
                     }}
                   >
+                    {canMoveVenueItems && selectedItem?.id === item.id ? (
+                      <button
+                        className="venue-item-resize-handle"
+                        type="button"
+                        onClick={(eventObject) => eventObject.stopPropagation()}
+                        onPointerDown={(eventObject) => {
+                          eventObject.stopPropagation();
+                          setResizeDrag({
+                            itemId: item.id,
+                            startClientX: eventObject.clientX,
+                            startClientY: eventObject.clientY,
+                            startWidth: item.widthMeters || item.width,
+                            startHeight: item.heightMeters || item.height,
+                            rotation: item.rotation,
+                            initialPlan: planDraftRef.current
+                          });
+                        }}
+                      >
+                        ↘
+                      </button>
+                    ) : null}
                     <div
                       className="venue-item-card"
                       style={{
@@ -978,26 +1019,6 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                           </span>
                         ) : null}
                       </div>
-                      {canEditLayout && selectedItem?.id === item.id ? (
-                        <button
-                          className="venue-item-resize-handle"
-                          type="button"
-                          onClick={(eventObject) => eventObject.stopPropagation()}
-                          onPointerDown={(eventObject) => {
-                            eventObject.stopPropagation();
-                            setResizeDrag({
-                              itemId: item.id,
-                              startClientX: eventObject.clientX,
-                              startClientY: eventObject.clientY,
-                              startWidth: item.widthMeters || item.width,
-                              startHeight: item.heightMeters || item.height,
-                              initialPlan: planDraftRef.current
-                            });
-                          }}
-                        >
-                          ↘
-                        </button>
-                      ) : null}
                       {item.seats.map((seat) => {
                         const showSeatName = Boolean(showFullSeatNames && seat.guest);
                         const seatNameDirectionClass = getSeatNameDirectionClass(seat);
@@ -1100,7 +1121,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
             <span>
               {isRoomMode
                 ? "Tips: dra pa elementene for aa flytte dem, bruk hjornet nede til hoyre for aa skalere i meter, og juster zoom for aa jobbe tettere eller mer oversiktlig."
-                : "Tips: dra personer til stolene i denne visningen, og bruk oversikten til hoyre for aa rydde plasseringer og kostbehov."}
+                : "Tips: dra personer til stolene i denne visningen. Du kan fortsatt flytte bord og bruke hjornet nede til hoyre for aa skalere dem i meter mens du plasserer gjestene."}
             </span>
           </div>
         </section>
