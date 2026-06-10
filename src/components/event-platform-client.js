@@ -470,6 +470,7 @@ function GuestTab({
   event,
   viewerAccess,
   viewerPerson,
+  onUpdateGuestSite,
   onAddGuestPage,
   onUpdateGuestPage,
   onDeleteGuestPage,
@@ -722,46 +723,46 @@ function GuestTab({
   }
 
   async function handleSaveGuestSiteIntro() {
-    if (!viewerAccess.canManageGuest) {
+    if (!viewerAccess.canManageGuest || typeof onUpdateGuestSite !== "function") {
       return null;
     }
 
-    const nextEvent = await patchEvent("update_guest_site", {
-      guestSite: {
+    const nextEvent = await onUpdateGuestSite(
+      {
         introText: guestSiteIntroDraft,
         navigationLabel: guestSiteNavigationLabelDraft,
         backgroundImageUrl: guestSiteBackgroundImageUrlDraft
-      }
-    });
+      },
+      "Gjestenettsiden ble oppdatert."
+    );
 
     if (nextEvent) {
       setGuestSiteIntroDraft(nextEvent.guestSite?.introText || "");
       setGuestSiteNavigationLabelDraft(nextEvent.guestSite?.navigationLabel || "Navigasjon");
       setGuestSiteBackgroundImageUrlDraft(nextEvent.guestSite?.backgroundImageUrl || "");
-      setStatusMessage("Gjestenettsiden ble oppdatert.");
     }
 
     return nextEvent;
   }
 
   async function persistGuestSiteBackground(nextBackgroundImageUrl, successMessage) {
-    if (!viewerAccess.canManageGuest) {
+    if (!viewerAccess.canManageGuest || typeof onUpdateGuestSite !== "function") {
       return null;
     }
 
-    const nextEvent = await patchEvent("update_guest_site", {
-      guestSite: {
+    const nextEvent = await onUpdateGuestSite(
+      {
         introText: guestSiteIntroDraft,
         navigationLabel: guestSiteNavigationLabelDraft,
         backgroundImageUrl: nextBackgroundImageUrl
-      }
-    });
+      },
+      successMessage
+    );
 
     if (nextEvent) {
       setGuestSiteIntroDraft(nextEvent.guestSite?.introText || "");
       setGuestSiteNavigationLabelDraft(nextEvent.guestSite?.navigationLabel || "Navigasjon");
       setGuestSiteBackgroundImageUrlDraft(nextEvent.guestSite?.backgroundImageUrl || "");
-      setStatusMessage(successMessage);
     }
 
     return nextEvent;
@@ -5389,6 +5390,16 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     }
   }
 
+  async function handleUpdateGuestSite(guestSite, successMessage = "Gjestenettsiden ble oppdatert.") {
+    const nextEvent = await patchEvent("update_guest_site", { guestSite });
+
+    if (nextEvent) {
+      setStatusMessage(successMessage);
+    }
+
+    return nextEvent;
+  }
+
   useEffect(() => {
     if (!selectedEvent || (currentTab !== "finance" && currentTab !== "approvals")) {
       return undefined;
@@ -6338,6 +6349,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
               {currentTab === "guest" ? (
                 <GuestTab
                   event={selectedEvent}
+                  onUpdateGuestSite={handleUpdateGuestSite}
                   onAddGuestPage={handleAddGuestPage}
                   onAddRole={handleAddRole}
                   onAddPerson={handleAddPerson}
