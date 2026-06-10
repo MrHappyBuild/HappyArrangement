@@ -5,6 +5,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardClient } from "@/components/dashboard-client";
 import { GuestPageContentView } from "@/components/guest-page-content-view";
+import { GuestAgendaPageView } from "@/components/guest-agenda-page-view";
 import { GuestSeatingPageView } from "@/components/guest-seating-page-view";
 import { GuestSiteLinksPanel } from "@/components/guest-site-links-panel";
 import { VenueTab } from "@/components/venue-tab";
@@ -481,7 +482,9 @@ function GuestTab({
   const visiblePages = useMemo(() => {
     const navigationEntries = buildGuestSiteNavigationEntries(event);
     return navigationEntries.filter((page) =>
-      page.kind === "venue_seating" ? true : canViewerSeeGuestPage(page, viewerAccess, viewerPerson)
+      page.kind === "venue_seating" || page.kind === "guest_agenda"
+        ? true
+        : canViewerSeeGuestPage(page, viewerAccess, viewerPerson)
     );
   }, [event, viewerAccess, viewerPerson]);
   const [selectedPageId, setSelectedPageId] = useState(visiblePages[0]?.id || "");
@@ -518,7 +521,9 @@ function GuestTab({
   );
   const selectedPage = visiblePages.find((page) => page.id === selectedPageId) || visiblePages[0] || null;
   const isVenueSeatingPage = selectedPage?.kind === "venue_seating";
-  const editablePage = !isVenueSeatingPage ? selectedPage : null;
+  const isGuestAgendaPage = selectedPage?.kind === "guest_agenda";
+  const isGeneratedGuestPage = isVenueSeatingPage || isGuestAgendaPage;
+  const editablePage = !isGeneratedGuestPage ? selectedPage : null;
   const previewPage =
     viewerAccess.canManageGuest && draftPage && editablePage ? { ...editablePage, ...draftPage } : editablePage;
   const guestSiteBasePath = useMemo(() => buildGuestSiteBasePath(event), [event]);
@@ -870,7 +875,7 @@ function GuestTab({
                   >
                     <strong>{page.menuLabel || page.title}</strong>
                     <span>{page.title}</span>
-                    {viewerAccess.canManageGuest && page.kind !== "venue_seating" ? (
+                    {viewerAccess.canManageGuest && page.kind !== "venue_seating" && page.kind !== "guest_agenda" ? (
                       <small className="guest-page-visibility-badge">
                         {getGuestPageVisibilityLabel(page.visibility)}
                       </small>
@@ -907,7 +912,7 @@ function GuestTab({
               <>
                 <article className="guest-site-preview">
                   <h2>{previewPage?.title || selectedPage.title}</h2>
-                  {viewerAccess.canManageGuest && !isVenueSeatingPage ? (
+                  {viewerAccess.canManageGuest && !isGeneratedGuestPage ? (
                     <div className="guest-page-settings-summary">
                       <p className="guest-page-visibility-note">
                         Synlighet: {getGuestPageVisibilityLabel(previewPage?.visibility || selectedPage.visibility)}
@@ -928,6 +933,8 @@ function GuestTab({
                   ) : null}
                   {isVenueSeatingPage ? (
                     <GuestSeatingPageView event={event} title={selectedPage.title} />
+                  ) : isGuestAgendaPage ? (
+                    <GuestAgendaPageView event={event} title={selectedPage.title} />
                   ) : (
                     <div
                       className={`guest-site-copy guest-page-font-${previewPage?.fontPreset || "clean"} guest-page-size-${
@@ -942,7 +949,7 @@ function GuestTab({
                   )}
                 </article>
 
-                {viewerAccess.canManageGuest && !isVenueSeatingPage ? (
+                {viewerAccess.canManageGuest && !isGeneratedGuestPage ? (
                   <form
                     className="panel stack guest-page-editor"
                     key={selectedPage.id}
@@ -1236,20 +1243,40 @@ function GuestTab({
                     </button>
                   </form>
                 ) : null}
-                {viewerAccess.canManageGuest && isVenueSeatingPage ? (
+                {viewerAccess.canManageGuest && isGeneratedGuestPage ? (
                   <section className="panel stack guest-page-editor">
                     <div className="panel-header-inline">
                       <div>
-                        <h3>Sitteplansiden styres fra lokaleplanen</h3>
+                        <h3>
+                          {isVenueSeatingPage
+                            ? "Sitteplansiden styres fra lokaleplanen"
+                            : "Agendasiden styres fra planleggingen"}
+                        </h3>
                         <p className="muted">
-                          Gå til <strong>Lokale</strong> og slå av/på publisering der. Her vises siden bare som forhåndsvisning sammen med resten av gjestenettsiden.
+                          {isVenueSeatingPage ? (
+                            <>
+                              Gå til <strong>Lokale</strong> og slå av/på publisering der. Her vises siden bare som
+                              forhåndsvisning sammen med resten av gjestenettsiden.
+                            </>
+                          ) : (
+                            <>
+                              Gå til <strong>Planlegging</strong> og slå av/på publisering der. Her vises siden bare
+                              som forhåndsvisning sammen med resten av gjestenettsiden.
+                            </>
+                          )}
                         </p>
                       </div>
                     </div>
                     <div className="notice">
-                      <strong>Ingen ekstra gjesteinformasjon deles</strong>
+                      <strong>
+                        {isVenueSeatingPage
+                          ? "Ingen ekstra gjesteinformasjon deles"
+                          : "Agendaen oppdateres automatisk"}
+                      </strong>
                       <p>
-                        Denne siden viser bare navn, bord og plasseringer, samt søk på navn for å finne riktig bord.
+                        {isVenueSeatingPage
+                          ? "Denne siden viser bare navn, bord og plasseringer, samt søk på navn for å finne riktig bord."
+                          : "Denne siden viser bare aktiviteter som er merket med `Vises på agenda`, i tidsrekkefølge for gjestene."}
                       </p>
                     </div>
                   </section>
@@ -4675,6 +4702,32 @@ function PlanningTab({ event, viewerAccess, onSaveOverview }) {
               rows={4}
             />
           </label>
+          <div className="field field-span-full">
+            <span>Gjestenettside</span>
+            <div className="compact-grid">
+              <label className="field checkbox-field">
+                <span>Agenda</span>
+                <span className="checkbox-inline">
+                  <input
+                    defaultChecked={Boolean(event.guestSite?.agendaPage?.isPublished)}
+                    disabled={!viewerAccess.canManagePlanning}
+                    name="publishAgendaPage"
+                    type="checkbox"
+                  />
+                  <span>Vis agendaen i navigasjonen på gjestenettsiden</span>
+                </span>
+              </label>
+              <label className="field">
+                <span>Menynavn for agenda</span>
+                <input
+                  defaultValue={event.guestSite?.agendaPage?.navigationLabel || "Agenda"}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="agendaPageNavigationLabel"
+                  placeholder="Agenda"
+                />
+              </label>
+            </div>
+          </div>
           {viewerAccess.canManagePlanning ? (
             <button className="primary-button" type="submit">
               Lagre planlegging
@@ -5435,6 +5488,10 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
         dressCode: String(formData.get("dressCode") || "").trim(),
         description: String(formData.get("description") || "").trim(),
         practicalInfo: String(formData.get("practicalInfo") || "").trim()
+      },
+      guestAgendaPage: {
+        isPublished: formData.get("publishAgendaPage") === "on",
+        navigationLabel: String(formData.get("agendaPageNavigationLabel") || "").trim()
       }
     });
 

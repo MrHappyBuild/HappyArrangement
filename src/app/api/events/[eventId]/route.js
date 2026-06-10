@@ -71,6 +71,22 @@ function normalizeGuestPageShowImageCaption(value) {
   return normalized === "true" || normalized === "1" || normalized === "on";
 }
 
+function normalizeGuestAgendaPageSettings(value, fallback = null) {
+  const safeValue = value && typeof value === "object" ? value : {};
+  const fallbackValue = fallback && typeof fallback === "object" ? fallback : {};
+
+  return {
+    isPublished:
+      "isPublished" in safeValue
+        ? normalizeBooleanInput(safeValue.isPublished)
+        : normalizeBooleanInput(fallbackValue.isPublished),
+    navigationLabel:
+      cleanString(safeValue.navigationLabel) ||
+      cleanString(fallbackValue.navigationLabel) ||
+      "Agenda"
+  };
+}
+
 function normalizeBooleanInput(value) {
   if (typeof value === "boolean") {
     return value;
@@ -270,6 +286,13 @@ export async function PATCH(request, context) {
           overview: {
             ...(current.overview || {}),
             ...(payload?.overview && typeof payload.overview === "object" ? payload.overview : {})
+          },
+          guestSite: {
+            ...(current.guestSite && typeof current.guestSite === "object" ? current.guestSite : {}),
+            agendaPage: normalizeGuestAgendaPageSettings(
+              payload?.guestAgendaPage,
+              current.guestSite?.agendaPage
+            )
           }
         };
       }
@@ -283,7 +306,11 @@ export async function PATCH(request, context) {
               : {}),
             introText: cleanString(payload?.guestSite?.introText),
             navigationLabel: cleanString(payload?.guestSite?.navigationLabel) || "Navigasjon",
-            backgroundImageUrl: cleanString(payload?.guestSite?.backgroundImageUrl)
+            backgroundImageUrl: cleanString(payload?.guestSite?.backgroundImageUrl),
+            agendaPage: normalizeGuestAgendaPageSettings(
+              payload?.guestSite?.agendaPage,
+              current.guestSite?.agendaPage
+            )
           }
         };
       }

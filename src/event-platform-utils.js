@@ -172,7 +172,11 @@ const DEFAULT_OVERVIEW = {
 const DEFAULT_GUEST_SITE = {
   introText: "",
   navigationLabel: "Navigasjon",
-  backgroundImageUrl: ""
+  backgroundImageUrl: "",
+  agendaPage: {
+    isPublished: false,
+    navigationLabel: "Agenda"
+  }
 };
 const DEFAULT_GUEST_SEATING_PAGE = {
   isPublished: false,
@@ -285,6 +289,18 @@ function normalizeBooleanFlag(value) {
 
   const normalized = String(value || "").trim().toLowerCase();
   return normalized === "true" || normalized === "1" || normalized === "on";
+}
+
+function normalizeGuestAgendaPage(source) {
+  const safeSource = source && typeof source === "object" ? source : {};
+
+  return {
+    isPublished: normalizeBooleanFlag(safeSource.isPublished),
+    navigationLabel:
+      typeof safeSource.navigationLabel === "string" && safeSource.navigationLabel.trim()
+        ? safeSource.navigationLabel.trim()
+        : DEFAULT_GUEST_SITE.agendaPage.navigationLabel
+  };
 }
 
 function uniqueIds(values, excludedId = "") {
@@ -900,7 +916,8 @@ export function ensureEventShape(event) {
       backgroundImageUrl:
         typeof guestSiteSource.backgroundImageUrl === "string"
           ? guestSiteSource.backgroundImageUrl.trim()
-          : ""
+          : "",
+      agendaPage: normalizeGuestAgendaPage(guestSiteSource.agendaPage)
     },
     guestPages: guestPagesWithSlugs,
     roles,
@@ -965,6 +982,27 @@ export function buildGuestSiteNavigationEntries(event) {
       slug: seatingSlug,
       visibility: "open",
       path: buildGuestSitePagePath(normalizedEvent, seatingSlug)
+    });
+  }
+
+  const guestAgendaPage = normalizedEvent.guestSite?.agendaPage || DEFAULT_GUEST_SITE.agendaPage;
+
+  if (guestAgendaPage.isPublished) {
+    const usedSlugs = new Set(entries.map((page) => page.slug).filter(Boolean));
+    const agendaSlug = ensureUniqueSlug(
+      guestAgendaPage.navigationLabel || DEFAULT_GUEST_SITE.agendaPage.navigationLabel,
+      usedSlugs,
+      "agenda"
+    );
+
+    entries.push({
+      id: "guest-page-agenda",
+      kind: "guest_agenda",
+      title: guestAgendaPage.navigationLabel || DEFAULT_GUEST_SITE.agendaPage.navigationLabel,
+      menuLabel: guestAgendaPage.navigationLabel || DEFAULT_GUEST_SITE.agendaPage.navigationLabel,
+      slug: agendaSlug,
+      visibility: "open",
+      path: buildGuestSitePagePath(normalizedEvent, agendaSlug)
     });
   }
 

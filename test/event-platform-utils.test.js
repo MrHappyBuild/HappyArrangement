@@ -54,6 +54,8 @@ test("ensureEventShape creates a default guest page when none exists", () => {
   assert.equal(event.guestPages[0].showImageCaption, false);
   assert.equal(event.guestSite.introText, "");
   assert.equal(event.guestSite.navigationLabel, "Navigasjon");
+  assert.equal(event.guestSite.agendaPage.isPublished, false);
+  assert.equal(event.guestSite.agendaPage.navigationLabel, "Agenda");
   assert.equal(event.slug, "sommerfest-2026");
   assert.equal(event.guestPages[0].slug, "velkommen");
   assert.match(event.guestPages[0].content, /Velkommen til sommerfest/);
@@ -113,6 +115,34 @@ test("buildGuestSiteNavigationEntries appends a published seating plan page", ()
   assert.ok(seatingPage);
   assert.equal(seatingPage.menuLabel, "Bordplassering");
   assert.equal(seatingPage.path, "/gjest/bryllup-ole-og-kari/bordplassering");
+});
+
+test("buildGuestSiteNavigationEntries appends a published agenda page", () => {
+  const event = ensureEventShape({
+    id: "event-agenda-page",
+    name: "Bryllup Ole og Kari",
+    guestPages: [
+      {
+        id: "page-1",
+        title: "Velkommen",
+        menuLabel: "Velkommen"
+      }
+    ],
+    guestSite: {
+      agendaPage: {
+        isPublished: true,
+        navigationLabel: "Program"
+      }
+    }
+  });
+
+  const entries = buildGuestSiteNavigationEntries(event);
+  const agendaPage = entries.find((entry) => entry.kind === "guest_agenda");
+
+  assert.equal(entries.length, 2);
+  assert.ok(agendaPage);
+  assert.equal(agendaPage.menuLabel, "Program");
+  assert.equal(agendaPage.path, "/gjest/bryllup-ole-og-kari/program");
 });
 
 test("ensureEventShape keeps guest allergies and creates a normalized venue plan", () => {
@@ -219,7 +249,11 @@ test("ensureEventShape normalizes guest page design settings", () => {
     guestSite: {
       introText: "Alt dere trenger å vite før dagen.",
       navigationLabel: "Menyvalg",
-      backgroundImageUrl: "/api/events/event-pages-design/guest-media/bg-1"
+      backgroundImageUrl: "/api/events/event-pages-design/guest-media/bg-1",
+      agendaPage: {
+        isPublished: true,
+        navigationLabel: "Program"
+      }
     },
     guestPages: [
       {
@@ -260,6 +294,8 @@ test("ensureEventShape normalizes guest page design settings", () => {
     event.guestSite.backgroundImageUrl,
     "/api/events/event-pages-design/guest-media/bg-1"
   );
+  assert.equal(event.guestSite.agendaPage.isPublished, true);
+  assert.equal(event.guestSite.agendaPage.navigationLabel, "Program");
 });
 
 test("canViewerSeeGuestPage hides guest-only pages from finance members", () => {

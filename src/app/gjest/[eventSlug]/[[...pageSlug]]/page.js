@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { GuestAgendaPageView } from "@/components/guest-agenda-page-view";
 import { GuestPageContentView } from "@/components/guest-page-content-view";
 import { GuestSeatingPageView } from "@/components/guest-seating-page-view";
 import {
@@ -131,6 +132,8 @@ export default async function GuestSitePage({ params }) {
             <h2>{selectedPage.title}</h2>
             {selectedPage.kind === "venue_seating" ? (
               <GuestSeatingPageView event={normalizedEvent} title={selectedPage.title} />
+            ) : selectedPage.kind === "guest_agenda" ? (
+              <GuestAgendaPageView event={normalizedEvent} title={selectedPage.title} />
             ) : (
               <div
                 className={`guest-site-copy guest-page-font-${selectedPage.fontPreset || "clean"} guest-page-size-${
