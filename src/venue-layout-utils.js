@@ -216,6 +216,25 @@ function normalizeItemShape(type, value) {
   return "rectangle";
 }
 
+function getVenueItemPositionBounds(widthPercent, heightPercent, rotation, shape) {
+  const isRotated = (rotation === 90 || rotation === 270) && shape !== "circle";
+  const footprintWidthPercent = isRotated ? heightPercent : widthPercent;
+  const footprintHeightPercent = isRotated ? widthPercent : heightPercent;
+  const offsetLeftPercent = isRotated ? (widthPercent - heightPercent) / 2 : 0;
+  const offsetTopPercent = isRotated ? (heightPercent - widthPercent) / 2 : 0;
+
+  return {
+    footprintWidthPercent,
+    footprintHeightPercent,
+    offsetLeftPercent,
+    offsetTopPercent,
+    minX: -offsetLeftPercent,
+    maxX: 100 - footprintWidthPercent - offsetLeftPercent,
+    minY: -offsetTopPercent,
+    maxY: 100 - footprintHeightPercent - offsetTopPercent
+  };
+}
+
 function createSeatId(itemId, index) {
   return `${itemId}-seat-${index + 1}`;
 }
@@ -275,14 +294,15 @@ export function createVenueItem(type, index = 0, room = DEFAULT_ROOM) {
   const itemId = `venue-item-${Date.now()}-${Math.round(Math.random() * 100000)}`;
   const widthPercent = metersToPercent(width, room.widthMeters || DEFAULT_ROOM.widthMeters);
   const heightPercent = metersToPercent(height, room.heightMeters || DEFAULT_ROOM.heightMeters);
+  const bounds = getVenueItemPositionBounds(widthPercent, heightPercent, 0, normalizeItemShape(entry.type, entry.defaultShape));
 
   return {
     id: itemId,
     type: entry.type,
     label: buildDefaultItemLabel(normalizedType, index),
     note: "",
-    x: clamp(12 + index * 4, 0, Math.max(0, 100 - widthPercent)),
-    y: clamp(12 + index * 4, 0, Math.max(0, 100 - heightPercent)),
+    x: clamp(12 + index * 4, bounds.minX, bounds.maxX),
+    y: clamp(12 + index * 4, bounds.minY, bounds.maxY),
     width,
     height,
     widthMeters: width,
@@ -316,13 +336,13 @@ function normalizeVenueItem(item, index = 0, room = DEFAULT_ROOM) {
     Math.max(0.4, room.heightMeters)
   );
   const shape = normalizeItemShape(entry.type, safeItem.shape);
+  const rotation = normalizeRotation(safeItem.rotation);
   const width = shape === "circle" ? Math.min(rawWidth, rawHeight) : rawWidth;
   const height = shape === "circle" ? Math.min(rawWidth, rawHeight) : rawHeight;
   const seatCount = normalizeSeatCount(entry.type, safeItem.seatCount);
   const widthPercent = metersToPercent(width, room.widthMeters);
   const heightPercent = metersToPercent(height, room.heightMeters);
-  const maxX = Math.max(0, 100 - widthPercent);
-  const maxY = Math.max(0, 100 - heightPercent);
+  const bounds = getVenueItemPositionBounds(widthPercent, heightPercent, rotation, shape);
 
   return {
     id: itemId,
@@ -332,15 +352,15 @@ function normalizeVenueItem(item, index = 0, room = DEFAULT_ROOM) {
         ? rawLabel
         : buildDefaultItemLabel(entry.type, index),
     note: typeof safeItem.note === "string" ? safeItem.note.trim() : "",
-    x: clamp(parseNumber(safeItem.x, 10), 0, maxX),
-    y: clamp(parseNumber(safeItem.y, 10), 0, maxY),
+    x: clamp(parseNumber(safeItem.x, 10), bounds.minX, bounds.maxX),
+    y: clamp(parseNumber(safeItem.y, 10), bounds.minY, bounds.maxY),
     width,
     height,
     widthMeters: width,
     heightMeters: height,
     widthPercent,
     heightPercent,
-    rotation: normalizeRotation(safeItem.rotation),
+    rotation,
     shape,
     seatCount,
     seats: normalizeSeats(itemId, entry.type, safeItem.seats, seatCount),

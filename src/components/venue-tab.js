@@ -163,6 +163,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   const [seatDrag, setSeatDrag] = useState(null);
   const planDraftRef = useRef(planDraft);
   const canvasRef = useRef(null);
+  const shellRef = useRef(null);
   const isRoomMode = venueMode === "room";
   const isGuestMode = venueMode === "guest";
   const canEditLayout = canManageVenue && isRoomMode;
@@ -264,26 +265,73 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     });
   }
 
+  function getCanvasPointerPosition(clientX, clientY) {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return null;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+
+    if (!rect.width || !rect.height) {
+      return null;
+    }
+
+    return {
+      xPercent: ((clientX - rect.left) / rect.width) * 100,
+      yPercent: ((clientY - rect.top) / rect.height) * 100
+    };
+  }
+
+  function autoScrollVenueShell(clientX, clientY) {
+    const shell = shellRef.current;
+
+    if (!shell) {
+      return;
+    }
+
+    const rect = shell.getBoundingClientRect();
+    const threshold = 56;
+    const step = 28;
+    let nextScrollLeft = shell.scrollLeft;
+    let nextScrollTop = shell.scrollTop;
+
+    if (clientX < rect.left + threshold) {
+      nextScrollLeft -= step;
+    } else if (clientX > rect.right - threshold) {
+      nextScrollLeft += step;
+    }
+
+    if (clientY < rect.top + threshold) {
+      nextScrollTop -= step;
+    } else if (clientY > rect.bottom - threshold) {
+      nextScrollTop += step;
+    }
+
+    if (nextScrollLeft !== shell.scrollLeft || nextScrollTop !== shell.scrollTop) {
+      shell.scrollTo({
+        left: nextScrollLeft,
+        top: nextScrollTop
+      });
+    }
+  }
+
   useEffect(() => {
     if (!itemDrag || !canMoveVenueItems) {
       return undefined;
     }
 
     function handlePointerMove(eventObject) {
-      const canvas = canvasRef.current;
+      autoScrollVenueShell(eventObject.clientX, eventObject.clientY);
+      const pointerPosition = getCanvasPointerPosition(eventObject.clientX, eventObject.clientY);
 
-      if (!canvas) {
+      if (!pointerPosition) {
         return;
       }
 
-      const rect = canvas.getBoundingClientRect();
-
-      if (!rect.width || !rect.height) {
-        return;
-      }
-
-      const deltaXPercent = ((eventObject.clientX - itemDrag.startClientX) / rect.width) * 100;
-      const deltaYPercent = ((eventObject.clientY - itemDrag.startClientY) / rect.height) * 100;
+      const deltaXPercent = pointerPosition.xPercent - itemDrag.startPointerXPercent;
+      const deltaYPercent = pointerPosition.yPercent - itemDrag.startPointerYPercent;
 
       applyPreviewPlan((currentPlan) =>
         updateVenueItemInPlan(currentPlan, itemDrag.itemId, {
@@ -320,20 +368,17 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     }
 
     function handlePointerMove(eventObject) {
-      const canvas = canvasRef.current;
+      autoScrollVenueShell(eventObject.clientX, eventObject.clientY);
+      const pointerPosition = getCanvasPointerPosition(eventObject.clientX, eventObject.clientY);
 
-      if (!canvas) {
+      if (!pointerPosition) {
         return;
       }
 
-      const rect = canvas.getBoundingClientRect();
-
-      if (!rect.width || !rect.height) {
-        return;
-      }
-
-      const deltaWidthMeters = ((eventObject.clientX - resizeDrag.startClientX) / rect.width) * roomWidthMeters;
-      const deltaHeightMeters = ((eventObject.clientY - resizeDrag.startClientY) / rect.height) * roomHeightMeters;
+      const deltaWidthMeters =
+        ((pointerPosition.xPercent - resizeDrag.startPointerXPercent) / 100) * roomWidthMeters;
+      const deltaHeightMeters =
+        ((pointerPosition.yPercent - resizeDrag.startPointerYPercent) / 100) * roomHeightMeters;
       const { widthDelta, heightDelta } = mapResizeDeltaByRotation(
         resizeDrag.rotation,
         deltaWidthMeters,
@@ -375,20 +420,15 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     }
 
     function handlePointerMove(eventObject) {
-      const canvas = canvasRef.current;
+      autoScrollVenueShell(eventObject.clientX, eventObject.clientY);
+      const pointerPosition = getCanvasPointerPosition(eventObject.clientX, eventObject.clientY);
 
-      if (!canvas) {
+      if (!pointerPosition) {
         return;
       }
 
-      const rect = canvas.getBoundingClientRect();
-
-      if (!rect.width || !rect.height) {
-        return;
-      }
-
-      const deltaXPercent = ((eventObject.clientX - seatDrag.startClientX) / rect.width) * 100;
-      const deltaYPercent = ((eventObject.clientY - seatDrag.startClientY) / rect.height) * 100;
+      const deltaXPercent = pointerPosition.xPercent - seatDrag.startPointerXPercent;
+      const deltaYPercent = pointerPosition.yPercent - seatDrag.startPointerYPercent;
 
       applyPreviewPlan((currentPlan) =>
         updateVenueSeatOffsetInPlan(
@@ -978,7 +1018,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
               </p>
             </div>
           </div>
-          <div className="venue-room-shell">
+          <div className="venue-room-shell" ref={shellRef}>
             <div className="venue-room-scale-surface" style={canvasScaleStyle}>
               <div className="venue-room-stage" ref={canvasRef} style={roomStyle}>
                 <div className="venue-room-grid" style={gridStyle}>
@@ -1020,11 +1060,21 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                         return;
                       }
 
+                      const pointerPosition = getCanvasPointerPosition(
+                        eventObject.clientX,
+                        eventObject.clientY
+                      );
+
+                      if (!pointerPosition) {
+                        return;
+                      }
+
+                      eventObject.preventDefault();
                       setSelectedItemId(item.id);
                       setItemDrag({
                         itemId: item.id,
-                        startClientX: eventObject.clientX,
-                        startClientY: eventObject.clientY,
+                        startPointerXPercent: pointerPosition.xPercent,
+                        startPointerYPercent: pointerPosition.yPercent,
                         startX: item.x,
                         startY: item.y,
                         initialPlan: planDraftRef.current
@@ -1038,10 +1088,20 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                         onClick={(eventObject) => eventObject.stopPropagation()}
                         onPointerDown={(eventObject) => {
                           eventObject.stopPropagation();
+                          const pointerPosition = getCanvasPointerPosition(
+                            eventObject.clientX,
+                            eventObject.clientY
+                          );
+
+                          if (!pointerPosition) {
+                            return;
+                          }
+
+                          eventObject.preventDefault();
                           setResizeDrag({
                             itemId: item.id,
-                            startClientX: eventObject.clientX,
-                            startClientY: eventObject.clientY,
+                            startPointerXPercent: pointerPosition.xPercent,
+                            startPointerYPercent: pointerPosition.yPercent,
                             startWidth: item.widthMeters || item.width,
                             startHeight: item.heightMeters || item.height,
                             rotation: item.rotation,
@@ -1102,20 +1162,29 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                               setSelectedItemId(item.id);
                             }}
                             onPointerDown={(eventObject) => {
-                              if (!canEditLayout || !seatAdjustMode || selectedItem?.id !== item.id) {
-                                return;
-                              }
+                            if (!canEditLayout || !seatAdjustMode || selectedItem?.id !== item.id) {
+                              return;
+                            }
 
-                              eventObject.preventDefault();
-                              eventObject.stopPropagation();
-                              setSeatDrag({
-                                itemId: item.id,
-                                seatId: seat.id,
-                                startClientX: eventObject.clientX,
-                                startClientY: eventObject.clientY,
-                                startOffsetX: seat.offsetX || 0,
-                                startOffsetY: seat.offsetY || 0,
-                                initialPlan: planDraftRef.current
+                            const pointerPosition = getCanvasPointerPosition(
+                              eventObject.clientX,
+                              eventObject.clientY
+                            );
+
+                            if (!pointerPosition) {
+                              return;
+                            }
+
+                            eventObject.preventDefault();
+                            eventObject.stopPropagation();
+                            setSeatDrag({
+                              itemId: item.id,
+                              seatId: seat.id,
+                              startPointerXPercent: pointerPosition.xPercent,
+                              startPointerYPercent: pointerPosition.yPercent,
+                              startOffsetX: seat.offsetX || 0,
+                              startOffsetY: seat.offsetY || 0,
+                              initialPlan: planDraftRef.current
                               });
                             }}
                             onDragEnd={() => setDraggedGuestId("")}

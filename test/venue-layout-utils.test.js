@@ -126,6 +126,52 @@ test("updateVenueItemInPlan keeps using the current room dimensions when resizin
   assert.ok(Math.abs(updated.items[0].heightPercent - 16.666666666666664) < 0.0001);
 });
 
+test("rotated venue items can use the full visual footprint near room edges", () => {
+  const plan = normalizeVenuePlan({
+    room: {
+      name: "Festsal",
+      widthMeters: 10,
+      heightMeters: 10
+    },
+    items: [
+      {
+        id: "table-rotated",
+        type: "long_table",
+        widthMeters: 4,
+        heightMeters: 1,
+        rotation: 90,
+        x: 90,
+        y: 90
+      }
+    ]
+  });
+
+  assert.equal(plan.items[0].x, 75);
+  assert.equal(plan.items[0].y, 75);
+
+  const movedToLeftEdge = normalizeVenuePlan({
+    room: {
+      name: "Festsal",
+      widthMeters: 10,
+      heightMeters: 10
+    },
+    items: [
+      {
+        id: "table-rotated-left",
+        type: "long_table",
+        widthMeters: 4,
+        heightMeters: 1,
+        rotation: 90,
+        x: -90,
+        y: -90
+      }
+    ]
+  });
+
+  assert.equal(movedToLeftEdge.items[0].x, -15);
+  assert.equal(movedToLeftEdge.items[0].y, 15);
+});
+
 test("restroom is available as a non-seatable venue item", () => {
   const restroom = createVenueItem("restroom", 0);
   const plan = normalizeVenuePlan({
