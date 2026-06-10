@@ -5,6 +5,11 @@ const DEFAULT_ROOM = {
   notes: ""
 };
 
+const DEFAULT_GUEST_SEATING_PAGE = {
+  isPublished: false,
+  navigationLabel: "Sitteplan"
+};
+
 const DEFAULT_ITEM_ORDER = [
   "round_table",
   "long_table",
@@ -145,6 +150,15 @@ function clamp(value, min, max) {
 function parseNumber(value, fallback) {
   const numeric = typeof value === "number" ? value : Number.parseFloat(String(value || ""));
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function normalizeBooleanFlag(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "on";
 }
 
 function metersToPercent(valueMeters, roomMeters) {
@@ -337,6 +351,10 @@ function normalizeVenueItem(item, index = 0, room = DEFAULT_ROOM) {
 export function normalizeVenuePlan(plan) {
   const safePlan = plan && typeof plan === "object" ? plan : {};
   const room = safePlan.room && typeof safePlan.room === "object" ? safePlan.room : {};
+  const guestSeatingPage =
+    safePlan.guestSeatingPage && typeof safePlan.guestSeatingPage === "object"
+      ? safePlan.guestSeatingPage
+      : {};
   const normalizedRoom = {
     name: typeof room.name === "string" && room.name.trim() ? room.name.trim() : DEFAULT_ROOM.name,
     widthMeters: clamp(parseNumber(room.widthMeters, DEFAULT_ROOM.widthMeters), 4, 120),
@@ -349,7 +367,14 @@ export function normalizeVenuePlan(plan) {
 
   return {
     room: normalizedRoom,
-    items
+    items,
+    guestSeatingPage: {
+      isPublished: normalizeBooleanFlag(guestSeatingPage.isPublished),
+      navigationLabel:
+        typeof guestSeatingPage.navigationLabel === "string" && guestSeatingPage.navigationLabel.trim()
+          ? guestSeatingPage.navigationLabel.trim()
+          : DEFAULT_GUEST_SEATING_PAGE.navigationLabel
+    }
   };
 }
 

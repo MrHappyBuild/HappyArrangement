@@ -456,6 +456,18 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
         widthMeters: Number(formData.get("widthMeters") || previousPlan.room.widthMeters),
         heightMeters: Number(formData.get("heightMeters") || previousPlan.room.heightMeters),
         notes: String(formData.get("notes") || "").trim()
+      },
+      guestSeatingPage: {
+        ...(previousPlan.guestSeatingPage && typeof previousPlan.guestSeatingPage === "object"
+          ? previousPlan.guestSeatingPage
+          : {}),
+        isPublished: formData.has("publishGuestSeatingPage"),
+        navigationLabel:
+          String(
+            formData.get("guestSeatingPageNavigationLabel") ||
+              previousPlan.guestSeatingPage?.navigationLabel ||
+              "Sitteplan"
+          ).trim() || "Sitteplan"
       }
     };
 
@@ -728,7 +740,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
             </div>
             <form
               className="stack"
-              key={`${event.id}-${venueState.venuePlan.room.name}-${venueState.venuePlan.room.widthMeters}-${venueState.venuePlan.room.heightMeters}-${venueState.venuePlan.room.notes}`}
+              key={`${event.id}-${venueState.venuePlan.room.name}-${venueState.venuePlan.room.widthMeters}-${venueState.venuePlan.room.heightMeters}-${venueState.venuePlan.room.notes}-${venueState.venuePlan.guestSeatingPage?.isPublished}-${venueState.venuePlan.guestSeatingPage?.navigationLabel}`}
               onSubmit={handleSaveRoom}
             >
               <div className="compact-grid">
@@ -774,6 +786,30 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                   name="notes"
                   placeholder="F.eks. hvor gavebordet skal sta, hvor serveringen skal ut, eller om en vegg maa holdes fri."
                   rows={4}
+                />
+              </label>
+              <div className="notice">
+                <strong>På gjestenettsiden</strong>
+                <p>
+                  Kryss av hvis sitteplanen skal publiseres som en egen side på gjestenettsiden, med søk på navn og oversikt over bordplasseringer.
+                </p>
+              </div>
+              <label className="field checkbox-field">
+                <span>Publiser sitteplan på gjestenettsiden</span>
+                <input
+                  defaultChecked={Boolean(venueState.venuePlan.guestSeatingPage?.isPublished)}
+                  disabled={!canManageVenue}
+                  name="publishGuestSeatingPage"
+                  type="checkbox"
+                />
+              </label>
+              <label className="field">
+                <span>Navn på siden</span>
+                <input
+                  defaultValue={venueState.venuePlan.guestSeatingPage?.navigationLabel || "Sitteplan"}
+                  disabled={!canManageVenue}
+                  name="guestSeatingPageNavigationLabel"
+                  placeholder="F.eks. Sitteplan eller Bordplassering"
                 />
               </label>
               {canManageVenue ? (

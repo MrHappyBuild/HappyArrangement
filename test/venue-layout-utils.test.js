@@ -31,9 +31,28 @@ test("normalizeVenuePlan creates sane defaults for room and seats", () => {
   assert.equal(plan.room.name, "Hovedsal");
   assert.equal(plan.room.widthMeters, 4);
   assert.equal(plan.room.heightMeters, 100);
+  assert.equal(plan.guestSeatingPage.isPublished, false);
+  assert.equal(plan.guestSeatingPage.navigationLabel, "Sitteplan");
   assert.equal(plan.items[0].seatCount, 4);
   assert.equal(plan.items[0].seats.length, 4);
   assert.equal(plan.items[0].seats[0].label, "Plass 1");
+});
+
+test("normalizeVenuePlan keeps guest seating page publishing settings", () => {
+  const plan = normalizeVenuePlan({
+    room: {
+      name: "Hovedsal",
+      widthMeters: 12,
+      heightMeters: 8
+    },
+    guestSeatingPage: {
+      isPublished: true,
+      navigationLabel: "Bordplassering"
+    }
+  });
+
+  assert.equal(plan.guestSeatingPage.isPublished, true);
+  assert.equal(plan.guestSeatingPage.navigationLabel, "Bordplassering");
 });
 
 test("custom zone keeps editable shape information", () => {

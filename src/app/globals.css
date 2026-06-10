@@ -2401,13 +2401,15 @@ p {
 .guest-site-shell {
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   align-items: start;
 }
 
 .guest-site-sidebar {
   display: grid;
   gap: 16px;
+  width: 280px;
+  max-width: 100%;
   padding: 18px;
   border-radius: 24px;
   border: 1px solid rgba(91, 59, 18, 0.1);
@@ -2554,6 +2556,12 @@ p {
   align-items: stretch;
 }
 
+.guest-site-public-shell .guest-site-sidebar {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+}
+
 .guest-site-public-preview {
   min-height: 100%;
 }
@@ -2573,6 +2581,211 @@ p {
   font-size: 0.8rem;
 }
 
+.guest-seating-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.guest-seating-toolbar {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  align-items: end;
+}
+
+.guest-seating-search {
+  min-width: 0;
+}
+
+.guest-seating-search-results {
+  display: grid;
+  gap: 10px;
+}
+
+.guest-seating-search-card {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(36, 95, 82, 0.14);
+  background: rgba(36, 95, 82, 0.08);
+}
+
+.guest-seating-search-card span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.guest-seating-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.guest-seating-map-card,
+.guest-seating-table-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 252, 247, 0.88);
+}
+
+.guest-seating-map-head,
+.guest-seating-table-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.guest-seating-map-head span,
+.guest-seating-table-head span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.guest-seating-map-shell {
+  padding: 14px;
+  border-radius: 24px;
+  border: 1px solid rgba(91, 59, 18, 0.08);
+  background: rgba(255, 250, 242, 0.9);
+}
+
+.guest-seating-map {
+  position: relative;
+  width: 100%;
+  min-height: 360px;
+  border-radius: 22px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 242, 0.92)),
+    repeating-linear-gradient(
+      0deg,
+      rgba(91, 59, 18, 0.04),
+      rgba(91, 59, 18, 0.04) 1px,
+      transparent 1px,
+      transparent 36px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(91, 59, 18, 0.04),
+      rgba(91, 59, 18, 0.04) 1px,
+      transparent 1px,
+      transparent 36px
+    );
+}
+
+.guest-seating-map-grid {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(91, 59, 18, 0.08);
+  pointer-events: none;
+}
+
+.guest-seating-item {
+  position: absolute;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 10px;
+  border: 1px solid rgba(91, 59, 18, 0.14);
+  background: rgba(255, 253, 248, 0.92);
+  box-shadow: 0 10px 24px rgba(91, 59, 18, 0.08);
+  overflow: visible;
+}
+
+.guest-seating-item.is-highlighted,
+.guest-seating-table-card.is-highlighted {
+  border-color: rgba(36, 95, 82, 0.3);
+  box-shadow: 0 0 0 2px rgba(36, 95, 82, 0.14);
+}
+
+.guest-seating-shape-circle {
+  border-radius: 999px;
+}
+
+.guest-seating-shape-oval {
+  border-radius: 999px;
+}
+
+.guest-seating-shape-rectangle {
+  border-radius: 20px;
+}
+
+.guest-seating-item-label {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.guest-seating-item-label strong {
+  font-size: 0.86rem;
+}
+
+.guest-seating-item-label span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.guest-seating-item-seat-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.guest-seating-seat-dot {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(36, 95, 82, 0.1);
+  color: #245f52;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.guest-seating-seat-dot.is-overflow {
+  background: rgba(91, 59, 18, 0.1);
+  color: var(--muted);
+}
+
+.guest-seating-table-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.guest-seating-guest-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guest-seating-guest-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 250, 242, 0.78);
+}
+
+.guest-seating-guest-list li span {
+  min-width: 0;
+}
+
+.guest-seating-guest-list li strong {
+  white-space: nowrap;
+}
+
 @media (max-width: 860px) {
   .guest-site-public-link-card {
     grid-template-columns: 1fr;
@@ -2580,6 +2793,10 @@ p {
 
   .guest-site-public-link-qr {
     width: 100%;
+  }
+
+  .guest-seating-toolbar {
+    grid-template-columns: 1fr;
   }
 
   .person-list-header {
@@ -3503,6 +3720,12 @@ p {
 
   .guest-site-shell {
     grid-template-columns: 1fr;
+  }
+
+  .guest-site-sidebar,
+  .guest-site-public-shell .guest-site-sidebar {
+    position: static;
+    width: auto;
   }
 
   .venue-planner-grid {

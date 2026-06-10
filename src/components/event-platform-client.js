@@ -5,6 +5,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardClient } from "@/components/dashboard-client";
 import { GuestPageContentView } from "@/components/guest-page-content-view";
+import { GuestSeatingPageView } from "@/components/guest-seating-page-view";
 import { GuestSiteLinksPanel } from "@/components/guest-site-links-panel";
 import { VenueTab } from "@/components/venue-tab";
 import {
@@ -18,7 +19,7 @@ import {
   TASK_STATUS_OPTIONS,
   buildApprovalSummary,
   buildGuestSiteBasePath,
-  buildGuestSitePagePath,
+  buildGuestSiteNavigationEntries,
   canViewerSeeGuestPage,
   buildEventFinanceSummary,
   buildAgendaHighlights,
@@ -394,11 +395,12 @@ function GuestTab({
   onUpdatePerson
 }) {
   const templateList = templateOptions();
-  const visiblePages = useMemo(
-    () =>
-      event.guestPages.filter((page) => canViewerSeeGuestPage(page, viewerAccess, viewerPerson)),
-    [event.guestPages, viewerAccess, viewerPerson]
-  );
+  const visiblePages = useMemo(() => {
+    const navigationEntries = buildGuestSiteNavigationEntries(event);
+    return navigationEntries.filter((page) =>
+      page.kind === "venue_seating" ? true : canViewerSeeGuestPage(page, viewerAccess, viewerPerson)
+    );
+  }, [event, viewerAccess, viewerPerson]);
   const [selectedPageId, setSelectedPageId] = useState(visiblePages[0]?.id || "");
   const [draftPage, setDraftPage] = useState(null);
   const [mediaStatus, setMediaStatus] = useState("");
@@ -427,27 +429,20 @@ function GuestTab({
     () => [{ value: "", label: "Behold vekt" }, ...GUEST_PAGE_TEXT_WEIGHT_OPTIONS],
     []
   );
-  const selectedPage =
-    visiblePages.find((page) => page.id === selectedPageId) || visiblePages[0] || null;
+  const selectedPage = visiblePages.find((page) => page.id === selectedPageId) || visiblePages[0] || null;
+  const isVenueSeatingPage = selectedPage?.kind === "venue_seating";
+  const editablePage = !isVenueSeatingPage ? selectedPage : null;
   const previewPage =
-    viewerAccess.canManageGuest && draftPage && selectedPage
-      ? { ...selectedPage, ...draftPage }
-      : selectedPage;
+    viewerAccess.canManageGuest && draftPage && editablePage ? { ...editablePage, ...draftPage } : editablePage;
   const guestSiteBasePath = useMemo(() => buildGuestSiteBasePath(event), [event]);
   const guestSiteBaseUrl = guestSiteOrigin ? `${guestSiteOrigin}${guestSiteBasePath}` : guestSiteBasePath;
   const guestPageLinks = useMemo(
     () =>
-      event.guestPages.map((page, index) => {
-        const path =
-          index === 0 ? guestSiteBasePath : buildGuestSitePagePath(event, page);
-
-        return {
-          ...page,
-          path,
-          url: guestSiteOrigin ? `${guestSiteOrigin}${path}` : path
-        };
-      }),
-    [event, guestSiteBasePath, guestSiteOrigin]
+      buildGuestSiteNavigationEntries(event).map((page) => ({
+        ...page,
+        url: guestSiteOrigin ? `${guestSiteOrigin}${page.path}` : page.path
+      })),
+    [event, guestSiteOrigin]
   );
 
   useEffect(() => {
@@ -468,7 +463,7 @@ function GuestTab({
   }, [event.guestSite?.introText, event.guestSite?.navigationLabel, event.id]);
 
   useEffect(() => {
-    if (!selectedPage) {
+    if (!editablePage) {
       setDraftPage(null);
       setMediaStatus("");
       setInlineStyleStatus("");
@@ -477,19 +472,19 @@ function GuestTab({
     }
 
     setDraftPage({
-      title: selectedPage.title || "",
-      menuLabel: selectedPage.menuLabel || "",
-      visibility: selectedPage.visibility || "open",
-      fontPreset: selectedPage.fontPreset || "clean",
-      textSize: selectedPage.textSize || "md",
-      textWeight: selectedPage.textWeight || "regular",
-      showImageCaption: Boolean(selectedPage.showImageCaption),
-      content: selectedPage.content || ""
+      title: editablePage.title || "",
+      menuLabel: editablePage.menuLabel || "",
+      visibility: editablePage.visibility || "open",
+      fontPreset: editablePage.fontPreset || "clean",
+      textSize: editablePage.textSize || "md",
+      textWeight: editablePage.textWeight || "regular",
+      showImageCaption: Boolean(editablePage.showImageCaption),
+      content: editablePage.content || ""
     });
     setMediaStatus("");
     setInlineStyleStatus("");
     setTextSelection({ start: 0, end: 0 });
-  }, [selectedPage]);
+  }, [editablePage]);
 
   function replaceGuestPageTextSelection(nextValue, selectionStart, selectionEnd) {
     setDraftPage((currentDraft) =>
@@ -584,7 +579,7 @@ function GuestTab({
   async function handleGuestPageMediaUpload(eventObject) {
     const file = eventObject.currentTarget.files?.[0];
 
-    if (!file || !selectedPage || !viewerAccess.canManageGuest) {
+    if (!file || !editablePage || !viewerAccess.canManageGuest) {
       return;
     }
 
@@ -680,7 +675,7 @@ function GuestTab({
                   >
                     <strong>{page.menuLabel || page.title}</strong>
                     <span>{page.title}</span>
-                    {viewerAccess.canManageGuest ? (
+                    {viewerAccess.canManageGuest && page.kind !== "venue_seating" ? (
                       <small className="guest-page-visibility-badge">
                         {getGuestPageVisibilityLabel(page.visibility)}
                       </small>
@@ -716,9 +711,8 @@ function GuestTab({
             {selectedPage ? (
               <>
                 <article className="guest-site-preview">
-                  <p className="eyebrow">For gjestene</p>
                   <h2>{previewPage?.title || selectedPage.title}</h2>
-                  {viewerAccess.canManageGuest ? (
+                  {viewerAccess.canManageGuest && !isVenueSeatingPage ? (
                     <div className="guest-page-settings-summary">
                       <p className="guest-page-visibility-note">
                         Synlighet: {getGuestPageVisibilityLabel(previewPage?.visibility || selectedPage.visibility)}
@@ -737,19 +731,23 @@ function GuestTab({
                       </p>
                     </div>
                   ) : null}
-                  <div
-                    className={`guest-site-copy guest-page-font-${previewPage?.fontPreset || "clean"} guest-page-size-${
-                      previewPage?.textSize || "md"
-                    } guest-page-weight-${previewPage?.textWeight || "regular"}`}
-                  >
-                    <GuestPageContentView
-                      content={previewPage?.content || ""}
-                      showImageCaption={Boolean(previewPage?.showImageCaption)}
-                    />
-                  </div>
+                  {isVenueSeatingPage ? (
+                    <GuestSeatingPageView event={event} title={selectedPage.title} />
+                  ) : (
+                    <div
+                      className={`guest-site-copy guest-page-font-${previewPage?.fontPreset || "clean"} guest-page-size-${
+                        previewPage?.textSize || "md"
+                      } guest-page-weight-${previewPage?.textWeight || "regular"}`}
+                    >
+                      <GuestPageContentView
+                        content={previewPage?.content || ""}
+                        showImageCaption={Boolean(previewPage?.showImageCaption)}
+                      />
+                    </div>
+                  )}
                 </article>
 
-                {viewerAccess.canManageGuest ? (
+                {viewerAccess.canManageGuest && !isVenueSeatingPage ? (
                   <form
                     className="panel stack guest-page-editor"
                     key={selectedPage.id}
@@ -1042,6 +1040,24 @@ function GuestTab({
                       Lagre side
                     </button>
                   </form>
+                ) : null}
+                {viewerAccess.canManageGuest && isVenueSeatingPage ? (
+                  <section className="panel stack guest-page-editor">
+                    <div className="panel-header-inline">
+                      <div>
+                        <h3>Sitteplansiden styres fra lokaleplanen</h3>
+                        <p className="muted">
+                          Gå til <strong>Lokale</strong> og slå av/på publisering der. Her vises siden bare som forhåndsvisning sammen med resten av gjestenettsiden.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="notice">
+                      <strong>Ingen ekstra gjesteinformasjon deles</strong>
+                      <p>
+                        Denne siden viser bare navn, bord og plasseringer, samt søk på navn for å finne riktig bord.
+                      </p>
+                    </div>
+                  </section>
                 ) : null}
               </>
             ) : (

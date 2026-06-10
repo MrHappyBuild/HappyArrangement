@@ -4,16 +4,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { GuestPageContentView } from "@/components/guest-page-content-view";
+import { GuestSeatingPageView } from "@/components/guest-seating-page-view";
 import {
   buildGuestSiteBasePath,
-  buildGuestSitePagePath,
+  buildGuestSiteNavigationEntries,
   ensureEventShape
 } from "@/event-platform-utils";
 import { getEventBySlug } from "@/lib/local-store";
 
 function visibleGuestPages(event) {
   const normalized = ensureEventShape(event);
-  return Array.isArray(normalized.guestPages) ? normalized.guestPages : [];
+  return buildGuestSiteNavigationEntries(normalized);
 }
 
 export default async function GuestSitePage({ params }) {
@@ -64,7 +65,7 @@ export default async function GuestSitePage({ params }) {
             <p className="eyebrow">{navigationLabel}</p>
             <nav className="guest-site-menu">
               {pages.map((page, index) => {
-                const href = index === 0 ? basePath : buildGuestSitePagePath(normalizedEvent, page);
+                const href = page.path || (index === 0 ? basePath : basePath);
 
                 return (
                   <Link
@@ -110,16 +111,20 @@ export default async function GuestSitePage({ params }) {
         <div className="guest-site-stage stack">
           <article className="guest-site-preview guest-site-public-preview">
             <h2>{selectedPage.title}</h2>
-            <div
-              className={`guest-site-copy guest-page-font-${selectedPage.fontPreset || "clean"} guest-page-size-${
-                selectedPage.textSize || "md"
-              } guest-page-weight-${selectedPage.textWeight || "regular"}`}
-            >
-              <GuestPageContentView
-                content={selectedPage.content || ""}
-                showImageCaption={Boolean(selectedPage.showImageCaption)}
-              />
-            </div>
+            {selectedPage.kind === "venue_seating" ? (
+              <GuestSeatingPageView event={normalizedEvent} title={selectedPage.title} />
+            ) : (
+              <div
+                className={`guest-site-copy guest-page-font-${selectedPage.fontPreset || "clean"} guest-page-size-${
+                  selectedPage.textSize || "md"
+                } guest-page-weight-${selectedPage.textWeight || "regular"}`}
+              >
+                <GuestPageContentView
+                  content={selectedPage.content || ""}
+                  showImageCaption={Boolean(selectedPage.showImageCaption)}
+                />
+              </div>
+            )}
           </article>
         </div>
       </section>

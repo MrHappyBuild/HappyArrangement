@@ -145,6 +145,10 @@ const DEFAULT_GUEST_SITE = {
   introText: "",
   navigationLabel: "Navigasjon"
 };
+const DEFAULT_GUEST_SEATING_PAGE = {
+  isPublished: false,
+  navigationLabel: "Sitteplan"
+};
 
 const DEFAULT_TASK_DURATION_MINUTES = 60;
 const DEFAULT_GUEST_PAGE_ID = "guest-page-default";
@@ -711,6 +715,39 @@ export function buildGuestSitePagePath(eventOrSlug, pageOrSlug) {
       : slugifySegment(pageOrSlug?.slug || pageOrSlug?.menuLabel || pageOrSlug?.title, "side");
 
   return `${basePath}/${pageSlug}`;
+}
+
+export function buildGuestSiteNavigationEntries(event) {
+  const normalizedEvent = ensureEventShape(event);
+  const basePath = buildGuestSiteBasePath(normalizedEvent);
+  const guestPages = Array.isArray(normalizedEvent.guestPages) ? normalizedEvent.guestPages : [];
+  const entries = guestPages.map((page, index) => ({
+    ...page,
+    kind: "content_page",
+    path: index === 0 ? basePath : buildGuestSitePagePath(normalizedEvent, page)
+  }));
+  const guestSeatingPage = normalizedEvent.venuePlan?.guestSeatingPage || DEFAULT_GUEST_SEATING_PAGE;
+
+  if (guestSeatingPage.isPublished) {
+    const usedSlugs = new Set(guestPages.map((page) => page.slug));
+    const seatingSlug = ensureUniqueSlug(
+      guestSeatingPage.navigationLabel || DEFAULT_GUEST_SEATING_PAGE.navigationLabel,
+      usedSlugs,
+      "sitteplan"
+    );
+
+    entries.push({
+      id: "guest-page-venue-seating",
+      kind: "venue_seating",
+      title: guestSeatingPage.navigationLabel || DEFAULT_GUEST_SEATING_PAGE.navigationLabel,
+      menuLabel: guestSeatingPage.navigationLabel || DEFAULT_GUEST_SEATING_PAGE.navigationLabel,
+      slug: seatingSlug,
+      visibility: "open",
+      path: buildGuestSitePagePath(normalizedEvent, seatingSlug)
+    });
+  }
+
+  return entries;
 }
 
 export function buildViewerAccess(person) {

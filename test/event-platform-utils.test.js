@@ -5,6 +5,7 @@ import {
   buildAgendaHighlights,
   buildEventFinanceSummary,
   buildGuestSiteBasePath,
+  buildGuestSiteNavigationEntries,
   buildGuestSitePagePath,
   buildProjectDashboard,
   buildProjectHierarchy,
@@ -84,6 +85,34 @@ test("ensureEventShape creates unique guest page slugs and public paths", () => 
     buildGuestSitePagePath(event, event.guestPages[1]),
     "/gjest/bryllup-ole-og-kari/program-2"
   );
+});
+
+test("buildGuestSiteNavigationEntries appends a published seating plan page", () => {
+  const event = ensureEventShape({
+    id: "event-seating-page",
+    name: "Bryllup Ole og Kari",
+    guestPages: [
+      {
+        id: "page-1",
+        title: "Velkommen",
+        menuLabel: "Velkommen"
+      }
+    ],
+    venuePlan: {
+      guestSeatingPage: {
+        isPublished: true,
+        navigationLabel: "Bordplassering"
+      }
+    }
+  });
+
+  const entries = buildGuestSiteNavigationEntries(event);
+  const seatingPage = entries.find((entry) => entry.kind === "venue_seating");
+
+  assert.equal(entries.length, 2);
+  assert.ok(seatingPage);
+  assert.equal(seatingPage.menuLabel, "Bordplassering");
+  assert.equal(seatingPage.path, "/gjest/bryllup-ole-og-kari/bordplassering");
 });
 
 test("ensureEventShape keeps guest allergies and creates a normalized venue plan", () => {
