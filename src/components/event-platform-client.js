@@ -235,16 +235,29 @@ function getRsvpLabel(value) {
 
 function buildGuestSiteBackgroundStyle(backgroundImageUrl) {
   if (!backgroundImageUrl) {
-    return undefined;
+    return {
+      frameStyle: undefined,
+      shellStyle: undefined
+    };
   }
 
   return {
-    backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat",
-    padding: "18px",
-    borderRadius: "32px"
+    frameStyle: {
+      backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      padding: "18px",
+      borderRadius: "32px"
+    },
+    shellStyle: {
+      backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      padding: "18px",
+      borderRadius: "32px"
+    }
   };
 }
 
@@ -497,6 +510,7 @@ function GuestTab({
   const [guestSiteIntroDraft, setGuestSiteIntroDraft] = useState("");
   const [guestSiteNavigationLabelDraft, setGuestSiteNavigationLabelDraft] = useState("Navigasjon");
   const [guestSiteBackgroundImageUrlDraft, setGuestSiteBackgroundImageUrlDraft] = useState("");
+  const [guestSiteBackgroundModeDraft, setGuestSiteBackgroundModeDraft] = useState("shell");
   const [guestSiteBackgroundStatus, setGuestSiteBackgroundStatus] = useState("");
   const [isUploadingGuestSiteBackground, setIsUploadingGuestSiteBackground] = useState(false);
   const [openRoleId, setOpenRoleId] = useState("");
@@ -529,10 +543,14 @@ function GuestTab({
     viewerAccess.canManageGuest && draftPage && editablePage ? { ...editablePage, ...draftPage } : editablePage;
   const guestSiteBasePath = useMemo(() => buildGuestSiteBasePath(event), [event]);
   const guestSiteBaseUrl = guestSiteOrigin ? `${guestSiteOrigin}${guestSiteBasePath}` : guestSiteBasePath;
-  const guestSiteShellStyle = useMemo(
+  const guestSiteBackgroundStyles = useMemo(
     () => buildGuestSiteBackgroundStyle(guestSiteBackgroundImageUrlDraft),
     [guestSiteBackgroundImageUrlDraft]
   );
+  const guestSiteFrameStyle =
+    guestSiteBackgroundModeDraft === "page" ? guestSiteBackgroundStyles.frameStyle : undefined;
+  const guestSiteShellStyle =
+    guestSiteBackgroundModeDraft === "shell" ? guestSiteBackgroundStyles.shellStyle : undefined;
   const guestPageLinks = useMemo(
     () =>
       buildGuestSiteNavigationEntries(event).map((page) => ({
@@ -558,6 +576,7 @@ function GuestTab({
     setGuestSiteIntroDraft(event.guestSite?.introText || "");
     setGuestSiteNavigationLabelDraft(event.guestSite?.navigationLabel || "Navigasjon");
     setGuestSiteBackgroundImageUrlDraft(event.guestSite?.backgroundImageUrl || "");
+    setGuestSiteBackgroundModeDraft(event.guestSite?.backgroundMode || "shell");
     setGuestSiteBackgroundStatus("");
   }, [event.id, event.updated_at]);
 
@@ -731,7 +750,8 @@ function GuestTab({
       {
         introText: guestSiteIntroDraft,
         navigationLabel: guestSiteNavigationLabelDraft,
-        backgroundImageUrl: guestSiteBackgroundImageUrlDraft
+        backgroundImageUrl: guestSiteBackgroundImageUrlDraft,
+        backgroundMode: guestSiteBackgroundModeDraft
       },
       "Gjestenettsiden ble oppdatert."
     );
@@ -740,6 +760,7 @@ function GuestTab({
       setGuestSiteIntroDraft(nextEvent.guestSite?.introText || "");
       setGuestSiteNavigationLabelDraft(nextEvent.guestSite?.navigationLabel || "Navigasjon");
       setGuestSiteBackgroundImageUrlDraft(nextEvent.guestSite?.backgroundImageUrl || "");
+      setGuestSiteBackgroundModeDraft(nextEvent.guestSite?.backgroundMode || "shell");
     }
 
     return nextEvent;
@@ -754,7 +775,8 @@ function GuestTab({
       {
         introText: guestSiteIntroDraft,
         navigationLabel: guestSiteNavigationLabelDraft,
-        backgroundImageUrl: nextBackgroundImageUrl
+        backgroundImageUrl: nextBackgroundImageUrl,
+        backgroundMode: guestSiteBackgroundModeDraft
       },
       successMessage
     );
@@ -763,6 +785,7 @@ function GuestTab({
       setGuestSiteIntroDraft(nextEvent.guestSite?.introText || "");
       setGuestSiteNavigationLabelDraft(nextEvent.guestSite?.navigationLabel || "Navigasjon");
       setGuestSiteBackgroundImageUrlDraft(nextEvent.guestSite?.backgroundImageUrl || "");
+      setGuestSiteBackgroundModeDraft(nextEvent.guestSite?.backgroundMode || "shell");
     }
 
     return nextEvent;
@@ -868,11 +891,13 @@ function GuestTab({
           introText={guestSiteIntroDraft}
           navigationLabel={guestSiteNavigationLabelDraft}
           backgroundImageUrl={guestSiteBackgroundImageUrlDraft}
+          backgroundMode={guestSiteBackgroundModeDraft}
           backgroundUploadStatus={guestSiteBackgroundStatus}
           isUploadingBackground={isUploadingGuestSiteBackground}
           pageLinks={guestPageLinks}
           onIntroTextChange={setGuestSiteIntroDraft}
           onNavigationLabelChange={setGuestSiteNavigationLabelDraft}
+          onBackgroundModeChange={setGuestSiteBackgroundModeDraft}
           onBackgroundUpload={handleGuestSiteBackgroundUpload}
           onRemoveBackgroundImage={handleRemoveGuestSiteBackgroundImage}
           onSaveIntro={handleSaveGuestSiteIntro}
@@ -886,7 +911,16 @@ function GuestTab({
               void handleSaveGuestSiteIntro();
             }
           }}
+          onBackgroundModeBlur={() => {
+            if (guestSiteBackgroundModeDraft !== (event.guestSite?.backgroundMode || "shell")) {
+              void handleSaveGuestSiteIntro();
+            }
+          }}
         />
+        <div
+          className={`guest-site-preview-frame ${guestSiteBackgroundModeDraft === "page" ? "is-page-background" : ""}`}
+          style={guestSiteFrameStyle}
+        >
         <div className="guest-site-shell" style={guestSiteShellStyle}>
           <aside className="guest-site-sidebar">
             <div className="stack">
@@ -1319,6 +1353,7 @@ function GuestTab({
               />
             )}
           </div>
+        </div>
         </div>
       </section>
 

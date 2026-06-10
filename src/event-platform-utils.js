@@ -173,6 +173,7 @@ const DEFAULT_GUEST_SITE = {
   introText: "",
   navigationLabel: "Navigasjon",
   backgroundImageUrl: "",
+  backgroundMode: "shell",
   agendaPage: {
     isPublished: false,
     navigationLabel: "Agenda"
@@ -289,6 +290,10 @@ function normalizeBooleanFlag(value) {
 
   const normalized = String(value || "").trim().toLowerCase();
   return normalized === "true" || normalized === "1" || normalized === "on";
+}
+
+function normalizeGuestSiteBackgroundMode(value) {
+  return value === "page" ? "page" : "shell";
 }
 
 function normalizeGuestAgendaPage(source) {
@@ -917,6 +922,7 @@ export function ensureEventShape(event) {
         typeof guestSiteSource.backgroundImageUrl === "string"
           ? guestSiteSource.backgroundImageUrl.trim()
           : "",
+      backgroundMode: normalizeGuestSiteBackgroundMode(guestSiteSource.backgroundMode),
       agendaPage: normalizeGuestAgendaPage(guestSiteSource.agendaPage)
     },
     guestPages: guestPagesWithSlugs,

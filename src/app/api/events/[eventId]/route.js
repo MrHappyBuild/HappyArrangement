@@ -87,6 +87,20 @@ function normalizeGuestAgendaPageSettings(value, fallback = null) {
   };
 }
 
+function normalizeGuestSiteBackgroundMode(value, fallback = "shell") {
+  const normalized = cleanString(value);
+
+  if (normalized === "page") {
+    return "page";
+  }
+
+  if (normalized === "shell") {
+    return "shell";
+  }
+
+  return fallback === "page" ? "page" : "shell";
+}
+
 function normalizeBooleanInput(value) {
   if (typeof value === "boolean") {
     return value;
@@ -307,6 +321,10 @@ export async function PATCH(request, context) {
             introText: cleanString(payload?.guestSite?.introText),
             navigationLabel: cleanString(payload?.guestSite?.navigationLabel) || "Navigasjon",
             backgroundImageUrl: cleanString(payload?.guestSite?.backgroundImageUrl),
+            backgroundMode: normalizeGuestSiteBackgroundMode(
+              payload?.guestSite?.backgroundMode,
+              current.guestSite?.backgroundMode
+            ),
             agendaPage: normalizeGuestAgendaPageSettings(
               payload?.guestSite?.agendaPage,
               current.guestSite?.agendaPage

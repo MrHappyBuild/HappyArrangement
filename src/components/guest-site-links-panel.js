@@ -38,15 +38,18 @@ export function GuestSiteLinksPanel({
   introText,
   navigationLabel,
   backgroundImageUrl,
+  backgroundMode,
   backgroundUploadStatus,
   isUploadingBackground,
   onIntroTextChange,
   onNavigationLabelChange,
+  onBackgroundModeChange,
   onBackgroundUpload,
   onRemoveBackgroundImage,
   onSaveIntro,
   onIntroBlur,
   onNavigationLabelBlur,
+  onBackgroundModeBlur,
   canManageGuest
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -218,12 +221,23 @@ export function GuestSiteLinksPanel({
                   onBlur={onNavigationLabelBlur}
                 />
               </label>
+              <label className="field">
+                <span>Bakgrunnsløsning</span>
+                <select
+                  value={backgroundMode}
+                  onChange={(eventObject) => onBackgroundModeChange(eventObject.currentTarget.value)}
+                  onBlur={onBackgroundModeBlur}
+                >
+                  <option value="shell">Bakgrunn på panelet</option>
+                  <option value="page">Bakgrunn bak hele gjestenettsiden</option>
+                </select>
+              </label>
               <div className="stack guest-site-background-editor">
                 <div className="panel-header-inline">
                   <div>
                     <span>Bakgrunnsbilde</span>
                     <p className="muted">
-                      Legg inn ett felles bakgrunnsbilde for hele gjestenettsiden. Husk å lagre etter opplasting.
+                      Last opp ett bakgrunnsbilde og velg om det skal ligge på innholdspanelet eller bak hele gjestenettsiden.
                     </p>
                   </div>
                 </div>

@@ -13,18 +13,31 @@ import {
 } from "@/event-platform-utils";
 import { getEventBySlug } from "@/lib/local-store";
 
-function buildGuestSiteBackgroundStyle(backgroundImageUrl) {
+function buildGuestSiteBackgroundStyles(backgroundImageUrl) {
   if (!backgroundImageUrl) {
-    return undefined;
+    return {
+      frameStyle: undefined,
+      shellStyle: undefined
+    };
   }
 
   return {
-    backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat",
-    padding: "18px",
-    borderRadius: "32px"
+    frameStyle: {
+      backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      padding: "18px",
+      borderRadius: "32px"
+    },
+    shellStyle: {
+      backgroundImage: `linear-gradient(180deg, rgba(255, 252, 247, 0.76), rgba(255, 248, 238, 0.9)), url(${backgroundImageUrl})`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      padding: "18px",
+      borderRadius: "32px"
+    }
   };
 }
 
@@ -67,12 +80,20 @@ export default async function GuestSitePage({ params }) {
       ? normalizedEvent.guestSite.introText.trim()
       : "";
   const navigationLabel = normalizedEvent.guestSite?.navigationLabel || "Navigasjon";
-  const guestSiteShellStyle = buildGuestSiteBackgroundStyle(
+  const guestSiteBackgroundMode = normalizedEvent.guestSite?.backgroundMode || "shell";
+  const guestSiteBackgroundStyles = buildGuestSiteBackgroundStyles(
     normalizedEvent.guestSite?.backgroundImageUrl || ""
   );
+  const guestSiteFrameStyle =
+    guestSiteBackgroundMode === "page" ? guestSiteBackgroundStyles.frameStyle : undefined;
+  const guestSiteShellStyle =
+    guestSiteBackgroundMode === "shell" ? guestSiteBackgroundStyles.shellStyle : undefined;
 
   return (
-    <main className="shell grid">
+    <main
+      className={`shell grid ${guestSiteBackgroundMode === "page" ? "guest-site-page-background-frame" : ""}`}
+      style={guestSiteFrameStyle}
+    >
       <section className="hero">
         <h1>{normalizedEvent.overview.title || normalizedEvent.name}</h1>
         {guestSiteIntro ? <p className="lede">{guestSiteIntro}</p> : null}

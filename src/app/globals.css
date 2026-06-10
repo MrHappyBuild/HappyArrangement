@@ -2410,6 +2410,15 @@ p {
   align-items: start;
 }
 
+.guest-site-preview-frame {
+  display: grid;
+  gap: 18px;
+}
+
+.guest-site-page-background-frame {
+  min-height: calc(100vh - 48px);
+}
+
 .guest-site-sidebar {
   display: grid;
   gap: 16px;

@@ -250,6 +250,7 @@ test("ensureEventShape normalizes guest page design settings", () => {
       introText: "Alt dere trenger å vite før dagen.",
       navigationLabel: "Menyvalg",
       backgroundImageUrl: "/api/events/event-pages-design/guest-media/bg-1",
+      backgroundMode: "page",
       agendaPage: {
         isPublished: true,
         navigationLabel: "Program"
@@ -294,6 +295,7 @@ test("ensureEventShape normalizes guest page design settings", () => {
     event.guestSite.backgroundImageUrl,
     "/api/events/event-pages-design/guest-media/bg-1"
   );
+  assert.equal(event.guestSite.backgroundMode, "page");
   assert.equal(event.guestSite.agendaPage.isPublished, true);
   assert.equal(event.guestSite.agendaPage.navigationLabel, "Program");
 });
