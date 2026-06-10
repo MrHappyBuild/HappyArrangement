@@ -27,7 +27,6 @@ function buildGuestSiteBackgroundStyles(backgroundImageUrl) {
       backgroundSize: "cover",
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
-      padding: "18px",
       borderRadius: "32px"
     },
     shellStyle: {
