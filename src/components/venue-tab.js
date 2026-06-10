@@ -123,6 +123,14 @@ function isCircularVenueItem(item) {
   return item?.shape === "circle";
 }
 
+function getMinimumVenueCanvasWidth(roomWidthMeters, roomHeightMeters) {
+  const safeWidth = Number(roomWidthMeters) > 0 ? Number(roomWidthMeters) : 12;
+  const safeHeight = Number(roomHeightMeters) > 0 ? Number(roomHeightMeters) : 8;
+  const minimumReadableHeightPx = 460;
+
+  return Math.max(440, Math.round((minimumReadableHeightPx * safeWidth) / safeHeight));
+}
+
 function mapResizeDeltaByRotation(rotation, deltaWidthMeters, deltaHeightMeters) {
   if (rotation === 90 || rotation === 270) {
     return {
@@ -656,9 +664,10 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     "--venue-room-width": roomWidthMeters,
     "--venue-room-height": roomHeightMeters
   };
+  const baseCanvasMinWidth = getMinimumVenueCanvasWidth(roomWidthMeters, roomHeightMeters);
   const canvasScaleStyle = {
     width: `${zoomPercent}%`,
-    minWidth: `${Math.max(440, Math.round(720 * (zoomPercent / 100)))}px`
+    minWidth: `${Math.max(baseCanvasMinWidth, Math.round(720 * (zoomPercent / 100)))}px`
   };
   const zoomMax = isFocusMode ? 240 : 180;
 
