@@ -174,6 +174,7 @@ const DEFAULT_GUEST_SITE = {
   navigationLabel: "Navigasjon",
   backgroundImageUrl: "",
   backgroundMode: "shell",
+  navigationOrder: [],
   agendaPage: {
     isPublished: false,
     navigationLabel: "Agenda"
@@ -794,6 +795,20 @@ function createGuestPage(page, fallbackIndex = 0) {
   };
 }
 
+function normalizeGuestNavigationOrder(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+        .filter(Boolean)
+    )
+  );
+}
+
 function buildDefaultGuestPage(source) {
   const overview = source?.overview && typeof source.overview === "object" ? source.overview : {};
   const lines = [];
@@ -923,6 +938,7 @@ export function ensureEventShape(event) {
           ? guestSiteSource.backgroundImageUrl.trim()
           : "",
       backgroundMode: normalizeGuestSiteBackgroundMode(guestSiteSource.backgroundMode),
+      navigationOrder: normalizeGuestNavigationOrder(guestSiteSource.navigationOrder),
       agendaPage: normalizeGuestAgendaPage(guestSiteSource.agendaPage)
     },
     guestPages: guestPagesWithSlugs,
@@ -959,6 +975,31 @@ export function buildGuestSitePagePath(eventOrSlug, pageOrSlug) {
       : slugifySegment(pageOrSlug?.slug || pageOrSlug?.menuLabel || pageOrSlug?.title, "side");
 
   return `${basePath}/${pageSlug}`;
+}
+
+export function sortGuestSiteNavigationEntries(entries, navigationOrder = []) {
+  if (!Array.isArray(entries) || entries.length <= 1) {
+    return Array.isArray(entries) ? [...entries] : [];
+  }
+
+  const order = normalizeGuestNavigationOrder(navigationOrder);
+
+  if (!order.length) {
+    return [...entries];
+  }
+
+  const orderIndex = new Map(order.map((id, index) => [id, index]));
+
+  return [...entries].sort((left, right) => {
+    const leftRank = orderIndex.has(left.id) ? orderIndex.get(left.id) : Number.POSITIVE_INFINITY;
+    const rightRank = orderIndex.has(right.id) ? orderIndex.get(right.id) : Number.POSITIVE_INFINITY;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return 0;
+  });
 }
 
 export function buildGuestSiteNavigationEntries(event) {
@@ -1012,7 +1053,7 @@ export function buildGuestSiteNavigationEntries(event) {
     });
   }
 
-  return entries;
+  return sortGuestSiteNavigationEntries(entries, normalizedEvent.guestSite?.navigationOrder);
 }
 
 export function buildViewerAccess(person) {

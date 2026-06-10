@@ -2415,6 +2415,10 @@ p {
   gap: 18px;
 }
 
+.guest-site-mobile-nav {
+  display: none;
+}
+
 .guest-site-page-background-host {
   position: relative;
   isolation: isolate;
@@ -2443,9 +2447,91 @@ p {
   background: rgba(255, 252, 247, 0.88);
 }
 
+.guest-site-nav-help {
+  font-size: 0.82rem;
+}
+
 .guest-site-menu {
   display: grid;
   gap: 8px;
+}
+
+.guest-site-nav-row {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: stretch;
+  padding: 6px;
+  border-radius: 20px;
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.guest-site-nav-row::before,
+.guest-site-nav-row::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 3px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.guest-site-nav-row::before {
+  top: 0;
+}
+
+.guest-site-nav-row::after {
+  bottom: 0;
+}
+
+.guest-site-nav-row.is-drop-before::before,
+.guest-site-nav-row.is-drop-after::after {
+  background: rgba(36, 95, 82, 0.6);
+}
+
+.guest-site-nav-row.is-dragging {
+  opacity: 0.6;
+}
+
+.guest-site-nav-row-actions {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+}
+
+.ghost-button {
+  border: 1px solid rgba(91, 59, 18, 0.12);
+  background: rgba(255, 252, 247, 0.86);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.compact-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.ghost-button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.guest-site-nav-drag-handle {
+  display: inline-grid;
+  place-items: center;
+  min-height: 32px;
+  color: rgba(91, 59, 18, 0.44);
+  font-size: 0.95rem;
+  letter-spacing: -0.12em;
+  cursor: grab;
 }
 
 .guest-site-link {
@@ -2648,6 +2734,18 @@ p {
   min-width: 0;
 }
 
+.guest-seating-view-switch {
+  display: none;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.guest-seating-view-switch .secondary-button.is-active {
+  background: rgba(36, 95, 82, 0.14);
+  border-color: rgba(36, 95, 82, 0.24);
+  color: var(--accent-strong);
+}
+
 .guest-seating-search-results {
   display: grid;
   gap: 10px;
@@ -2670,6 +2768,7 @@ p {
 .guest-seating-layout {
   display: grid;
   gap: 18px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.92fr);
 }
 
 .guest-seating-map-card,
@@ -2701,6 +2800,11 @@ p {
   border-radius: 24px;
   border: 1px solid rgba(91, 59, 18, 0.08);
   background: rgba(255, 250, 242, 0.9);
+}
+
+.guest-seating-map-scroll {
+  overflow: auto;
+  padding-bottom: 2px;
 }
 
 .guest-seating-map {
@@ -2844,6 +2948,10 @@ p {
 
   .guest-site-public-link-qr {
     width: 100%;
+  }
+
+  .guest-seating-layout {
+    grid-template-columns: 1fr;
   }
 
   .guest-seating-toolbar {
@@ -3777,6 +3885,66 @@ p {
     width: auto;
   }
 
+  .guest-site-mobile-nav {
+    display: grid;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 24px;
+    border: 1px solid rgba(91, 59, 18, 0.12);
+    background: rgba(255, 252, 247, 0.88);
+  }
+
+  .guest-site-mobile-nav summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .guest-site-mobile-nav summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .guest-site-mobile-nav-panel {
+    padding-top: 10px;
+  }
+
+  .guest-site-mobile-facts {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  .guest-site-public-shell .guest-site-sidebar {
+    display: none;
+  }
+
+  .guest-site-public-preview {
+    padding: 20px;
+  }
+
+  .guest-site-nav-row {
+    grid-template-columns: 1fr;
+  }
+
+  .guest-site-nav-row-actions {
+    grid-auto-flow: column;
+    justify-content: end;
+  }
+
+  .guest-seating-view-switch {
+    display: grid;
+  }
+
+  .guest-seating-map-card.is-hidden-on-mobile,
+  .guest-seating-table-grid.is-hidden-on-mobile {
+    display: none;
+  }
+
+  .guest-seating-map {
+    min-height: 320px;
+  }
+
   .venue-planner-grid {
     grid-template-columns: 1fr;
   }
@@ -3797,6 +3965,47 @@ p {
   .sticky-receipt-panel {
     position: static;
     max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 18px 12px 32px;
+  }
+
+  .hero {
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  h1 {
+    max-width: none;
+    font-size: clamp(2.2rem, 13vw, 3.6rem);
+  }
+
+  .lede {
+    max-width: none;
+    font-size: 0.98rem;
+    line-height: 1.55;
+  }
+
+  .guest-site-mobile-nav {
+    padding: 12px;
+    border-radius: 20px;
+  }
+
+  .guest-site-preview,
+  .guest-seating-map-card,
+  .guest-seating-table-card {
+    border-radius: 22px;
+  }
+
+  .guest-site-public-preview {
+    padding: 16px;
+  }
+
+  .guest-seating-map-shell {
+    padding: 10px;
   }
 }
 

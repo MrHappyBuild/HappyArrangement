@@ -145,6 +145,50 @@ test("buildGuestSiteNavigationEntries appends a published agenda page", () => {
   assert.equal(agendaPage.path, "/gjest/bryllup-ole-og-kari/program");
 });
 
+test("buildGuestSiteNavigationEntries respects saved navigation order across content and generated pages", () => {
+  const event = ensureEventShape({
+    id: "event-nav-order",
+    name: "Bryllup Ole og Kari",
+    guestSite: {
+      navigationOrder: [
+        "guest-page-agenda",
+        "page-2",
+        "guest-page-venue-seating",
+        "page-1"
+      ],
+      agendaPage: {
+        isPublished: true,
+        navigationLabel: "Agenda"
+      }
+    },
+    guestPages: [
+      {
+        id: "page-1",
+        title: "Velkommen",
+        menuLabel: "Velkommen"
+      },
+      {
+        id: "page-2",
+        title: "Praktisk informasjon",
+        menuLabel: "Praktisk informasjon"
+      }
+    ],
+    venuePlan: {
+      guestSeatingPage: {
+        isPublished: true,
+        navigationLabel: "Sitteplan"
+      }
+    }
+  });
+
+  const entries = buildGuestSiteNavigationEntries(event);
+
+  assert.deepEqual(
+    entries.map((entry) => entry.id),
+    ["guest-page-agenda", "page-2", "guest-page-venue-seating", "page-1"]
+  );
+});
+
 test("ensureEventShape keeps guest allergies and creates a normalized venue plan", () => {
   const event = ensureEventShape({
     id: "event-venue",
@@ -251,6 +295,7 @@ test("ensureEventShape normalizes guest page design settings", () => {
       navigationLabel: "Menyvalg",
       backgroundImageUrl: "/api/events/event-pages-design/guest-media/bg-1",
       backgroundMode: "page",
+      navigationOrder: ["page-2", "page-1", "page-2", ""],
       agendaPage: {
         isPublished: true,
         navigationLabel: "Program"
@@ -296,6 +341,7 @@ test("ensureEventShape normalizes guest page design settings", () => {
     "/api/events/event-pages-design/guest-media/bg-1"
   );
   assert.equal(event.guestSite.backgroundMode, "page");
+  assert.deepEqual(event.guestSite.navigationOrder, ["page-2", "page-1"]);
   assert.equal(event.guestSite.agendaPage.isPublished, true);
   assert.equal(event.guestSite.agendaPage.navigationLabel, "Program");
 });

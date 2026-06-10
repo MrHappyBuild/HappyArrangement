@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { buildVenuePlanningState } from "@/venue-layout-utils";
 
@@ -55,6 +55,8 @@ function buildItemSearchText(item) {
 
 export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
   const [search, setSearch] = useState("");
+  const [isCompactLayout, setIsCompactLayout] = useState(false);
+  const [mobileViewMode, setMobileViewMode] = useState("list");
   const searchValue = normalizeSearchValue(search);
   const venueState = useMemo(() => buildVenuePlanningState(event), [event]);
   const seatableItems = useMemo(
@@ -82,9 +84,45 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
     () => new Set(searchMatches.map((seat) => seat.itemId)),
     [searchMatches]
   );
+  const effectiveViewMode = isCompactLayout ? mobileViewMode : "split";
   const roomStyle = {
     aspectRatio: `${venueState.venuePlan.room.widthMeters} / ${venueState.venuePlan.room.heightMeters}`
   };
+  const mapSurfaceStyle = isCompactLayout
+    ? {
+        ...roomStyle,
+        minWidth: "560px"
+      }
+    : roomStyle;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 860px)");
+    const applyLayout = () => {
+      const isCompact = mediaQuery.matches;
+      setIsCompactLayout(isCompact);
+      setMobileViewMode((currentMode) => {
+        if (!isCompact) {
+          return "split";
+        }
+
+        return currentMode === "split" ? "list" : currentMode;
+      });
+    };
+
+    applyLayout();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", applyLayout);
+      return () => mediaQuery.removeEventListener("change", applyLayout);
+    }
+
+    mediaQuery.addListener(applyLayout);
+    return () => mediaQuery.removeListener(applyLayout);
+  }, []);
 
   return (
     <section className="guest-seating-shell stack">
@@ -106,6 +144,27 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
         </label>
       </div>
 
+      {isCompactLayout ? (
+        <div className="guest-seating-view-switch" role="tablist" aria-label="Visning av sitteplan">
+          <button
+            aria-selected={effectiveViewMode === "list"}
+            className={`secondary-button ${effectiveViewMode === "list" ? "is-active" : ""}`}
+            type="button"
+            onClick={() => setMobileViewMode("list")}
+          >
+            Bordliste
+          </button>
+          <button
+            aria-selected={effectiveViewMode === "map"}
+            className={`secondary-button ${effectiveViewMode === "map" ? "is-active" : ""}`}
+            type="button"
+            onClick={() => setMobileViewMode("map")}
+          >
+            Kart
+          </button>
+        </div>
+      ) : null}
+
       {searchValue ? (
         <div className="guest-seating-search-results">
           {searchMatches.length ? (
@@ -126,8 +185,20 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
         </div>
       ) : null}
 
-      <div className="guest-seating-layout">
-        <article className="guest-seating-map-card">
+      <div
+        className={`guest-seating-layout ${
+          effectiveViewMode === "map"
+            ? "is-map-only"
+            : effectiveViewMode === "list"
+              ? "is-list-only"
+              : "is-split"
+        }`}
+      >
+        <article
+          className={`guest-seating-map-card ${
+            effectiveViewMode === "list" ? "is-hidden-on-mobile" : ""
+          }`}
+        >
           <div className="guest-seating-map-head">
             <strong>{venueState.venuePlan.room.name}</strong>
             <span>
@@ -135,48 +206,54 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
             </span>
           </div>
           <div className="guest-seating-map-shell">
-            <div className="guest-seating-map" style={roomStyle}>
-              <div className="guest-seating-map-grid" />
-              {seatableItems.map((item) => (
-                <div
-                  className={`guest-seating-item guest-seating-shape-${item.shape} ${
-                    highlightedItemIds.has(item.id) ? "is-highlighted" : ""
-                  }`}
-                  key={item.id}
-                  style={{
-                    left: `${item.x}%`,
-                    top: `${item.y}%`,
-                    width: `${item.widthPercent}%`,
-                    ...(item.shape === "circle"
-                      ? {
-                          aspectRatio: "1 / 1"
-                        }
-                      : {
-                          height: `${item.heightPercent}%`
-                        })
-                  }}
-                >
-                  <div className="guest-seating-item-label">
-                    <strong>{item.label}</strong>
-                    <span>{item.assignedSeats.length} navn</span>
+            <div className="guest-seating-map-scroll">
+              <div className="guest-seating-map" style={mapSurfaceStyle}>
+                <div className="guest-seating-map-grid" />
+                {seatableItems.map((item) => (
+                  <div
+                    className={`guest-seating-item guest-seating-shape-${item.shape} ${
+                      highlightedItemIds.has(item.id) ? "is-highlighted" : ""
+                    }`}
+                    key={item.id}
+                    style={{
+                      left: `${item.x}%`,
+                      top: `${item.y}%`,
+                      width: `${item.widthPercent}%`,
+                      ...(item.shape === "circle"
+                        ? {
+                            aspectRatio: "1 / 1"
+                          }
+                        : {
+                            height: `${item.heightPercent}%`
+                          })
+                    }}
+                  >
+                    <div className="guest-seating-item-label">
+                      <strong>{item.label}</strong>
+                      <span>{item.assignedSeats.length} navn</span>
+                    </div>
+                    <div className="guest-seating-item-seat-dots">
+                      {item.assignedSeats.slice(0, 10).map((seat) => (
+                        <span className="guest-seating-seat-dot" key={seat.id} title={seat.guest.name}>
+                          {formatGuestInitials(seat.guest.name)}
+                        </span>
+                      ))}
+                      {item.assignedSeats.length > 10 ? (
+                        <span className="guest-seating-seat-dot is-overflow">+{item.assignedSeats.length - 10}</span>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="guest-seating-item-seat-dots">
-                    {item.assignedSeats.slice(0, 10).map((seat) => (
-                      <span className="guest-seating-seat-dot" key={seat.id} title={seat.guest.name}>
-                        {formatGuestInitials(seat.guest.name)}
-                      </span>
-                    ))}
-                    {item.assignedSeats.length > 10 ? (
-                      <span className="guest-seating-seat-dot is-overflow">+{item.assignedSeats.length - 10}</span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </article>
 
-        <div className="guest-seating-table-grid">
+        <div
+          className={`guest-seating-table-grid ${
+            effectiveViewMode === "map" ? "is-hidden-on-mobile" : ""
+          }`}
+        >
           {seatableItems.length ? (
             seatableItems
               .filter((item) => !searchValue || item.searchIndex.includes(searchValue))

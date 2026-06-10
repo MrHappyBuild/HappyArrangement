@@ -45,6 +45,37 @@ function visibleGuestPages(event) {
   return buildGuestSiteNavigationEntries(normalized);
 }
 
+function renderGuestSiteFacts(event) {
+  return (
+    <>
+      {event.overview.location ? (
+        <div>
+          <span>Sted</span>
+          <strong>{event.overview.location}</strong>
+        </div>
+      ) : null}
+      {event.overview.startsAt ? (
+        <div>
+          <span>Starter</span>
+          <strong>{event.overview.startsAt}</strong>
+        </div>
+      ) : null}
+      {event.overview.endsAt ? (
+        <div>
+          <span>Slutter</span>
+          <strong>{event.overview.endsAt}</strong>
+        </div>
+      ) : null}
+      {event.overview.dressCode ? (
+        <div>
+          <span>Dresscode</span>
+          <strong>{event.overview.dressCode}</strong>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export default async function GuestSitePage({ params }) {
   const resolvedParams = await params;
   const pageSegments = Array.isArray(resolvedParams?.pageSlug) ? resolvedParams.pageSlug : [];
@@ -87,6 +118,7 @@ export default async function GuestSitePage({ params }) {
     guestSiteBackgroundMode === "page" ? guestSiteBackgroundStyles.pageLayerStyle : undefined;
   const guestSiteShellStyle =
     guestSiteBackgroundMode === "shell" ? guestSiteBackgroundStyles.shellStyle : undefined;
+  const selectedMenuLabel = selectedPage.menuLabel || selectedPage.title;
 
   return (
     <main
@@ -103,6 +135,37 @@ export default async function GuestSitePage({ params }) {
         <h1>{normalizedEvent.overview.title || normalizedEvent.name}</h1>
         {guestSiteIntro ? <p className="lede">{guestSiteIntro}</p> : null}
       </section>
+
+      <details className="guest-site-mobile-nav">
+        <summary className="guest-site-mobile-nav-summary">
+          <div className="stack compact-stack">
+            <p className="eyebrow">{navigationLabel}</p>
+            <strong>{selectedMenuLabel}</strong>
+          </div>
+          <span className="role-pill">{pages.length}</span>
+        </summary>
+        <div className="guest-site-mobile-nav-panel stack">
+          <nav className="guest-site-menu">
+            {pages.map((page, index) => {
+              const href = page.path || (index === 0 ? basePath : basePath);
+
+              return (
+                <Link
+                  className={`guest-site-link ${selectedPage.id === page.id ? "is-active" : ""}`}
+                  href={href}
+                  key={`mobile-${page.id}`}
+                >
+                  <strong>{page.menuLabel || page.title}</strong>
+                  <span>{page.title}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="stack guest-site-event-facts guest-site-mobile-facts">
+            {renderGuestSiteFacts(normalizedEvent)}
+          </div>
+        </div>
+      </details>
 
       <section className="guest-site-shell guest-site-public-shell" style={guestSiteShellStyle}>
         <aside className="guest-site-sidebar">
@@ -126,30 +189,7 @@ export default async function GuestSitePage({ params }) {
             </nav>
           </div>
           <div className="stack guest-site-event-facts">
-            {normalizedEvent.overview.location ? (
-              <div>
-                <span>Sted</span>
-                <strong>{normalizedEvent.overview.location}</strong>
-              </div>
-            ) : null}
-            {normalizedEvent.overview.startsAt ? (
-              <div>
-                <span>Starter</span>
-                <strong>{normalizedEvent.overview.startsAt}</strong>
-              </div>
-            ) : null}
-            {normalizedEvent.overview.endsAt ? (
-              <div>
-                <span>Slutter</span>
-                <strong>{normalizedEvent.overview.endsAt}</strong>
-              </div>
-            ) : null}
-            {normalizedEvent.overview.dressCode ? (
-              <div>
-                <span>Dresscode</span>
-                <strong>{normalizedEvent.overview.dressCode}</strong>
-              </div>
-            ) : null}
+            {renderGuestSiteFacts(normalizedEvent)}
           </div>
         </aside>
 

@@ -33,6 +33,7 @@ import {
   buildGuestSummary,
   buildProjectSummary,
   buildSettlementSuggestions,
+  sortGuestSiteNavigationEntries,
   buildTaskAgenda,
   buildTaskSwimlanes,
   buildViewerAccess,
@@ -492,14 +493,23 @@ function GuestTab({
   onUpdatePerson
 }) {
   const templateList = templateOptions();
+  const rawNavigationEntries = useMemo(() => buildGuestSiteNavigationEntries(event), [event]);
+  const [guestSiteNavigationOrderDraft, setGuestSiteNavigationOrderDraft] = useState(() =>
+    Array.isArray(event.guestSite?.navigationOrder) && event.guestSite.navigationOrder.length
+      ? event.guestSite.navigationOrder
+      : rawNavigationEntries.map((page) => page.id)
+  );
+  const navigationEntries = useMemo(
+    () => sortGuestSiteNavigationEntries(rawNavigationEntries, guestSiteNavigationOrderDraft),
+    [guestSiteNavigationOrderDraft, rawNavigationEntries]
+  );
   const visiblePages = useMemo(() => {
-    const navigationEntries = buildGuestSiteNavigationEntries(event);
     return navigationEntries.filter((page) =>
       page.kind === "venue_seating" || page.kind === "guest_agenda"
         ? true
         : canViewerSeeGuestPage(page, viewerAccess, viewerPerson)
     );
-  }, [event, viewerAccess, viewerPerson]);
+  }, [navigationEntries, viewerAccess, viewerPerson]);
   const [selectedPageId, setSelectedPageId] = useState(visiblePages[0]?.id || "");
   const [draftPage, setDraftPage] = useState(null);
   const [mediaStatus, setMediaStatus] = useState("");
@@ -514,6 +524,8 @@ function GuestTab({
   const [isUploadingGuestSiteBackground, setIsUploadingGuestSiteBackground] = useState(false);
   const [openRoleId, setOpenRoleId] = useState("");
   const [openPersonId, setOpenPersonId] = useState("");
+  const [draggedGuestNavId, setDraggedGuestNavId] = useState("");
+  const [guestNavDropIndicator, setGuestNavDropIndicator] = useState(null);
   const [textSelection, setTextSelection] = useState({ start: 0, end: 0 });
   const [inlineStyleControls, setInlineStyleControls] = useState({
     fontPreset: "",
@@ -552,11 +564,11 @@ function GuestTab({
     guestSiteBackgroundModeDraft === "shell" ? guestSiteBackgroundStyles.shellStyle : undefined;
   const guestPageLinks = useMemo(
     () =>
-      buildGuestSiteNavigationEntries(event).map((page) => ({
+      navigationEntries.map((page) => ({
         ...page,
         url: guestSiteOrigin ? `${guestSiteOrigin}${page.path}` : page.path
       })),
-    [event, guestSiteOrigin]
+    [guestSiteOrigin, navigationEntries]
   );
 
   useEffect(() => {
@@ -564,6 +576,16 @@ function GuestTab({
       setSelectedPageId(visiblePages[0]?.id || "");
     }
   }, [selectedPageId, visiblePages]);
+
+  useEffect(() => {
+    const nextOrder =
+      Array.isArray(event.guestSite?.navigationOrder) && event.guestSite.navigationOrder.length
+        ? event.guestSite.navigationOrder
+        : rawNavigationEntries.map((page) => page.id);
+    setGuestSiteNavigationOrderDraft(nextOrder);
+    setDraggedGuestNavId("");
+    setGuestNavDropIndicator(null);
+  }, [event.guestSite?.navigationOrder, event.id, event.updated_at, rawNavigationEntries]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -873,6 +895,135 @@ function GuestTab({
       });
   }
 
+  async function persistGuestNavigationOrder(nextOrder) {
+    if (!viewerAccess.canManageGuest || typeof onUpdateGuestSite !== "function") {
+      return;
+    }
+
+    const previousOrder = guestSiteNavigationOrderDraft;
+    setGuestSiteNavigationOrderDraft(nextOrder);
+    const nextEvent = await onUpdateGuestSite(
+      {
+        navigationOrder: nextOrder
+      },
+      "Rekkefølgen på gjestenavigasjonen ble oppdatert."
+    );
+
+    if (!nextEvent) {
+      setGuestSiteNavigationOrderDraft(previousOrder);
+      return;
+    }
+
+    const persistedOrder =
+      Array.isArray(nextEvent.guestSite?.navigationOrder) && nextEvent.guestSite.navigationOrder.length
+        ? nextEvent.guestSite.navigationOrder
+        : nextOrder;
+    setGuestSiteNavigationOrderDraft(persistedOrder);
+  }
+
+  function buildGuestNavigationOrderMove(sourceId, targetId, position = "before") {
+    if (!sourceId || !targetId || sourceId === targetId) {
+      return null;
+    }
+
+    const currentOrder = navigationEntries.map((page) => page.id);
+    const sourceIndex = currentOrder.indexOf(sourceId);
+    const targetIndex = currentOrder.indexOf(targetId);
+
+    if (sourceIndex === -1 || targetIndex === -1) {
+      return null;
+    }
+
+    const nextOrder = [...currentOrder];
+    nextOrder.splice(sourceIndex, 1);
+    const adjustedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    const insertIndex = position === "after" ? adjustedTargetIndex + 1 : adjustedTargetIndex;
+    nextOrder.splice(insertIndex, 0, sourceId);
+
+    return nextOrder.every((value, index) => value === currentOrder[index]) ? null : nextOrder;
+  }
+
+  async function handleMoveGuestNavigation(pageId, direction) {
+    if (!viewerAccess.canManageGuest) {
+      return;
+    }
+
+    const currentOrder = navigationEntries.map((page) => page.id);
+    const currentIndex = currentOrder.indexOf(pageId);
+    const nextIndex = currentIndex + direction;
+
+    if (currentIndex === -1 || nextIndex < 0 || nextIndex >= currentOrder.length) {
+      return;
+    }
+
+    const targetId = currentOrder[nextIndex];
+    const nextOrder = buildGuestNavigationOrderMove(
+      pageId,
+      targetId,
+      direction > 0 ? "after" : "before"
+    );
+
+    if (nextOrder) {
+      await persistGuestNavigationOrder(nextOrder);
+    }
+  }
+
+  function handleGuestNavigationDragStart(pageId, eventObject) {
+    if (!viewerAccess.canManageGuest) {
+      return;
+    }
+
+    setDraggedGuestNavId(pageId);
+    setGuestNavDropIndicator(null);
+    eventObject.dataTransfer.effectAllowed = "move";
+    eventObject.dataTransfer.setData("text/plain", pageId);
+  }
+
+  function handleGuestNavigationDragOver(pageId, eventObject) {
+    if (!viewerAccess.canManageGuest) {
+      return;
+    }
+
+    const sourceId = draggedGuestNavId || eventObject.dataTransfer.getData("text/plain");
+
+    if (!sourceId || sourceId === pageId) {
+      return;
+    }
+
+    eventObject.preventDefault();
+    eventObject.dataTransfer.dropEffect = "move";
+
+    const bounds = eventObject.currentTarget.getBoundingClientRect();
+    const nextPosition =
+      eventObject.clientY - bounds.top > bounds.height / 2 ? "after" : "before";
+
+    setGuestNavDropIndicator({ pageId, position: nextPosition });
+  }
+
+  async function handleGuestNavigationDrop(pageId, eventObject) {
+    if (!viewerAccess.canManageGuest) {
+      return;
+    }
+
+    eventObject.preventDefault();
+    const sourceId = draggedGuestNavId || eventObject.dataTransfer.getData("text/plain");
+    const dropPosition =
+      guestNavDropIndicator?.pageId === pageId ? guestNavDropIndicator.position : "before";
+    const nextOrder = buildGuestNavigationOrderMove(sourceId, pageId, dropPosition);
+
+    setDraggedGuestNavId("");
+    setGuestNavDropIndicator(null);
+
+    if (nextOrder) {
+      await persistGuestNavigationOrder(nextOrder);
+    }
+  }
+
+  function handleGuestNavigationDragEnd() {
+    setDraggedGuestNavId("");
+    setGuestNavDropIndicator(null);
+  }
+
   return (
     <div className="stack">
       <section className="panel stack">
@@ -919,36 +1070,88 @@ function GuestTab({
         <div
           className={`guest-site-preview-frame ${guestSiteBackgroundModeDraft === "page" ? "is-page-background guest-site-page-background-host" : ""}`}
         >
-        {guestSitePageLayerStyle ? (
-          <div
-            aria-hidden="true"
-            className="guest-site-page-background-layer"
-            style={guestSitePageLayerStyle}
-          />
-        ) : null}
-        <div className="guest-site-shell" style={guestSiteShellStyle}>
-          <aside className="guest-site-sidebar">
-            <div className="stack">
-              <p className="eyebrow">{guestSiteNavigationLabelDraft || "Navigasjon"}</p>
-              <nav className="guest-site-menu">
-                {visiblePages.map((page) => (
-                  <button
-                    className={`guest-site-link ${selectedPage?.id === page.id ? "is-active" : ""}`}
-                    key={page.id}
-                    type="button"
-                    onClick={() => setSelectedPageId(page.id)}
-                  >
-                    <strong>{page.menuLabel || page.title}</strong>
-                    <span>{page.title}</span>
-                    {viewerAccess.canManageGuest && page.kind !== "venue_seating" && page.kind !== "guest_agenda" ? (
-                      <small className="guest-page-visibility-badge">
-                        {getGuestPageVisibilityLabel(page.visibility)}
-                      </small>
-                    ) : null}
-                  </button>
-                ))}
-              </nav>
-            </div>
+          {guestSitePageLayerStyle ? (
+            <div
+              aria-hidden="true"
+              className="guest-site-page-background-layer"
+              style={guestSitePageLayerStyle}
+            />
+          ) : null}
+          <div className="guest-site-shell" style={guestSiteShellStyle}>
+            <aside className="guest-site-sidebar">
+              <div className="stack">
+                <div className="panel-header-inline">
+                  <p className="eyebrow">{guestSiteNavigationLabelDraft || "Navigasjon"}</p>
+                  {viewerAccess.canManageGuest && visiblePages.length > 1 ? (
+                    <span className="muted guest-site-nav-help">Dra eller flytt for aa endre rekkefolgen</span>
+                  ) : null}
+                </div>
+                <nav className="guest-site-menu">
+                  {visiblePages.map((page, index) => {
+                    const dropPosition =
+                      guestNavDropIndicator?.pageId === page.id
+                        ? guestNavDropIndicator.position
+                        : null;
+
+                    return (
+                      <div
+                        className={`guest-site-nav-row ${draggedGuestNavId === page.id ? "is-dragging" : ""} ${
+                          dropPosition ? `is-drop-${dropPosition}` : ""
+                        }`}
+                        draggable={viewerAccess.canManageGuest && visiblePages.length > 1}
+                        key={page.id}
+                        onDragEnd={handleGuestNavigationDragEnd}
+                        onDragOver={(eventObject) => handleGuestNavigationDragOver(page.id, eventObject)}
+                        onDragStart={(eventObject) =>
+                          handleGuestNavigationDragStart(page.id, eventObject)
+                        }
+                        onDrop={(eventObject) => handleGuestNavigationDrop(page.id, eventObject)}
+                      >
+                        {viewerAccess.canManageGuest ? (
+                          <div className="guest-site-nav-row-actions">
+                            <button
+                              aria-label={`Flytt ${page.menuLabel || page.title} opp`}
+                              className="ghost-button compact-icon-button"
+                              disabled={index === 0}
+                              type="button"
+                              onClick={() => void handleMoveGuestNavigation(page.id, -1)}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              aria-label={`Flytt ${page.menuLabel || page.title} ned`}
+                              className="ghost-button compact-icon-button"
+                              disabled={index === visiblePages.length - 1}
+                              type="button"
+                              onClick={() => void handleMoveGuestNavigation(page.id, 1)}
+                            >
+                              ↓
+                            </button>
+                            <span aria-hidden="true" className="guest-site-nav-drag-handle">
+                              ⋮⋮
+                            </span>
+                          </div>
+                        ) : null}
+                        <button
+                          className={`guest-site-link ${selectedPage?.id === page.id ? "is-active" : ""}`}
+                          type="button"
+                          onClick={() => setSelectedPageId(page.id)}
+                        >
+                          <strong>{page.menuLabel || page.title}</strong>
+                          <span>{page.title}</span>
+                          {viewerAccess.canManageGuest &&
+                          page.kind !== "venue_seating" &&
+                          page.kind !== "guest_agenda" ? (
+                            <small className="guest-page-visibility-badge">
+                              {getGuestPageVisibilityLabel(page.visibility)}
+                            </small>
+                          ) : null}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </nav>
+              </div>
             {viewerAccess.canManageGuest ? (
               <form className="stack guest-page-composer" onSubmit={onAddGuestPage}>
                 <label className="field">
@@ -970,9 +1173,9 @@ function GuestTab({
                 </button>
               </form>
             ) : null}
-          </aside>
+            </aside>
 
-          <div className="guest-site-stage stack">
+            <div className="guest-site-stage stack">
             {selectedPage ? (
               <>
                 <article className="guest-site-preview">

@@ -71,6 +71,20 @@ function normalizeGuestPageShowImageCaption(value) {
   return normalized === "true" || normalized === "1" || normalized === "on";
 }
 
+function normalizeGuestNavigationOrder(value, fallback = []) {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map((entry) => cleanString(entry))
+          .filter(Boolean)
+      )
+    );
+  }
+
+  return Array.isArray(fallback) ? [...fallback] : [];
+}
+
 function normalizeGuestAgendaPageSettings(value, fallback = null) {
   const safeValue = value && typeof value === "object" ? value : {};
   const fallbackValue = fallback && typeof fallback === "object" ? fallback : {};
@@ -312,22 +326,43 @@ export async function PATCH(request, context) {
       }
 
       if (action === "update_guest_site") {
+        const currentGuestSite =
+          current.guestSite && typeof current.guestSite === "object" ? current.guestSite : {};
+        const guestSiteChanges =
+          payload?.guestSite && typeof payload.guestSite === "object" ? payload.guestSite : {};
+
         return {
           ...current,
           guestSite: {
-            ...(current.guestSite && typeof current.guestSite === "object"
-              ? current.guestSite
-              : {}),
-            introText: cleanString(payload?.guestSite?.introText),
-            navigationLabel: cleanString(payload?.guestSite?.navigationLabel) || "Navigasjon",
-            backgroundImageUrl: cleanString(payload?.guestSite?.backgroundImageUrl),
+            ...currentGuestSite,
+            introText: Object.prototype.hasOwnProperty.call(guestSiteChanges, "introText")
+              ? cleanString(guestSiteChanges.introText)
+              : cleanString(currentGuestSite.introText),
+            navigationLabel:
+              Object.prototype.hasOwnProperty.call(guestSiteChanges, "navigationLabel")
+                ? cleanString(guestSiteChanges.navigationLabel) || "Navigasjon"
+                : cleanString(currentGuestSite.navigationLabel) || "Navigasjon",
+            backgroundImageUrl: Object.prototype.hasOwnProperty.call(
+              guestSiteChanges,
+              "backgroundImageUrl"
+            )
+              ? cleanString(guestSiteChanges.backgroundImageUrl)
+              : cleanString(currentGuestSite.backgroundImageUrl),
             backgroundMode: normalizeGuestSiteBackgroundMode(
-              payload?.guestSite?.backgroundMode,
-              current.guestSite?.backgroundMode
+              Object.prototype.hasOwnProperty.call(guestSiteChanges, "backgroundMode")
+                ? guestSiteChanges.backgroundMode
+                : currentGuestSite.backgroundMode,
+              currentGuestSite.backgroundMode
+            ),
+            navigationOrder: normalizeGuestNavigationOrder(
+              Object.prototype.hasOwnProperty.call(guestSiteChanges, "navigationOrder")
+                ? guestSiteChanges.navigationOrder
+                : currentGuestSite.navigationOrder,
+              currentGuestSite.navigationOrder
             ),
             agendaPage: normalizeGuestAgendaPageSettings(
-              payload?.guestSite?.agendaPage,
-              current.guestSite?.agendaPage
+              guestSiteChanges.agendaPage,
+              currentGuestSite.agendaPage
             )
           }
         };
