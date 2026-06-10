@@ -5175,11 +5175,17 @@ function ApprovalsTab({
                           ? "Manuell faktura"
                           : "Forskudd"}
                     </span>
+                    {submission.promotedJobId ? (
+                      <span className="data-tag success-tag">I fakturamodulen</span>
+                    ) : null}
                     {submission.imageOriginalFilename ? (
                       <span className="muted">{submission.imageOriginalFilename}</span>
                     ) : null}
                   </div>
                   <p>{submission.note || "Ingen kommentar."}</p>
+                  {submission.approvalError ? (
+                    <p className="notice warning">{submission.approvalError}</p>
+                  ) : null}
                   {submission.storedImagePath ? (
                     <a
                       className="approval-image-link"
@@ -5222,7 +5228,7 @@ function ApprovalsTab({
 
 export function EventPlatformClient({ initialEvents, initialJobs }) {
   const [events, setEvents] = useState(() => initialEvents.map((event) => ensureEventShape(event)));
-  const [jobs] = useState(() => initialJobs);
+  const [jobs, setJobs] = useState(() => initialJobs);
   const [selectedEventId, setSelectedEventId] = useState(() => initialEvents[0]?.id || "");
   const [activeTab, setActiveTab] = useState("overview");
   const [viewerId, setViewerId] = useState("organizer-local");
@@ -5284,6 +5290,60 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     setShowSettlementPlan(false);
     setProjectComposerVersion(0);
   }, [selectedEventId]);
+
+  async function refreshJobs() {
+    try {
+      const response = await fetch("/api/receipts", {
+        method: "GET",
+        cache: "no-store"
+      });
+      const body = await response.json();
+
+      if (!response.ok) {
+        throw new Error(body?.error || "Kunne ikke hente fakturajobbene.");
+      }
+
+      setJobs(Array.isArray(body.jobs) ? body.jobs : []);
+      return true;
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Kunne ikke hente fakturajobbene.");
+      return false;
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedEvent || (currentTab !== "finance" && currentTab !== "approvals")) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function syncJobs() {
+      try {
+        const response = await fetch("/api/receipts", {
+          method: "GET",
+          cache: "no-store"
+        });
+        const body = await response.json();
+
+        if (!response.ok || cancelled) {
+          return;
+        }
+
+        setJobs(Array.isArray(body.jobs) ? body.jobs : []);
+      } catch {
+        // La siste kjente jobboversikt bli staende hvis bakgrunnsoppdateringen feiler.
+      }
+    }
+
+    syncJobs();
+    const intervalId = window.setInterval(syncJobs, 8000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [currentTab, selectedEvent]);
 
   async function patchEvent(action, payload) {
     if (!selectedEvent) {
@@ -6019,15 +6079,35 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
   async function handleUpdateSubmission(formEvent, submission) {
     formEvent.preventDefault();
     const formData = new FormData(formEvent.currentTarget);
+    const requestedStatus = String(formData.get("status") || submission.status);
     const nextEvent = await patchEvent("update_submission", {
       submissionId: submission.id,
       changes: {
-        status: String(formData.get("status") || submission.status)
+        status: requestedStatus
       }
     });
 
     if (nextEvent) {
-      setStatusMessage(`Oppdaterte innsendingen "${submission.title}".`);
+      await refreshJobs();
+      const updatedSubmission = nextEvent.submissions.find((candidate) => candidate.id === submission.id);
+      const promotedNow =
+        !!updatedSubmission?.promotedJobId && updatedSubmission.promotedJobId !== submission.promotedJobId;
+      const movedToFinance =
+        promotedNow &&
+        (updatedSubmission.type === "receipt_upload" || updatedSubmission.type === "manual_invoice");
+
+      if (movedToFinance) {
+        setStatusMessage(`Oppdaterte "${submission.title}" og sendte den videre til fakturamodulen.`);
+      } else if (
+        requestedStatus === "approved" &&
+        updatedSubmission?.type === "advance_contribution"
+      ) {
+        setStatusMessage(
+          `Oppdaterte "${submission.title}". Forskudd legges fortsatt inn som egen finanspost i fakturamodulen.`
+        );
+      } else {
+        setStatusMessage(`Oppdaterte innsendingen "${submission.title}".`);
+      }
     }
   }
 

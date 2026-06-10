@@ -712,6 +712,11 @@ function createSubmission(submission) {
       typeof normalized.imageContentType === "string" ? normalized.imageContentType : "",
     imageOriginalFilename:
       typeof normalized.imageOriginalFilename === "string" ? normalized.imageOriginalFilename : "",
+    promotedJobId: typeof normalized.promotedJobId === "string" ? normalized.promotedJobId : "",
+    promotedLedgerEntryId:
+      typeof normalized.promotedLedgerEntryId === "string" ? normalized.promotedLedgerEntryId : "",
+    promotedAt: typeof normalized.promotedAt === "string" ? normalized.promotedAt : "",
+    approvalError: typeof normalized.approvalError === "string" ? normalized.approvalError : "",
     created_at: normalized.created_at || new Date(0).toISOString()
   };
 }

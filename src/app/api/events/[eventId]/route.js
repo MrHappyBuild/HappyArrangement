@@ -2,8 +2,23 @@ import crypto from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { getEvent, updateEvent } from "@/lib/local-store";
+import { getLocalEnv } from "@/lib/env";
 import { buildTaskAgenda } from "@/event-platform-utils";
+import { analyzeReceiptWithOllama } from "@/lib/local-ai";
+import {
+  createLocalJob,
+  createManualLocalJob,
+  getEvent,
+  readSubmissionReceiptMedia,
+  updateEvent,
+  updateLocalJob
+} from "@/lib/local-store";
+import { sha256 } from "@/lib/uploads";
+import {
+  buildManualInvoiceResultFromSubmission,
+  deriveSubmissionStatusFromReceiptJob,
+  shouldPromoteSubmission
+} from "@/submission-utils";
 import { normalizeVenuePlan } from "@/venue-layout-utils";
 import {
   applyTaskRelationshipUpdates,
@@ -75,6 +90,98 @@ function normalizeDuration(value, fallback = 60) {
   return numeric;
 }
 
+function isEventMember(event, personId) {
+  return !!personId && Array.isArray(event?.members) && event.members.some((member) => member.id === personId);
+}
+
+async function promoteReceiptSubmission(event, submission) {
+  const storedMedia = await readSubmissionReceiptMedia(
+    event.id,
+    submission.id,
+    submission.storedImagePath
+  );
+
+  if (!storedMedia?.buffer) {
+    throw new Error("Fant ikke kvitteringsbildet for innsendingen.");
+  }
+
+  const paidByMemberId = isEventMember(event, submission.submittedByPersonId)
+    ? submission.submittedByPersonId
+    : null;
+  const initialJob = await createLocalJob({
+    fileName: submission.imageOriginalFilename || submission.title || "Kvittering",
+    sanitized: {
+      buffer: storedMedia.buffer,
+      contentType: submission.imageContentType || storedMedia.contentType || "image/png",
+      extension: "png",
+      sha256: sha256(storedMedia.buffer)
+    },
+    eventId: event.id
+  });
+
+  const env = getLocalEnv();
+  let promotedJob = initialJob;
+
+  if (env.receiptProcessingMode === "queue") {
+    promotedJob = await updateLocalJob(initialJob.id, () => ({
+      status: "queued",
+      error_message: null,
+      completed_at: null,
+      paid_by_member_id: paidByMemberId
+    }));
+  } else {
+    try {
+      const result = await analyzeReceiptWithOllama(storedMedia.buffer);
+      promotedJob = await updateLocalJob(initialJob.id, () => ({
+        status: "completed",
+        result,
+        error_message: null,
+        completed_at: new Date().toISOString(),
+        paid_by_member_id: paidByMemberId
+      }));
+    } catch (error) {
+      promotedJob = await updateLocalJob(initialJob.id, () => ({
+        status: "failed",
+        error_message: error instanceof Error ? error.message : "Ukjent analysefeil.",
+        completed_at: new Date().toISOString(),
+        paid_by_member_id: paidByMemberId
+      }));
+    }
+  }
+
+  return {
+    job: promotedJob,
+    submissionChanges: {
+      status: deriveSubmissionStatusFromReceiptJob(promotedJob.status),
+      promotedJobId: promotedJob.id,
+      promotedAt: new Date().toISOString(),
+      approvalError: promotedJob.status === "failed" ? promotedJob.error_message || "" : ""
+    }
+  };
+}
+
+async function promoteManualInvoiceSubmission(event, submission) {
+  const paidByMemberId = isEventMember(event, submission.submittedByPersonId)
+    ? submission.submittedByPersonId
+    : null;
+  const job = await createManualLocalJob({
+    fileName: submission.title || "Manuell faktura",
+    eventId: event.id,
+    result: buildManualInvoiceResultFromSubmission(submission),
+    paidByMemberId
+  });
+
+  return {
+    job,
+    submissionChanges: {
+      status: "processed",
+      promotedJobId: job.id,
+      promotedAt: new Date().toISOString(),
+      approvalError: ""
+    }
+  };
+}
+
 export async function GET(_request, context) {
   try {
     const params = await context.params;
@@ -107,6 +214,53 @@ export async function PATCH(request, context) {
 
     if (!action) {
       return errorResponse("Mangler handling.", 400);
+    }
+
+    if (action === "update_submission") {
+      const submissionId = cleanString(payload?.submissionId);
+
+      if (!submissionId) {
+        return errorResponse("Mangler innsending.", 400);
+      }
+
+      const currentSubmission = Array.isArray(event.submissions)
+        ? event.submissions.find((submission) => submission.id === submissionId)
+        : null;
+
+      if (!currentSubmission) {
+        return errorResponse("Fant ikke innsendingen.", 404);
+      }
+
+      const requestedChanges =
+        payload?.changes && typeof payload.changes === "object" ? payload.changes : {};
+      const requestedStatus = cleanString(requestedChanges.status) || currentSubmission.status;
+      let promotionResult = null;
+
+      if (shouldPromoteSubmission(currentSubmission, requestedStatus)) {
+        if (currentSubmission.type === "receipt_upload") {
+          promotionResult = await promoteReceiptSubmission(event, currentSubmission);
+        } else if (currentSubmission.type === "manual_invoice") {
+          promotionResult = await promoteManualInvoiceSubmission(event, currentSubmission);
+        }
+      }
+
+      const next = await updateEvent(params.eventId, (current) => ({
+        ...current,
+        submissions: (current.submissions || []).map((submission) =>
+          submission.id === submissionId
+            ? {
+                ...submission,
+                ...requestedChanges,
+                ...(promotionResult?.submissionChanges || {})
+              }
+            : submission
+        )
+      }));
+
+      return NextResponse.json({
+        event: next,
+        promotedJobId: promotionResult?.job?.id || null
+      });
     }
 
     const next = await updateEvent(params.eventId, (current) => {
@@ -758,28 +912,6 @@ export async function PATCH(request, context) {
               created_at: new Date().toISOString()
             }
           ]
-        };
-      }
-
-      if (action === "update_submission") {
-        const submissionId = cleanString(payload?.submissionId);
-
-        if (!submissionId) {
-          throw new Error("Mangler innsending.");
-        }
-
-        return {
-          ...current,
-          submissions: (current.submissions || []).map((submission) =>
-            submission.id === submissionId
-              ? {
-                  ...submission,
-                  ...(payload?.changes && typeof payload.changes === "object"
-                    ? payload.changes
-                    : {})
-                }
-              : submission
-          )
         };
       }
 
