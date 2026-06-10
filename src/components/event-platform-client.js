@@ -558,7 +558,7 @@ function GuestTab({
     setGuestSiteNavigationLabelDraft(event.guestSite?.navigationLabel || "Navigasjon");
     setGuestSiteBackgroundImageUrlDraft(event.guestSite?.backgroundImageUrl || "");
     setGuestSiteBackgroundStatus("");
-  }, [event.guestSite?.backgroundImageUrl, event.guestSite?.introText, event.guestSite?.navigationLabel, event.id]);
+  }, [event.id, event.updated_at]);
 
   useEffect(() => {
     if (!editablePage) {
@@ -735,6 +735,9 @@ function GuestTab({
     });
 
     if (nextEvent) {
+      setGuestSiteIntroDraft(nextEvent.guestSite?.introText || "");
+      setGuestSiteNavigationLabelDraft(nextEvent.guestSite?.navigationLabel || "Navigasjon");
+      setGuestSiteBackgroundImageUrlDraft(nextEvent.guestSite?.backgroundImageUrl || "");
       setStatusMessage("Gjestenettsiden ble oppdatert.");
     }
 
@@ -755,6 +758,9 @@ function GuestTab({
     });
 
     if (nextEvent) {
+      setGuestSiteIntroDraft(nextEvent.guestSite?.introText || "");
+      setGuestSiteNavigationLabelDraft(nextEvent.guestSite?.navigationLabel || "Navigasjon");
+      setGuestSiteBackgroundImageUrlDraft(nextEvent.guestSite?.backgroundImageUrl || "");
       setStatusMessage(successMessage);
     }
 
@@ -770,6 +776,7 @@ function GuestTab({
 
     setIsUploadingGuestSiteBackground(true);
     setGuestSiteBackgroundStatus("");
+    const previousBackgroundImageUrl = event.guestSite?.backgroundImageUrl || "";
 
     try {
       const formData = new FormData();
@@ -792,8 +799,18 @@ function GuestTab({
       );
 
       if (nextEvent) {
-        setGuestSiteBackgroundStatus("Bakgrunnsbildet er lagret og publisert.");
+        const persistedBackgroundImageUrl = nextEvent.guestSite?.backgroundImageUrl || "";
+
+        if (persistedBackgroundImageUrl === body.url) {
+          setGuestSiteBackgroundStatus("Bakgrunnsbildet er lagret og publisert.");
+        } else {
+          setGuestSiteBackgroundImageUrlDraft(persistedBackgroundImageUrl);
+          setGuestSiteBackgroundStatus(
+            "Bakgrunnsbildet ble lastet opp, men ble ikke publisert på gjestenettsiden. Prøv å lagre på nytt."
+          );
+        }
       } else {
+        setGuestSiteBackgroundImageUrlDraft(previousBackgroundImageUrl);
         setGuestSiteBackgroundStatus(
           "Bakgrunnsbildet er valgt lokalt, men kunne ikke publiseres. Prøv å lagre gjestenettsiden på nytt."
         );
@@ -817,11 +834,19 @@ function GuestTab({
     setGuestSiteBackgroundStatus("Fjerner bakgrunnsbildet…");
     void persistGuestSiteBackground("", "Bakgrunnsbildet ble fjernet fra gjestenettsiden.")
       .then((nextEvent) => {
-        setGuestSiteBackgroundStatus(
-          nextEvent
-            ? "Bakgrunnsbildet er fjernet."
-            : "Kunne ikke fjerne bakgrunnsbildet akkurat nå."
-        );
+        if (nextEvent) {
+          const persistedBackgroundImageUrl = nextEvent.guestSite?.backgroundImageUrl || "";
+          setGuestSiteBackgroundImageUrlDraft(persistedBackgroundImageUrl);
+          setGuestSiteBackgroundStatus(
+            persistedBackgroundImageUrl
+              ? "Bakgrunnsbildet ble ikke fjernet fra gjestenettsiden. Prøv igjen."
+              : "Bakgrunnsbildet er fjernet."
+          );
+          return;
+        }
+
+        setGuestSiteBackgroundImageUrlDraft(event.guestSite?.backgroundImageUrl || "");
+        setGuestSiteBackgroundStatus("Kunne ikke fjerne bakgrunnsbildet akkurat nå.");
       });
   }
 
