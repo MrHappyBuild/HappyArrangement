@@ -23,8 +23,8 @@ const LIBRARY_BY_TYPE = {
     type: "round_table",
     label: "Rundt bord",
     shortLabel: "Rundt",
-    defaultWidth: 18,
-    defaultHeight: 18,
+    defaultWidth: 1.8,
+    defaultHeight: 1.8,
     defaultSeatCount: 8,
     colorToken: "table",
     seatable: true,
@@ -34,8 +34,8 @@ const LIBRARY_BY_TYPE = {
     type: "long_table",
     label: "Langbord",
     shortLabel: "Langbord",
-    defaultWidth: 28,
-    defaultHeight: 12,
+    defaultWidth: 3.2,
+    defaultHeight: 1,
     defaultSeatCount: 8,
     colorToken: "table",
     seatable: true
@@ -44,8 +44,8 @@ const LIBRARY_BY_TYPE = {
     type: "chair",
     label: "Stol",
     shortLabel: "Stol",
-    defaultWidth: 8,
-    defaultHeight: 8,
+    defaultWidth: 0.65,
+    defaultHeight: 0.65,
     defaultSeatCount: 1,
     colorToken: "seat",
     seatable: true,
@@ -55,8 +55,8 @@ const LIBRARY_BY_TYPE = {
     type: "custom_zone",
     label: "Egen sone",
     shortLabel: "Sone",
-    defaultWidth: 24,
-    defaultHeight: 16,
+    defaultWidth: 3,
+    defaultHeight: 2,
     defaultSeatCount: 0,
     colorToken: "custom",
     seatable: false,
@@ -67,8 +67,8 @@ const LIBRARY_BY_TYPE = {
     type: "stage",
     label: "Scene",
     shortLabel: "Scene",
-    defaultWidth: 24,
-    defaultHeight: 12,
+    defaultWidth: 4,
+    defaultHeight: 2.2,
     defaultSeatCount: 0,
     colorToken: "stage",
     seatable: false,
@@ -78,8 +78,8 @@ const LIBRARY_BY_TYPE = {
     type: "dance_floor",
     label: "Dansegulv",
     shortLabel: "Dansegulv",
-    defaultWidth: 26,
-    defaultHeight: 20,
+    defaultWidth: 4.5,
+    defaultHeight: 3.5,
     defaultSeatCount: 0,
     colorToken: "dance",
     seatable: false,
@@ -89,8 +89,8 @@ const LIBRARY_BY_TYPE = {
     type: "buffet",
     label: "Buffet",
     shortLabel: "Buffet",
-    defaultWidth: 20,
-    defaultHeight: 10,
+    defaultWidth: 3,
+    defaultHeight: 1.2,
     defaultSeatCount: 0,
     colorToken: "service",
     seatable: false,
@@ -100,8 +100,8 @@ const LIBRARY_BY_TYPE = {
     type: "bar",
     label: "Bar",
     shortLabel: "Bar",
-    defaultWidth: 18,
-    defaultHeight: 10,
+    defaultWidth: 2.8,
+    defaultHeight: 1.1,
     defaultSeatCount: 0,
     colorToken: "service",
     seatable: false,
@@ -111,8 +111,8 @@ const LIBRARY_BY_TYPE = {
     type: "restroom",
     label: "Toalett",
     shortLabel: "WC",
-    defaultWidth: 14,
-    defaultHeight: 10,
+    defaultWidth: 2.2,
+    defaultHeight: 1.8,
     defaultSeatCount: 0,
     colorToken: "service",
     seatable: false,
@@ -122,8 +122,8 @@ const LIBRARY_BY_TYPE = {
     type: "emergency_exit",
     label: "Nodutgang",
     shortLabel: "Utgang",
-    defaultWidth: 14,
-    defaultHeight: 6,
+    defaultWidth: 1.6,
+    defaultHeight: 0.4,
     defaultSeatCount: 0,
     colorToken: "safety",
     seatable: false,
@@ -145,6 +145,24 @@ function clamp(value, min, max) {
 function parseNumber(value, fallback) {
   const numeric = typeof value === "number" ? value : Number.parseFloat(String(value || ""));
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function metersToPercent(valueMeters, roomMeters) {
+  if (!roomMeters) {
+    return 0;
+  }
+
+  return (valueMeters / roomMeters) * 100;
+}
+
+function legacyPercentToMeters(valuePercent, roomMeters, fallbackMeters) {
+  const safePercent = parseNumber(valuePercent, NaN);
+
+  if (!Number.isFinite(safePercent)) {
+    return fallbackMeters;
+  }
+
+  return (safePercent / 100) * roomMeters;
 }
 
 function normalizeRotation(value) {
@@ -234,23 +252,27 @@ function buildDefaultItemLabel(type, index) {
   return `${entry.label} ${index + 1}`;
 }
 
-export function createVenueItem(type, index = 0) {
+export function createVenueItem(type, index = 0, room = DEFAULT_ROOM) {
   const normalizedType = normalizeVenueItemType(type);
   const entry = getLibraryEntry(normalizedType);
   const width = entry.defaultWidth;
   const height = entry.defaultHeight;
   const seatCount = normalizeSeatCount(normalizedType, entry.defaultSeatCount);
   const itemId = `venue-item-${Date.now()}-${Math.round(Math.random() * 100000)}`;
+  const widthPercent = metersToPercent(width, room.widthMeters || DEFAULT_ROOM.widthMeters);
+  const heightPercent = metersToPercent(height, room.heightMeters || DEFAULT_ROOM.heightMeters);
 
   return {
     id: itemId,
     type: entry.type,
     label: buildDefaultItemLabel(normalizedType, index),
     note: "",
-    x: clamp(12 + index * 4, 0, Math.max(0, 100 - width)),
-    y: clamp(12 + index * 4, 0, Math.max(0, 100 - height)),
+    x: clamp(12 + index * 4, 0, Math.max(0, 100 - widthPercent)),
+    y: clamp(12 + index * 4, 0, Math.max(0, 100 - heightPercent)),
     width,
     height,
+    widthMeters: width,
+    heightMeters: height,
     rotation: 0,
     shape: normalizeItemShape(entry.type, entry.defaultShape),
     seatCount,
@@ -259,7 +281,7 @@ export function createVenueItem(type, index = 0) {
   };
 }
 
-function normalizeVenueItem(item, index = 0) {
+function normalizeVenueItem(item, index = 0, room = DEFAULT_ROOM) {
   const safeItem = item && typeof item === "object" ? item : {};
   const normalizedType = normalizeVenueItemType(safeItem.type);
   const entry = getLibraryEntry(normalizedType);
@@ -267,14 +289,26 @@ function normalizeVenueItem(item, index = 0) {
   const shouldDropLegacyOvalLabel =
     safeItem.type === "full_round_table" && /^Ovalt bord(?:\s+\d+)?$/i.test(rawLabel);
   const itemId = typeof safeItem.id === "string" && safeItem.id ? safeItem.id : `venue-item-${index + 1}`;
-  const rawWidth = clamp(parseNumber(safeItem.width, entry.defaultWidth), 6, 40);
-  const rawHeight = clamp(parseNumber(safeItem.height, entry.defaultHeight), 6, 36);
+  const legacyWidthMeters = legacyPercentToMeters(safeItem.width, room.widthMeters, entry.defaultWidth);
+  const legacyHeightMeters = legacyPercentToMeters(safeItem.height, room.heightMeters, entry.defaultHeight);
+  const rawWidth = clamp(
+    parseNumber(safeItem.widthMeters, legacyWidthMeters),
+    0.4,
+    Math.max(0.4, room.widthMeters)
+  );
+  const rawHeight = clamp(
+    parseNumber(safeItem.heightMeters, legacyHeightMeters),
+    0.4,
+    Math.max(0.4, room.heightMeters)
+  );
   const shape = normalizeItemShape(entry.type, safeItem.shape);
   const width = shape === "circle" ? Math.min(rawWidth, rawHeight) : rawWidth;
   const height = shape === "circle" ? Math.min(rawWidth, rawHeight) : rawHeight;
   const seatCount = normalizeSeatCount(entry.type, safeItem.seatCount);
-  const maxX = Math.max(0, 100 - width);
-  const maxY = Math.max(0, 100 - height);
+  const widthPercent = metersToPercent(width, room.widthMeters);
+  const heightPercent = metersToPercent(height, room.heightMeters);
+  const maxX = Math.max(0, 100 - widthPercent);
+  const maxY = Math.max(0, 100 - heightPercent);
 
   return {
     id: itemId,
@@ -288,6 +322,10 @@ function normalizeVenueItem(item, index = 0) {
     y: clamp(parseNumber(safeItem.y, 10), 0, maxY),
     width,
     height,
+    widthMeters: width,
+    heightMeters: height,
+    widthPercent,
+    heightPercent,
     rotation: normalizeRotation(safeItem.rotation),
     shape,
     seatCount,
@@ -299,15 +337,18 @@ function normalizeVenueItem(item, index = 0) {
 export function normalizeVenuePlan(plan) {
   const safePlan = plan && typeof plan === "object" ? plan : {};
   const room = safePlan.room && typeof safePlan.room === "object" ? safePlan.room : {};
-  const items = Array.isArray(safePlan.items) ? safePlan.items.map((item, index) => normalizeVenueItem(item, index)) : [];
+  const normalizedRoom = {
+    name: typeof room.name === "string" && room.name.trim() ? room.name.trim() : DEFAULT_ROOM.name,
+    widthMeters: clamp(parseNumber(room.widthMeters, DEFAULT_ROOM.widthMeters), 4, 120),
+    heightMeters: clamp(parseNumber(room.heightMeters, DEFAULT_ROOM.heightMeters), 4, 120),
+    notes: typeof room.notes === "string" ? room.notes.trim() : DEFAULT_ROOM.notes
+  };
+  const items = Array.isArray(safePlan.items)
+    ? safePlan.items.map((item, index) => normalizeVenueItem(item, index, normalizedRoom))
+    : [];
 
   return {
-    room: {
-      name: typeof room.name === "string" && room.name.trim() ? room.name.trim() : DEFAULT_ROOM.name,
-      widthMeters: clamp(parseNumber(room.widthMeters, DEFAULT_ROOM.widthMeters), 4, 120),
-      heightMeters: clamp(parseNumber(room.heightMeters, DEFAULT_ROOM.heightMeters), 4, 120),
-      notes: typeof room.notes === "string" ? room.notes.trim() : DEFAULT_ROOM.notes
-    },
+    room: normalizedRoom,
     items
   };
 }

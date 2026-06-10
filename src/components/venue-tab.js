@@ -99,6 +99,26 @@ function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function formatMetersValue(value) {
+  const numeric = Number(value || 0);
+  const hasDecimal = Math.abs(numeric - Math.round(numeric)) > 0.001;
+
+  return new Intl.NumberFormat("nb-NO", {
+    minimumFractionDigits: hasDecimal ? 1 : 0,
+    maximumFractionDigits: 1
+  }).format(numeric);
+}
+
+function formatItemDimensions(item) {
+  if (!item) {
+    return "";
+  }
+
+  return `${formatMetersValue(item.widthMeters || item.width)} × ${formatMetersValue(
+    item.heightMeters || item.height
+  )} m`;
+}
+
 function VenueEmptyState({ title, body }) {
   return (
     <div className="notice event-platform-empty">
@@ -161,6 +181,8 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     () => buildVenuePlanningState({ ...event, venuePlan: planDraft }),
     [event, planDraft]
   );
+  const roomWidthMeters = venueState.venuePlan.room.widthMeters;
+  const roomHeightMeters = venueState.venuePlan.room.heightMeters;
 
   const selectedItem =
     venueState.items.find((item) => item.id === selectedItemId) || venueState.items[0] || null;
@@ -291,13 +313,13 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
         return;
       }
 
-      const deltaWidthPercent = ((eventObject.clientX - resizeDrag.startClientX) / rect.width) * 100;
-      const deltaHeightPercent = ((eventObject.clientY - resizeDrag.startClientY) / rect.height) * 100;
+      const deltaWidthMeters = ((eventObject.clientX - resizeDrag.startClientX) / rect.width) * roomWidthMeters;
+      const deltaHeightMeters = ((eventObject.clientY - resizeDrag.startClientY) / rect.height) * roomHeightMeters;
 
       applyPreviewPlan((currentPlan) =>
         updateVenueItemInPlan(currentPlan, resizeDrag.itemId, {
-          width: resizeDrag.startWidth + deltaWidthPercent,
-          height: resizeDrag.startHeight + deltaHeightPercent
+          widthMeters: resizeDrag.startWidth + deltaWidthMeters,
+          heightMeters: resizeDrag.startHeight + deltaHeightMeters
         })
       );
     }
@@ -321,7 +343,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [canEditLayout, onSaveVenuePlan, resizeDrag]);
+  }, [canEditLayout, onSaveVenuePlan, resizeDrag, roomHeightMeters, roomWidthMeters]);
 
   useEffect(() => {
     if (!seatDrag || !canEditLayout) {
@@ -383,7 +405,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
 
     const previousPlan = planDraftRef.current;
     const sameTypeCount = previousPlan.items.filter((item) => item.type === type).length;
-    const nextItem = createVenueItem(type, sameTypeCount);
+    const nextItem = createVenueItem(type, sameTypeCount, previousPlan.room);
     const nextPlan = {
       ...previousPlan,
       items: [...previousPlan.items, nextItem]
@@ -430,8 +452,8 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       note: String(formData.get("note") || "").trim(),
       rotation: Number(formData.get("rotation") || selectedItem.rotation),
       shape: String(formData.get("shape") || selectedItem.shape || "").trim(),
-      width: Number(formData.get("width") || selectedItem.width),
-      height: Number(formData.get("height") || selectedItem.height),
+      widthMeters: Number(formData.get("widthMeters") || selectedItem.widthMeters || selectedItem.width),
+      heightMeters: Number(formData.get("heightMeters") || selectedItem.heightMeters || selectedItem.height),
       seatCount: selectedItem.seatable
         ? Number(formData.get("seatCount") || selectedItem.seatCount)
         : selectedItem.seatCount
@@ -503,8 +525,8 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
 
     const previousPlan = planDraftRef.current;
     const nextPlan = updateVenueItemInPlan(previousPlan, selectedItem.id, {
-      width: selectedItem.width + delta,
-      height: selectedItem.height + delta
+      widthMeters: (selectedItem.widthMeters || selectedItem.width) + delta,
+      heightMeters: (selectedItem.heightMeters || selectedItem.height) + delta
     });
 
     await commitPlan(nextPlan, `${selectedItem.label} fikk ny storrelse.`, previousPlan);
@@ -543,12 +565,12 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   }
 
   const roomStyle = {
-    aspectRatio: `${venueState.venuePlan.room.widthMeters} / ${venueState.venuePlan.room.heightMeters}`
+    aspectRatio: `${roomWidthMeters} / ${roomHeightMeters}`
   };
 
   const gridStyle = {
-    "--venue-room-width": venueState.venuePlan.room.widthMeters,
-    "--venue-room-height": venueState.venuePlan.room.heightMeters
+    "--venue-room-width": roomWidthMeters,
+    "--venue-room-height": roomHeightMeters
   };
   const canvasScaleStyle = {
     width: `${zoomPercent}%`,
@@ -909,13 +931,13 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                     style={{
                       left: `${item.x}%`,
                       top: `${item.y}%`,
-                      width: `${item.width}%`,
+                      width: `${item.widthPercent}%`,
                       ...(item.shape === "circle"
                         ? {
                             aspectRatio: "1 / 1"
                           }
                         : {
-                            height: `${item.height}%`
+                            height: `${item.heightPercent}%`
                           })
                     }}
                     onClick={() => setSelectedItemId(item.id)}
@@ -950,6 +972,11 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                       <div className="venue-item-label">
                         <strong>{item.label}</strong>
                         <span>{item.library.shortLabel}</span>
+                        {selectedItem?.id === item.id ? (
+                          <span className={`venue-item-dimensions ${resizeDrag?.itemId === item.id ? "is-live" : ""}`}>
+                            {formatItemDimensions(item)}
+                          </span>
+                        ) : null}
                       </div>
                       {canEditLayout && selectedItem?.id === item.id ? (
                         <button
@@ -962,8 +989,8 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                               itemId: item.id,
                               startClientX: eventObject.clientX,
                               startClientY: eventObject.clientY,
-                              startWidth: item.width,
-                              startHeight: item.height,
+                              startWidth: item.widthMeters || item.width,
+                              startHeight: item.heightMeters || item.height,
                               initialPlan: planDraftRef.current
                             });
                           }}
@@ -1072,7 +1099,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
           <div className="venue-room-legend">
             <span>
               {isRoomMode
-                ? "Tips: dra pa elementene for aa flytte dem, bruk hjornet nede til hoyre for aa gjore dem storre eller mindre, og juster zoom for aa jobbe tettere eller mer oversiktlig."
+                ? "Tips: dra pa elementene for aa flytte dem, bruk hjornet nede til hoyre for aa skalere i meter, og juster zoom for aa jobbe tettere eller mer oversiktlig."
                 : "Tips: dra personer til stolene i denne visningen, og bruk oversikten til hoyre for aa rydde plasseringer og kostbehov."}
             </span>
           </div>
@@ -1090,9 +1117,16 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
             {selectedItem ? (
               <form
                 className="stack"
-                key={`${selectedItem.id}-${selectedItem.label}-${selectedItem.rotation}-${selectedItem.width}-${selectedItem.height}-${selectedItem.seatCount}-${selectedItem.note}`}
+                key={`${selectedItem.id}-${selectedItem.label}-${selectedItem.rotation}-${selectedItem.widthMeters}-${selectedItem.heightMeters}-${selectedItem.seatCount}-${selectedItem.note}`}
                 onSubmit={handleSaveItem}
               >
+                <div className="notice">
+                  <strong>Storrelse i meter</strong>
+                  <p>
+                    {resizeDrag?.itemId === selectedItem.id ? "Skalerer na til " : "Gjeldende storrelse: "}
+                    <code>{formatItemDimensions(selectedItem)}</code>
+                  </p>
+                </div>
                 <div className="compact-grid">
                   <label className="field">
                     <span>Navn</span>
@@ -1125,26 +1159,26 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                     </label>
                   ) : null}
                   <label className="field">
-                    <span>Bredde (%)</span>
+                    <span>Bredde (meter)</span>
                     <input
-                      defaultValue={selectedItem.width}
+                      defaultValue={selectedItem.widthMeters || selectedItem.width}
                       disabled={!canManageVenue}
-                      max="40"
-                      min="6"
-                      name="width"
-                      step="1"
+                      max={roomWidthMeters}
+                      min="0.4"
+                      name="widthMeters"
+                      step="0.1"
                       type="number"
                     />
                   </label>
                   <label className="field">
-                    <span>Hoyde (%)</span>
+                    <span>Lengde (meter)</span>
                     <input
-                      defaultValue={selectedItem.height}
+                      defaultValue={selectedItem.heightMeters || selectedItem.height}
                       disabled={!canManageVenue}
-                      max="36"
-                      min="6"
-                      name="height"
-                      step="1"
+                      max={roomHeightMeters}
+                      min="0.4"
+                      name="heightMeters"
+                      step="0.1"
                       type="number"
                     />
                   </label>
@@ -1206,14 +1240,14 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                       <button
                         className="secondary-button compact-action-button"
                         type="button"
-                        onClick={() => handleQuickResize(-2)}
+                        onClick={() => handleQuickResize(-0.2)}
                       >
                         Mindre
                       </button>
                       <button
                         className="secondary-button compact-action-button"
                         type="button"
-                        onClick={() => handleQuickResize(2)}
+                        onClick={() => handleQuickResize(0.2)}
                       >
                         Storre
                       </button>

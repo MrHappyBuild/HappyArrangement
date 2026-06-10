@@ -2347,6 +2347,7 @@ p {
   background: rgba(255, 250, 242, 0.72);
   color: var(--text);
   cursor: pointer;
+  text-decoration: none;
 }
 
 .guest-site-link strong {
@@ -2387,6 +2388,60 @@ p {
   background:
     radial-gradient(circle at top right, rgba(36, 95, 82, 0.1), transparent 34%),
     linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(255, 248, 238, 0.96));
+}
+
+.guest-site-public-links {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 252, 247, 0.88);
+}
+
+.guest-site-public-link-list {
+  display: grid;
+  gap: 10px;
+}
+
+.guest-site-public-link-row {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 250, 242, 0.72);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.guest-site-public-link-row span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+
+.guest-site-public-shell {
+  align-items: stretch;
+}
+
+.guest-site-public-preview {
+  min-height: 100%;
+}
+
+.guest-site-event-facts {
+  display: grid;
+  gap: 12px;
+}
+
+.guest-site-event-facts div {
+  display: grid;
+  gap: 2px;
+}
+
+.guest-site-event-facts span {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .guest-site-copy {
@@ -3023,6 +3078,25 @@ p {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.venue-item-dimensions {
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(36, 95, 82, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text) !important;
+  font-size: 0.7rem !important;
+  font-weight: 700;
+  letter-spacing: 0.02em !important;
+  text-transform: none !important;
+}
+
+.venue-item-dimensions.is-live {
+  border-color: rgba(36, 95, 82, 0.36);
+  background: rgba(232, 244, 239, 0.96);
+  box-shadow: 0 6px 14px rgba(28, 22, 15, 0.12);
 }
 
 .venue-item-stage .venue-item-label span {

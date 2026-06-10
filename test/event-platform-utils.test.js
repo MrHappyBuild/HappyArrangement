@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   buildAgendaHighlights,
   buildEventFinanceSummary,
+  buildGuestSiteBasePath,
+  buildGuestSitePagePath,
   buildProjectDashboard,
   buildProjectHierarchy,
   buildProjectMatrix,
@@ -49,7 +51,37 @@ test("ensureEventShape creates a default guest page when none exists", () => {
   assert.equal(event.guestPages[0].textSize, "md");
   assert.equal(event.guestPages[0].textWeight, "regular");
   assert.equal(event.guestPages[0].showImageCaption, false);
+  assert.equal(event.slug, "sommerfest-2026");
+  assert.equal(event.guestPages[0].slug, "velkommen");
   assert.match(event.guestPages[0].content, /Velkommen til sommerfest/);
+});
+
+test("ensureEventShape creates unique guest page slugs and public paths", () => {
+  const event = ensureEventShape({
+    id: "event-public-pages",
+    name: "Bryllup Ole og Kari",
+    guestPages: [
+      {
+        id: "page-1",
+        title: "Program",
+        menuLabel: "Program"
+      },
+      {
+        id: "page-2",
+        title: "Program",
+        menuLabel: "Program"
+      }
+    ]
+  });
+
+  assert.equal(event.slug, "bryllup-ole-og-kari");
+  assert.equal(event.guestPages[0].slug, "program");
+  assert.equal(event.guestPages[1].slug, "program-2");
+  assert.equal(buildGuestSiteBasePath(event), "/gjest/bryllup-ole-og-kari");
+  assert.equal(
+    buildGuestSitePagePath(event, event.guestPages[1]),
+    "/gjest/bryllup-ole-og-kari/program-2"
+  );
 });
 
 test("ensureEventShape keeps guest allergies and creates a normalized venue plan", () => {

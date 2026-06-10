@@ -56,6 +56,29 @@ test("custom zone keeps editable shape information", () => {
   assert.equal(plan.items[0].shape, "oval");
 });
 
+test("legacy percent-based venue items are converted into meter sizes from the room", () => {
+  const plan = normalizeVenuePlan({
+    room: {
+      name: "Festsal",
+      widthMeters: 20,
+      heightMeters: 10
+    },
+    items: [
+      {
+        id: "legacy-table",
+        type: "long_table",
+        width: 25,
+        height: 10
+      }
+    ]
+  });
+
+  assert.equal(plan.items[0].widthMeters, 5);
+  assert.equal(plan.items[0].heightMeters, 1);
+  assert.equal(plan.items[0].widthPercent, 25);
+  assert.equal(plan.items[0].heightPercent, 10);
+});
+
 test("restroom is available as a non-seatable venue item", () => {
   const restroom = createVenueItem("restroom", 0);
   const plan = normalizeVenuePlan({
@@ -195,5 +218,6 @@ test("legacy full_round_table items are normalized into standard round tables", 
   assert.equal(plan.items[0].label, "Rundt bord 1");
   assert.equal(plan.items[0].shape, "circle");
   assert.equal(plan.items[0].width, plan.items[0].height);
+  assert.equal(plan.items[0].widthMeters, plan.items[0].heightMeters);
   assert.equal(plan.items[0].seatCount, 8);
 });

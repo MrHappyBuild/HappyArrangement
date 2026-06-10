@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { getLocalEnv } from "./env.js";
-import { ensureEventShape } from "../event-platform-utils.js";
+import { ensureEventShape, ensureUniqueSlug, slugifySegment } from "../event-platform-utils.js";
 
 function getPaths() {
   const { localDataDir } = getLocalEnv();
@@ -60,6 +60,16 @@ async function writeEvents(events) {
   await fs.writeFile(eventsFile, `${JSON.stringify(events, null, 2)}\n`, "utf8");
 }
 
+function buildUniqueEventSlug(name, events, excludeId = "") {
+  const usedSlugs = new Set(
+    events
+      .filter((event) => event && event.id !== excludeId)
+      .map((event) => slugifySegment(event.slug || event.overview?.title || event.name, "arrangement"))
+  );
+
+  return ensureUniqueSlug(name, usedSlugs, "arrangement");
+}
+
 export async function getLocalJob(jobId) {
   const jobs = await readJobs();
   return jobs.find((job) => job.id === jobId) ?? null;
@@ -87,12 +97,23 @@ export async function getEvent(eventId) {
   return event ? ensureEventShape(event) : null;
 }
 
+export async function getEventBySlug(eventSlug) {
+  const events = await readEvents();
+  const normalizedSlug = slugifySegment(eventSlug, "arrangement");
+  const event = events.find(
+    (entry) => ensureEventShape(entry).slug === normalizedSlug
+  );
+
+  return event ? ensureEventShape(event) : null;
+}
+
 export async function createEvent({ name }) {
   const events = await readEvents();
   const createdAt = new Date().toISOString();
   const event = ensureEventShape({
     id: crypto.randomUUID(),
     name,
+    slug: buildUniqueEventSlug(name, events),
     created_at: createdAt,
     updated_at: createdAt,
     members: [],
@@ -157,6 +178,10 @@ export async function updateEvent(eventId, updater) {
   const next = ensureEventShape({
     ...current,
     ...(updated && typeof updated === "object" ? updated : {}),
+    slug:
+      updated && typeof updated === "object" && typeof updated.slug === "string" && updated.slug.trim()
+        ? buildUniqueEventSlug(updated.slug, events, eventId)
+        : current.slug || buildUniqueEventSlug(current.overview?.title || current.name, events, eventId),
     updated_at: new Date().toISOString()
   });
 

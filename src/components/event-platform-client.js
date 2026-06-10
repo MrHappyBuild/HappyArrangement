@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardClient } from "@/components/dashboard-client";
+import { GuestPageContentView } from "@/components/guest-page-content-view";
 import { VenueTab } from "@/components/venue-tab";
 import {
   GUEST_PAGE_FONT_OPTIONS,
@@ -15,6 +16,8 @@ import {
   SUBMISSION_STATUS_OPTIONS,
   TASK_STATUS_OPTIONS,
   buildApprovalSummary,
+  buildGuestSiteBasePath,
+  buildGuestSitePagePath,
   canViewerSeeGuestPage,
   buildEventFinanceSummary,
   buildAgendaHighlights,
@@ -28,7 +31,6 @@ import {
   buildViewerAccess,
   ensureEventShape
 } from "@/event-platform-utils";
-import { parseGuestPageContent } from "@/guest-page-content";
 import {
   buildTaskDependencyDragPayload,
   deriveFollowingTaskIds
@@ -246,109 +248,6 @@ function EmptyState({ title, body }) {
   );
 }
 
-function renderGuestPageInlineParts(parts, keyPrefix) {
-  return parts.map((part, index) => {
-    if (part.type === "styled") {
-      const classNames = [
-        "guest-inline-style",
-        part.styles?.fontPreset ? `guest-page-font-${part.styles.fontPreset}` : "",
-        part.styles?.textSize ? `guest-page-size-${part.styles.textSize}` : "",
-        part.styles?.textWeight ? `guest-page-weight-${part.styles.textWeight}` : ""
-      ]
-        .filter(Boolean)
-        .join(" ");
-
-      return (
-        <span className={classNames} key={`${keyPrefix}-styled-${index}`}>
-          {renderGuestPageInlineParts(part.parts || [], `${keyPrefix}-styled-${index}`)}
-        </span>
-      );
-    }
-
-    if (part.type === "link") {
-      return (
-        <a
-          className="guest-page-inline-link"
-          href={part.href}
-          key={`${keyPrefix}-link-${index}`}
-          rel="noreferrer"
-          target="_blank"
-        >
-          {part.label}
-        </a>
-      );
-    }
-
-    return <span key={`${keyPrefix}-text-${index}`}>{part.text}</span>;
-  });
-}
-
-function GuestPageContentView({ content, showImageCaption = false }) {
-  const blocks = useMemo(() => {
-    try {
-      return parseGuestPageContent(content);
-    } catch {
-      return [
-        {
-          type: "paragraph",
-          parts: [{ type: "text", text: typeof content === "string" ? content : "" }]
-        }
-      ];
-    }
-  }, [content]);
-
-  if (blocks.length === 0) {
-    return <p>Denne siden er klar for informasjon, men mangler innhold enda.</p>;
-  }
-
-  return (
-    <div className="guest-page-rendered">
-      {blocks.map((block, index) => {
-        if (block.type === "image") {
-          return (
-            <figure className="guest-page-figure" key={`block-${index}`}>
-              <img
-                alt={block.alt}
-                className="guest-page-image"
-                loading="lazy"
-                src={block.src}
-              />
-              {showImageCaption && block.alt ? <figcaption>{block.alt}</figcaption> : null}
-            </figure>
-          );
-        }
-
-        if (block.type === "heading") {
-          const Tag = block.level === 1 ? "h2" : "h3";
-          return (
-            <Tag className="guest-page-heading" key={`block-${index}`}>
-              {renderGuestPageInlineParts(block.parts, `heading-${index}`)}
-            </Tag>
-          );
-        }
-
-        if (block.type === "list") {
-          return (
-            <ul className="guest-page-list" key={`block-${index}`}>
-              {block.items.map((item, itemIndex) => (
-                <li key={`block-${index}-item-${itemIndex}`}>
-                  {renderGuestPageInlineParts(item, `list-${index}-${itemIndex}`)}
-                </li>
-              ))}
-            </ul>
-          );
-        }
-
-        return (
-          <p className="guest-page-paragraph" key={`block-${index}`}>
-            {renderGuestPageInlineParts(block.parts, `paragraph-${index}`)}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
 function ActionTile({ title, body, actions }) {
   return (
     <article className="action-tile">
@@ -490,6 +389,7 @@ function GuestTab({
   const [mediaStatus, setMediaStatus] = useState("");
   const [inlineStyleStatus, setInlineStyleStatus] = useState("");
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [guestSiteOrigin, setGuestSiteOrigin] = useState("");
   const [textSelection, setTextSelection] = useState({ start: 0, end: 0 });
   const [inlineStyleControls, setInlineStyleControls] = useState({
     fontPreset: "",
@@ -515,12 +415,34 @@ function GuestTab({
     viewerAccess.canManageGuest && draftPage && selectedPage
       ? { ...selectedPage, ...draftPage }
       : selectedPage;
+  const guestSiteBasePath = useMemo(() => buildGuestSiteBasePath(event), [event]);
+  const guestSiteBaseUrl = guestSiteOrigin ? `${guestSiteOrigin}${guestSiteBasePath}` : guestSiteBasePath;
+  const guestPageLinks = useMemo(
+    () =>
+      event.guestPages.map((page, index) => {
+        const path =
+          index === 0 ? guestSiteBasePath : buildGuestSitePagePath(event, page);
+
+        return {
+          ...page,
+          path,
+          url: guestSiteOrigin ? `${guestSiteOrigin}${path}` : path
+        };
+      }),
+    [event, guestSiteBasePath, guestSiteOrigin]
+  );
 
   useEffect(() => {
     if (!visiblePages.some((page) => page.id === selectedPageId)) {
       setSelectedPageId(visiblePages[0]?.id || "");
     }
   }, [selectedPageId, visiblePages]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setGuestSiteOrigin(window.location.origin);
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedPage) {
@@ -692,6 +614,31 @@ function GuestTab({
             <p className="muted">
               Lag egne informasjonssider for gjestene, og la dem navigere i en venstremeny som hører til dette arrangementet.
             </p>
+          </div>
+        </div>
+        <div className="guest-site-public-links">
+          <div className="stack">
+            <p className="eyebrow">Offentlig URL</p>
+            <a className="secondary-link" href={guestSiteBaseUrl} rel="noreferrer" target="_blank">
+              {guestSiteBaseUrl}
+            </a>
+            <p className="muted">
+              Første side åpnes på grunnlenken. Undersidene får egne URL-er under samme arrangement.
+            </p>
+          </div>
+          <div className="guest-site-public-link-list">
+            {guestPageLinks.map((page) => (
+              <a
+                className="guest-site-public-link-row"
+                href={page.url}
+                key={page.id}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <strong>{page.menuLabel || page.title}</strong>
+                <span>{page.url}</span>
+              </a>
+            ))}
           </div>
         </div>
         <div className="guest-site-shell">

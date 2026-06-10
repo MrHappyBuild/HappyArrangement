@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { ensureEventShape } from "../event-platform-utils.js";
+import { ensureEventShape, ensureUniqueSlug, slugifySegment } from "../event-platform-utils.js";
 import { getSupabaseAdmin, getSupabaseEnv } from "./supabase.js";
 
 const EVENT_SELECT = [
@@ -87,6 +87,7 @@ function toEventRecord(event) {
 
   return {
     owner_user_id: cleanString(defaultOwnerUserId) || null,
+    slug: cleanString(nextEvent.slug) || slugifySegment(nextEvent.name || overview.title, "arrangement"),
     name: cleanString(nextEvent.name) || cleanString(overview.title) || "Arrangement",
     title: cleanString(overview.title) || cleanString(nextEvent.name) || "",
     description: cleanString(overview.description),
@@ -105,6 +106,7 @@ function fromEventRecord(record) {
   const nextEvent = ensureEventShape({
     ...workspaceState,
     id: record.id,
+    slug: cleanString(record.slug) || cleanString(workspaceState.slug),
     name: cleanString(record.name) || cleanString(workspaceState.name) || "Arrangement",
     created_at: record.created_at || workspaceState.created_at,
     updated_at: record.updated_at || workspaceState.updated_at,
@@ -127,6 +129,17 @@ function fromEventRecord(record) {
   });
 
   return nextEvent;
+}
+
+async function buildUniqueEventSlug(name, excludeId = "") {
+  const events = await listEvents();
+  const usedSlugs = new Set(
+    events
+      .filter((event) => event && event.id !== excludeId)
+      .map((event) => slugifySegment(event.slug || event.overview?.title || event.name, "arrangement"))
+  );
+
+  return ensureUniqueSlug(name, usedSlugs, "arrangement");
 }
 
 function toReceiptSummary(result) {
@@ -275,11 +288,34 @@ export async function getEvent(eventId) {
   return data ? fromEventRecord(data) : null;
 }
 
+export async function getEventBySlug(eventSlug) {
+  const client = getSupabaseAdmin();
+  const normalizedSlug = slugifySegment(eventSlug, "arrangement");
+  const { data, error } = await client
+    .from("events")
+    .select(EVENT_SELECT)
+    .eq("slug", normalizedSlug)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Kunne ikke hente arrangementet via slug: ${error.message}`);
+  }
+
+  if (data) {
+    return fromEventRecord(data);
+  }
+
+  const events = await listEvents();
+  return events.find((event) => event.slug === normalizedSlug) || null;
+}
+
 export async function createEvent({ name }) {
   const createdAt = new Date().toISOString();
+  const slug = await buildUniqueEventSlug(name);
   const event = ensureEventShape({
     id: crypto.randomUUID(),
     name,
+    slug,
     created_at: createdAt,
     updated_at: createdAt,
     members: [],
@@ -351,9 +387,14 @@ export async function updateEvent(eventId, updater) {
   }
 
   const updated = updater(current);
+  const nextSlug =
+    updated && typeof updated === "object" && typeof updated.slug === "string" && updated.slug.trim()
+      ? await buildUniqueEventSlug(updated.slug, eventId)
+      : current.slug || (await buildUniqueEventSlug(current.overview?.title || current.name, eventId));
   const next = ensureEventShape({
     ...current,
     ...(updated && typeof updated === "object" ? updated : {}),
+    slug: nextSlug,
     updated_at: new Date().toISOString()
   });
 

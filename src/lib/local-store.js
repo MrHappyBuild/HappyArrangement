@@ -22,6 +22,10 @@ export function getEvent(...args) {
   return getStore().getEvent(...args);
 }
 
+export function getEventBySlug(...args) {
+  return getStore().getEventBySlug(...args);
+}
+
 export function createEvent(...args) {
   return getStore().createEvent(...args);
 }

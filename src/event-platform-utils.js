@@ -145,6 +145,34 @@ const DEFAULT_TASK_DURATION_MINUTES = 60;
 const DEFAULT_GUEST_PAGE_ID = "guest-page-default";
 const PROJECT_DUE_SOON_WINDOW_MS = 48 * 60 * 60 * 1000;
 
+export function slugifySegment(value, fallback = "side") {
+  const normalized = String(value || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/æ/g, "ae")
+    .replace(/ø/g, "o")
+    .replace(/å/g, "a")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || fallback;
+}
+
+export function ensureUniqueSlug(baseValue, usedSlugs = new Set(), fallback = "side") {
+  const baseSlug = slugifySegment(baseValue, fallback);
+  let nextSlug = baseSlug;
+  let counter = 2;
+
+  while (usedSlugs.has(nextSlug)) {
+    nextSlug = `${baseSlug}-${counter}`;
+    counter += 1;
+  }
+
+  usedSlugs.add(nextSlug);
+  return nextSlug;
+}
+
 function normalizeRole(value, allowed, fallback) {
   return allowed.includes(value) ? value : fallback;
 }
@@ -494,6 +522,10 @@ function createGuestPage(page, fallbackIndex = 0) {
 
   return {
     id: typeof normalized.id === "string" ? normalized.id : "",
+    slug:
+      typeof normalized.slug === "string" && normalized.slug.trim()
+        ? normalized.slug.trim()
+        : "",
     title: typeof normalized.title === "string" && normalized.title.trim() ? normalized.title : "Ny side",
     menuLabel:
       typeof normalized.menuLabel === "string" && normalized.menuLabel.trim()
@@ -554,6 +586,7 @@ function buildDefaultGuestPage(source) {
 
   return {
     id: DEFAULT_GUEST_PAGE_ID,
+    slug: "velkommen",
     title: overview.title || source?.name || "Velkommen",
     menuLabel: "Velkommen",
     content: lines.join("\n\n").trim(),
@@ -570,6 +603,11 @@ function buildDefaultGuestPage(source) {
 
 export function ensureEventShape(event) {
   const source = event && typeof event === "object" ? event : {};
+  const overviewSource = source.overview && typeof source.overview === "object" ? source.overview : {};
+  const eventSlug =
+    typeof source.slug === "string" && source.slug.trim()
+      ? slugifySegment(source.slug, "arrangement")
+      : slugifySegment(overviewSource.title || source.name, "arrangement");
   const peopleMap = new Map();
   const sourcePeople = Array.isArray(source.people) ? source.people : [];
   const sourceMembers = Array.isArray(source.members) ? source.members : [];
@@ -606,6 +644,11 @@ export function ensureEventShape(event) {
   const normalizedGuestPages = guestPages.length
     ? [...guestPages].sort((left, right) => left.orderIndex - right.orderIndex)
     : [buildDefaultGuestPage(source)];
+  const usedPageSlugs = new Set();
+  const guestPagesWithSlugs = normalizedGuestPages.map((page, index) => ({
+    ...page,
+    slug: ensureUniqueSlug(page.slug || page.menuLabel || page.title, usedPageSlugs, index === 0 ? "velkommen" : "side")
+  }));
   const normalizedTasks = buildTaskHierarchyDetails(
     Array.isArray(source.tasks) ? source.tasks.map((task, index) => createTask(task, index)) : [],
     subprojects
@@ -613,11 +656,12 @@ export function ensureEventShape(event) {
 
   return {
     ...source,
+    slug: eventSlug,
     overview: {
       ...DEFAULT_OVERVIEW,
       ...(source.overview && typeof source.overview === "object" ? source.overview : {})
     },
-    guestPages: normalizedGuestPages,
+    guestPages: guestPagesWithSlugs,
     people,
     members: people
       .filter((person) => person.financeRole !== "none")
@@ -631,6 +675,25 @@ export function ensureEventShape(event) {
     submissions: Array.isArray(source.submissions) ? source.submissions.map(createSubmission) : [],
     platformVersion: 2
   };
+}
+
+export function buildGuestSiteBasePath(eventOrSlug) {
+  const eventSlug =
+    typeof eventOrSlug === "string"
+      ? slugifySegment(eventOrSlug, "arrangement")
+      : slugifySegment(eventOrSlug?.slug || eventOrSlug?.overview?.title || eventOrSlug?.name, "arrangement");
+
+  return `/gjest/${eventSlug}`;
+}
+
+export function buildGuestSitePagePath(eventOrSlug, pageOrSlug) {
+  const basePath = buildGuestSiteBasePath(eventOrSlug);
+  const pageSlug =
+    typeof pageOrSlug === "string"
+      ? slugifySegment(pageOrSlug, "side")
+      : slugifySegment(pageOrSlug?.slug || pageOrSlug?.menuLabel || pageOrSlug?.title, "side");
+
+  return `${basePath}/${pageSlug}`;
 }
 
 export function buildViewerAccess(person) {
