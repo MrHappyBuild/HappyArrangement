@@ -63,9 +63,9 @@ export default async function GuestSitePage({ params }) {
 
   const basePath = buildGuestSiteBasePath(normalizedEvent);
   const guestSiteIntro =
-    normalizedEvent.guestSite?.introText ||
-    normalizedEvent.overview.description ||
-    "Her finner gjestene praktisk informasjon og undersider for arrangementet.";
+    typeof normalizedEvent.guestSite?.introText === "string"
+      ? normalizedEvent.guestSite.introText.trim()
+      : "";
   const navigationLabel = normalizedEvent.guestSite?.navigationLabel || "Navigasjon";
   const guestSiteShellStyle = buildGuestSiteBackgroundStyle(
     normalizedEvent.guestSite?.backgroundImageUrl || ""
@@ -75,7 +75,7 @@ export default async function GuestSitePage({ params }) {
     <main className="shell grid">
       <section className="hero">
         <h1>{normalizedEvent.overview.title || normalizedEvent.name}</h1>
-        <p className="lede">{guestSiteIntro}</p>
+        {guestSiteIntro ? <p className="lede">{guestSiteIntro}</p> : null}
       </section>
 
       <section className="guest-site-shell guest-site-public-shell" style={guestSiteShellStyle}>

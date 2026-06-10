@@ -49,15 +49,11 @@ function buildAgendaGroups(event) {
   };
 }
 
-export function GuestAgendaPageView({ event, title }) {
+export function GuestAgendaPageView({ event }) {
   const agenda = buildAgendaGroups(event);
 
   return (
     <div className="stack">
-      <div className="guest-generated-page-intro">
-        <strong>{title}</strong>
-        <p className="muted">Denne agendaen oppdateres automatisk fra aktivitetene som er merket for visning.</p>
-      </div>
       {agenda.total === 0 ? (
         <div className="notice">
           <strong>Ingen agenda er publisert enda</strong>
