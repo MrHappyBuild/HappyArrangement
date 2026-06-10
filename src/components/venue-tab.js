@@ -119,6 +119,10 @@ function formatItemDimensions(item) {
   )} m`;
 }
 
+function isCircularVenueItem(item) {
+  return item?.shape === "circle";
+}
+
 function mapResizeDeltaByRotation(rotation, deltaWidthMeters, deltaHeightMeters) {
   if (rotation === 90 || rotation === 270) {
     return {
@@ -466,14 +470,22 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     }
 
     const formData = new FormData(formEvent.currentTarget);
+    const nextShape = String(formData.get("shape") || selectedItem.shape || "").trim();
+    const nextWidthMeters = Number(
+      formData.get("widthMeters") || selectedItem.widthMeters || selectedItem.width
+    );
+    const nextHeightMeters =
+      nextShape === "circle"
+        ? nextWidthMeters
+        : Number(formData.get("heightMeters") || selectedItem.heightMeters || selectedItem.height);
     const previousPlan = planDraftRef.current;
     const nextPlan = updateVenueItemInPlan(previousPlan, selectedItem.id, {
       label: String(formData.get("label") || "").trim(),
       note: String(formData.get("note") || "").trim(),
       rotation: Number(formData.get("rotation") || selectedItem.rotation),
-      shape: String(formData.get("shape") || selectedItem.shape || "").trim(),
-      widthMeters: Number(formData.get("widthMeters") || selectedItem.widthMeters || selectedItem.width),
-      heightMeters: Number(formData.get("heightMeters") || selectedItem.heightMeters || selectedItem.height),
+      shape: nextShape,
+      widthMeters: nextWidthMeters,
+      heightMeters: nextHeightMeters,
       seatCount: selectedItem.seatable
         ? Number(formData.get("seatCount") || selectedItem.seatCount)
         : selectedItem.seatCount
@@ -1180,29 +1192,36 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                     </label>
                   ) : null}
                   <label className="field">
-                    <span>Bredde (meter)</span>
+                    <span>{isCircularVenueItem(selectedItem) ? "Diameter (meter)" : "Bredde (meter)"}</span>
                     <input
                       defaultValue={selectedItem.widthMeters || selectedItem.width}
                       disabled={!canManageVenue}
-                      max={roomWidthMeters}
+                      max={isCircularVenueItem(selectedItem) ? Math.min(roomWidthMeters, roomHeightMeters) : roomWidthMeters}
                       min="0.4"
                       name="widthMeters"
                       step="0.1"
                       type="number"
                     />
                   </label>
-                  <label className="field">
-                    <span>Lengde (meter)</span>
-                    <input
-                      defaultValue={selectedItem.heightMeters || selectedItem.height}
-                      disabled={!canManageVenue}
-                      max={roomHeightMeters}
-                      min="0.4"
-                      name="heightMeters"
-                      step="0.1"
-                      type="number"
-                    />
-                  </label>
+                  {isCircularVenueItem(selectedItem) ? (
+                    <div className="field">
+                      <span>Lengde</span>
+                      <p className="muted">Styres automatisk av diameteren for runde elementer.</p>
+                    </div>
+                  ) : (
+                    <label className="field">
+                      <span>Lengde (meter)</span>
+                      <input
+                        defaultValue={selectedItem.heightMeters || selectedItem.height}
+                        disabled={!canManageVenue}
+                        max={roomHeightMeters}
+                        min="0.4"
+                        name="heightMeters"
+                        step="0.1"
+                        type="number"
+                      />
+                    </label>
+                  )}
                   {selectedItem.seatable ? (
                     <label className="field">
                       <span>Antall plasser</span>
