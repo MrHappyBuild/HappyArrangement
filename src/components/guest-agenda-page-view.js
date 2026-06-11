@@ -53,7 +53,7 @@ export function GuestAgendaPageView({ event }) {
   const agenda = buildAgendaGroups(event);
 
   return (
-    <div className="stack">
+    <div className="stack guest-agenda-page">
       {agenda.total === 0 ? (
         <div className="notice">
           <strong>Ingen agenda er publisert enda</strong>

@@ -122,7 +122,9 @@ export default async function GuestSitePage({ params }) {
 
   return (
     <main
-      className={`shell grid ${guestSiteBackgroundMode === "page" ? "guest-site-page-background-frame guest-site-page-background-host" : ""}`}
+      className={`shell grid guest-site-public-main ${
+        guestSiteBackgroundMode === "page" ? "guest-site-page-background-frame guest-site-page-background-host" : ""
+      }`}
     >
       {guestSitePageLayerStyle ? (
         <div
@@ -131,7 +133,7 @@ export default async function GuestSitePage({ params }) {
           style={guestSitePageLayerStyle}
         />
       ) : null}
-      <section className="hero">
+      <section className="hero guest-site-public-hero">
         <h1>{normalizedEvent.overview.title || normalizedEvent.name}</h1>
         {guestSiteIntro ? <p className="lede">{guestSiteIntro}</p> : null}
       </section>

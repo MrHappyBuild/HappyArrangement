@@ -2588,6 +2588,15 @@ p {
     linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(255, 248, 238, 0.96));
 }
 
+.guest-site-public-main {
+  gap: 16px;
+}
+
+.guest-site-public-hero {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .guest-site-public-links {
   display: grid;
   gap: 18px;
@@ -2701,6 +2710,35 @@ p {
 
 .guest-site-public-preview {
   min-height: 100%;
+  gap: 10px;
+}
+
+.guest-site-public-preview > h2 {
+  line-height: 1.04;
+}
+
+.guest-site-public-preview .guest-page-rendered {
+  gap: 12px;
+}
+
+.guest-site-public-preview .guest-agenda-page {
+  gap: 8px;
+}
+
+.guest-site-public-preview .planning-agenda-groups {
+  gap: 12px;
+}
+
+.guest-site-public-preview .planning-agenda-group {
+  gap: 8px;
+}
+
+.guest-site-public-preview .planning-agenda-list {
+  gap: 10px;
+}
+
+.guest-site-public-preview .planning-agenda-group-header {
+  gap: 8px;
 }
 
 .guest-site-event-facts {
