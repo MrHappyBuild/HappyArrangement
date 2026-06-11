@@ -403,6 +403,41 @@ function buildPersonSearchIndex(person, eventRoles) {
     .toLowerCase();
 }
 
+const GUEST_LIST_FILTER_OPTIONS = [
+  { value: "all", label: "Alle" },
+  { value: "pending", label: "Ikke svart" },
+  { value: "accepted", label: "Kommer" },
+  { value: "maybe", label: "Kanskje" },
+  { value: "declined", label: "Kommer ikke" },
+  { value: "allergies", label: "Har allergier" },
+  { value: "dietary", label: "Har matpreferanser" },
+  { value: "seating", label: "Har sitteinfo" }
+];
+
+function matchGuestListFilter(person, filterValue) {
+  if (filterValue === "all") {
+    return true;
+  }
+
+  if (["pending", "accepted", "maybe", "declined"].includes(filterValue)) {
+    return (person.rsvpStatus || "pending") === filterValue;
+  }
+
+  if (filterValue === "allergies") {
+    return Boolean(String(person.allergies || "").trim());
+  }
+
+  if (filterValue === "dietary") {
+    return Boolean(String(person.dietaryNotes || "").trim());
+  }
+
+  if (filterValue === "seating") {
+    return Boolean(String(person.seatingNote || "").trim());
+  }
+
+  return true;
+}
+
 function matchImportedPerson(existingPeople, incomingPerson) {
   const incomingEmail = String(incomingPerson?.email || "").trim().toLowerCase();
   const incomingPhone = String(incomingPerson?.phone || "").replace(/\s+/g, "");
@@ -665,6 +700,7 @@ function GuestTab({
   const [openRoleId, setOpenRoleId] = useState("");
   const [openPersonId, setOpenPersonId] = useState("");
   const [personSearch, setPersonSearch] = useState("");
+  const [personFilter, setPersonFilter] = useState("all");
   const [guestModal, setGuestModal] = useState("");
   const [bulkGuestRows, setBulkGuestRows] = useState(() => createBulkGuestRows());
   const [bulkTemplateKey, setBulkTemplateKey] = useState("guest");
@@ -725,14 +761,18 @@ function GuestTab({
   const filteredPeople = useMemo(() => {
     const query = personSearch.trim().toLowerCase();
 
-    if (!query) {
-      return event.people;
-    }
+    return event.people.filter((person) => {
+      if (!matchGuestListFilter(person, personFilter)) {
+        return false;
+      }
 
-    return event.people.filter((person) =>
-      buildPersonSearchIndex(person, event.roles).includes(query)
-    );
-  }, [event.people, event.roles, personSearch]);
+      if (!query) {
+        return true;
+      }
+
+      return buildPersonSearchIndex(person, event.roles).includes(query);
+    });
+  }, [event.people, event.roles, personFilter, personSearch]);
 
   useEffect(() => {
     if (!visiblePages.some((page) => page.id === selectedPageId)) {
@@ -1405,7 +1445,7 @@ function GuestTab({
           <div>
             <h3>Gjest</h3>
             <p className="muted">
-              Bytt mellom infosider for gjestenettsiden og gjestelisten med roller, verktøy og personopplysninger.
+              Bytt mellom infosider, gjestelisten og egne rolleoppsett for arrangementet.
             </p>
           </div>
         </div>
@@ -1427,6 +1467,15 @@ function GuestTab({
             onClick={() => setGuestWorkspaceView("guest_list")}
           >
             Gjesteliste
+          </button>
+          <button
+            aria-selected={guestWorkspaceView === "roles"}
+            className={`tab-chip ${guestWorkspaceView === "roles" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setGuestWorkspaceView("roles")}
+          >
+            Roller
           </button>
         </div>
       </section>
@@ -2111,197 +2160,216 @@ function GuestTab({
         </section>
       ) : null}
 
+      {guestWorkspaceView === "roles" ? (
+        <>
+          {viewerAccess.canManageGuest ? (
+            <section className="panel stack">
+              <h3>Roller og tilganger</h3>
+              <p className="muted">
+                Lag roller for arrangementet og gi dem tilgang til planlegging, oppgaver, faktura og ekstra handlinger.
+              </p>
+              <form className="grid-form compact-grid" onSubmit={onAddRole}>
+                <label className="field">
+                  <span>Navn på rolle</span>
+                  <input name="name" placeholder="F.eks. Toastmaster, Familiekoordinator eller Regnskapsansvarlig" required />
+                </label>
+                <label className="field">
+                  <span>Start fra</span>
+                  <select defaultValue="guest" name="template">
+                    {templateList.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field field-span-full">
+                  <span>Beskrivelse</span>
+                  <input name="description" placeholder="Hva skal denne rollen brukes til?" />
+                </label>
+                <button className="primary-button" type="submit">
+                  Opprett rolle
+                </button>
+              </form>
+              <div className="person-list">
+                <div className="person-list-header person-role-list-header">
+                  <span>Rolle</span>
+                  <span>Planlegging</span>
+                  <span>Oppgaver</span>
+                  <span>Faktura</span>
+                  <span>Tilganger</span>
+                  <span>Detaljer</span>
+                </div>
+                {event.roles.map((role) => {
+                  const isOpen = openRoleId === role.id;
+                  const capabilitySummary = CAPABILITY_OPTIONS.filter(
+                    (option) => role.capabilities?.[option.key]
+                  )
+                    .map((option) => option.label)
+                    .join(" · ");
+
+                  return (
+                    <article className={`person-list-item ${isOpen ? "is-open" : ""}`} key={role.id}>
+                      <div className="person-list-row person-role-list-row">
+                        <div className="person-list-main">
+                          <strong>{role.name}</strong>
+                          <span>{role.description || "Ingen beskrivelse enda"}</span>
+                        </div>
+                        <span className="role-pill">
+                          {PLANNING_ROLE_OPTIONS.find((option) => option.value === role.planningRole)?.label || "Ingen"}
+                        </span>
+                        <span className="role-pill">
+                          {PROJECT_ROLE_OPTIONS.find((option) => option.value === role.projectRole)?.label || "Ingen"}
+                        </span>
+                        <span className="role-pill">
+                          {FINANCE_ROLE_OPTIONS.find((option) => option.value === role.financeRole)?.label || "Ingen"}
+                        </span>
+                        <span className="person-list-summary">{capabilitySummary || "Ingen ekstra"}</span>
+                        <button
+                          className="secondary-button compact-action-button"
+                          type="button"
+                          onClick={() =>
+                            setOpenRoleId((currentValue) => (currentValue === role.id ? "" : role.id))
+                          }
+                        >
+                          {isOpen ? "Lukk" : "Åpne"}
+                        </button>
+                      </div>
+                      {isOpen ? (
+                        <form
+                          className="person-list-detail stack"
+                          onSubmit={(eventObject) => onUpdateRole(eventObject, role)}
+                        >
+                          <div className="compact-grid">
+                            <label className="field">
+                              <span>Navn</span>
+                              <input defaultValue={role.name} name="name" required />
+                            </label>
+                            <label className="field field-span-full">
+                              <span>Beskrivelse</span>
+                              <input defaultValue={role.description} name="description" placeholder="Hva rollen skal brukes til" />
+                            </label>
+                            <label className="field">
+                              <span>Planlegging</span>
+                              <select defaultValue={role.planningRole} name="planningRole">
+                                {PLANNING_ROLE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="field">
+                              <span>Oppgaver</span>
+                              <select defaultValue={role.projectRole} name="projectRole">
+                                {PROJECT_ROLE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="field">
+                              <span>Faktura</span>
+                              <select defaultValue={role.financeRole} name="financeRole">
+                                {FINANCE_ROLE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <div className="toggle-row">
+                            {CAPABILITY_OPTIONS.map((option) => (
+                              <label key={option.key}>
+                                <input
+                                  defaultChecked={Boolean(role.capabilities?.[option.key])}
+                                  name={option.key}
+                                  type="checkbox"
+                                />
+                                {option.label}
+                              </label>
+                            ))}
+                          </div>
+                          <div className="button-row">
+                            <button className="secondary-button" type="submit">
+                              Lagre rolle
+                            </button>
+                          </div>
+                        </form>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+        </>
+      ) : null}
+
       {guestWorkspaceView === "guest_list" ? (
         <>
           {viewerAccess.canManageGuest ? (
-            <>
-              <section className="panel stack">
-                <h3>Roller og tilganger</h3>
-                <p className="muted">
-                  Lag roller for arrangementet og gi dem tilgang til planlegging, oppgaver, faktura og ekstra handlinger.
-                </p>
-                <form className="grid-form compact-grid" onSubmit={onAddRole}>
-                  <label className="field">
-                    <span>Navn på rolle</span>
-                    <input name="name" placeholder="F.eks. Toastmaster, Familiekoordinator eller Regnskapsansvarlig" required />
-                  </label>
-                  <label className="field">
-                    <span>Start fra</span>
-                    <select defaultValue="guest" name="template">
-                      {templateList.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field field-span-full">
-                    <span>Beskrivelse</span>
-                    <input name="description" placeholder="Hva skal denne rollen brukes til?" />
-                  </label>
-                  <button className="primary-button" type="submit">
-                    Opprett rolle
-                  </button>
-                </form>
-                <div className="person-list">
-                  <div className="person-list-header person-role-list-header">
-                    <span>Rolle</span>
-                    <span>Planlegging</span>
-                    <span>Oppgaver</span>
-                    <span>Faktura</span>
-                    <span>Tilganger</span>
-                    <span>Detaljer</span>
-                  </div>
-                  {event.roles.map((role) => {
-                    const isOpen = openRoleId === role.id;
-                    const capabilitySummary = CAPABILITY_OPTIONS.filter(
-                      (option) => role.capabilities?.[option.key]
-                    )
-                      .map((option) => option.label)
-                      .join(" · ");
-
-                    return (
-                      <article className={`person-list-item ${isOpen ? "is-open" : ""}`} key={role.id}>
-                        <div className="person-list-row person-role-list-row">
-                          <div className="person-list-main">
-                            <strong>{role.name}</strong>
-                            <span>{role.description || "Ingen beskrivelse enda"}</span>
-                          </div>
-                          <span className="role-pill">
-                            {PLANNING_ROLE_OPTIONS.find((option) => option.value === role.planningRole)?.label || "Ingen"}
-                          </span>
-                          <span className="role-pill">
-                            {PROJECT_ROLE_OPTIONS.find((option) => option.value === role.projectRole)?.label || "Ingen"}
-                          </span>
-                          <span className="role-pill">
-                            {FINANCE_ROLE_OPTIONS.find((option) => option.value === role.financeRole)?.label || "Ingen"}
-                          </span>
-                          <span className="person-list-summary">{capabilitySummary || "Ingen ekstra"}</span>
-                          <button
-                            className="secondary-button compact-action-button"
-                            type="button"
-                            onClick={() =>
-                              setOpenRoleId((currentValue) => (currentValue === role.id ? "" : role.id))
-                            }
-                          >
-                            {isOpen ? "Lukk" : "Åpne"}
-                          </button>
-                        </div>
-                        {isOpen ? (
-                          <form
-                            className="person-list-detail stack"
-                            onSubmit={(eventObject) => onUpdateRole(eventObject, role)}
-                          >
-                            <div className="compact-grid">
-                              <label className="field">
-                                <span>Navn</span>
-                                <input defaultValue={role.name} name="name" required />
-                              </label>
-                              <label className="field field-span-full">
-                                <span>Beskrivelse</span>
-                                <input defaultValue={role.description} name="description" placeholder="Hva rollen skal brukes til" />
-                              </label>
-                              <label className="field">
-                                <span>Planlegging</span>
-                                <select defaultValue={role.planningRole} name="planningRole">
-                                  {PLANNING_ROLE_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="field">
-                                <span>Oppgaver</span>
-                                <select defaultValue={role.projectRole} name="projectRole">
-                                  {PROJECT_ROLE_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="field">
-                                <span>Faktura</span>
-                                <select defaultValue={role.financeRole} name="financeRole">
-                                  {FINANCE_ROLE_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            </div>
-                            <div className="toggle-row">
-                              {CAPABILITY_OPTIONS.map((option) => (
-                                <label key={option.key}>
-                                  <input
-                                    defaultChecked={Boolean(role.capabilities?.[option.key])}
-                                    name={option.key}
-                                    type="checkbox"
-                                  />
-                                  {option.label}
-                                </label>
-                              ))}
-                            </div>
-                            <div className="button-row">
-                              <button className="secondary-button" type="submit">
-                                Lagre rolle
-                              </button>
-                            </div>
-                          </form>
-                        ) : null}
-                      </article>
-                    );
-                  })}
+            <section className="panel stack">
+              <div className="panel-header-inline">
+                <div>
+                  <h3>Gjesteverktøy</h3>
+                  <p className="muted">
+                    Legg til enkeltgjester, fyll inn mange samtidig, eller importer og eksporter gjestelisten som CSV.
+                  </p>
                 </div>
-              </section>
-
-              <section className="panel stack">
-                <div className="panel-header-inline">
-                  <div>
-                    <h3>Gjesteverktøy</h3>
-                    <p className="muted">
-                      Legg til enkeltgjester, fyll inn mange samtidig, eller importer og eksporter gjestelisten som CSV.
-                    </p>
-                  </div>
-                </div>
-                <div className="button-row">
-                  <button className="primary-button" type="button" onClick={() => handleOpenGuestModal("add-person")}>
-                    Legg til person
-                  </button>
-                  <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("bulk-people")}>
-                    Legg til mange
-                  </button>
-                  <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("import-people")}>
-                    Importer gjesteliste
-                  </button>
-                  <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("export-people")}>
-                    Eksporter gjesteliste
-                  </button>
-                  <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
-                    Last ned mal
-                  </button>
-                </div>
-                {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
-              </section>
-            </>
+              </div>
+              <div className="button-row">
+                <button className="primary-button" type="button" onClick={() => handleOpenGuestModal("add-person")}>
+                  Legg til person
+                </button>
+                <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("bulk-people")}>
+                  Legg til mange
+                </button>
+                <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("import-people")}>
+                  Importer gjesteliste
+                </button>
+                <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("export-people")}>
+                  Eksporter gjesteliste
+                </button>
+                <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
+                  Last ned mal
+                </button>
+              </div>
+              {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
+            </section>
           ) : null}
 
           <section className="panel stack">
             <div className="panel-header-inline">
               <div>
                 <h3>Personer i arrangementet</h3>
-                <p className="muted">Søk på navn, kontaktinfo, roller eller kostbehov for å finne riktig person raskere.</p>
+                <p className="muted">Søk og filtrer på svarstatus, allergier, matpreferanser eller sitteinfo for å finne riktig person raskere.</p>
               </div>
-              <label className="field person-search-field">
-                <span>Søk i listen</span>
-                <input
-                  placeholder="Navn, e-post, rolle eller allergi"
-                  value={personSearch}
-                  onChange={(eventObject) => setPersonSearch(eventObject.currentTarget.value)}
-                />
-              </label>
+              <div className="compact-grid" style={{ alignItems: "end" }}>
+                <label className="field person-search-field">
+                  <span>Filter</span>
+                  <select
+                    value={personFilter}
+                    onChange={(eventObject) => setPersonFilter(eventObject.currentTarget.value)}
+                  >
+                    {GUEST_LIST_FILTER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field person-search-field">
+                  <span>Søk i listen</span>
+                  <input
+                    placeholder="Navn, e-post, rolle eller allergi"
+                    value={personSearch}
+                    onChange={(eventObject) => setPersonSearch(eventObject.currentTarget.value)}
+                  />
+                </label>
+              </div>
             </div>
             {filteredPeople.length === 0 ? (
               <EmptyState
