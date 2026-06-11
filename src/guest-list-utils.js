@@ -154,7 +154,7 @@ function splitRoleNames(value) {
     .filter(Boolean);
 }
 
-export function buildGuestImportTemplateCsv() {
+export function buildGuestImportTemplateTable() {
   const headers = GUEST_LIST_FIELD_OPTIONS.map((field) => field.label);
   const exampleRow = [
     "Ola Nordmann",
@@ -168,18 +168,21 @@ export function buildGuestImportTemplateCsv() {
     "Bor sitte narmt familien"
   ];
 
-  return [
-    headers.map((header) => escapeCsvValue(header, ";")).join(";"),
-    exampleRow.map((value) => escapeCsvValue(value, ";")).join(";")
-  ].join("\n");
+  return [headers, exampleRow];
 }
 
-export function buildGuestExportCsv(people, roles, fieldKeys = DEFAULT_GUEST_EXPORT_FIELDS) {
+export function buildGuestImportTemplateCsv() {
+  const rows = buildGuestImportTemplateTable();
+
+  return rows
+    .map((row) => row.map((value) => escapeCsvValue(value, ";")).join(";"))
+    .join("\n");
+}
+
+export function buildGuestExportTable(people, roles, fieldKeys = DEFAULT_GUEST_EXPORT_FIELDS) {
   const activeFields = GUEST_LIST_FIELD_OPTIONS.filter((field) => fieldKeys.includes(field.key));
   const roleMap = new Map((Array.isArray(roles) ? roles : []).map((role) => [role.id, role.name]));
-  const rows = [
-    activeFields.map((field) => escapeCsvValue(field.label, ";")).join(";")
-  ];
+  const rows = [activeFields.map((field) => field.label)];
 
   (Array.isArray(people) ? people : []).forEach((person) => {
     const roleNames = (Array.isArray(person.roleIds) ? person.roleIds : [])
@@ -198,16 +201,22 @@ export function buildGuestExportCsv(people, roles, fieldKeys = DEFAULT_GUEST_EXP
       return person[field.key] || "";
     });
 
-    rows.push(values.map((value) => escapeCsvValue(value, ";")).join(";"));
+    rows.push(values);
   });
 
-  return rows.join("\n");
+  return rows;
 }
 
-export function parseGuestImportText(text, roles = []) {
-  const rows = parseDelimitedTable(text);
+export function buildGuestExportCsv(people, roles, fieldKeys = DEFAULT_GUEST_EXPORT_FIELDS) {
+  const rows = buildGuestExportTable(people, roles, fieldKeys);
 
-  if (rows.length === 0) {
+  return rows
+    .map((row) => row.map((value) => escapeCsvValue(value, ";")).join(";"))
+    .join("\n");
+}
+
+export function parseGuestImportRows(rows, roles = []) {
+  if (!Array.isArray(rows) || rows.length === 0) {
     return {
       rows: [],
       errors: ["Filen ser tom ut."],
@@ -216,7 +225,20 @@ export function parseGuestImportText(text, roles = []) {
     };
   }
 
-  const [headerRow, ...dataRows] = rows;
+  const normalizedRows = rows
+    .map((row) => (Array.isArray(row) ? row.map((cell) => String(cell || "").trim()) : []))
+    .filter((row) => row.some((cell) => cell));
+
+  if (normalizedRows.length === 0) {
+    return {
+      rows: [],
+      errors: ["Filen ser tom ut."],
+      matchedExistingCount: 0,
+      newCount: 0
+    };
+  }
+
+  const [headerRow, ...dataRows] = normalizedRows;
   const headerIndexes = {
     name: findImportColumnIndex(headerRow, "name"),
     email: findImportColumnIndex(headerRow, "email"),
@@ -284,4 +306,46 @@ export function parseGuestImportText(text, roles = []) {
     matchedExistingCount: 0,
     newCount: importedRows.length
   };
+}
+
+export function parseGuestImportText(text, roles = []) {
+  const rows = parseDelimitedTable(text);
+  return parseGuestImportRows(rows, roles);
+}
+
+export function buildGuestExportFilename(format = "csv") {
+  const normalizedFormat = String(format || "csv").toLowerCase();
+  const extension = normalizedFormat === "xlsx" ? "xlsx" : normalizedFormat === "pdf" ? "pdf" : "csv";
+  return `gjesteliste-eksport.${extension}`;
+}
+
+export function buildGuestTemplateFilename(format = "csv") {
+  const normalizedFormat = String(format || "csv").toLowerCase();
+  const extension = normalizedFormat === "xlsx" ? "xlsx" : "csv";
+  return `gjesteliste-mal.${extension}`;
+}
+
+export function buildGuestExportPdfLines(people, roles, fieldKeys = DEFAULT_GUEST_EXPORT_FIELDS) {
+  const rows = buildGuestExportTable(people, roles, fieldKeys);
+  const [headerRow = [], ...dataRows] = rows;
+  const lines = [];
+
+  lines.push(`Gjestelisteeksport`);
+  lines.push(`Felter: ${headerRow.join(" · ")}`);
+  lines.push("");
+
+  dataRows.forEach((row, index) => {
+    lines.push(`${index + 1}. ${row[0] || "Uten navn"}`);
+
+    headerRow.slice(1).forEach((header, headerIndex) => {
+      const value = row[headerIndex + 1];
+      if (value) {
+        lines.push(`   ${header}: ${value}`);
+      }
+    });
+
+    lines.push("");
+  });
+
+  return lines;
 }

@@ -17,7 +17,13 @@ import {
   DEFAULT_GUEST_EXPORT_FIELDS,
   GUEST_LIST_FIELD_OPTIONS,
   buildGuestExportCsv,
+  buildGuestExportFilename,
+  buildGuestExportPdfLines,
+  buildGuestExportTable,
   buildGuestImportTemplateCsv,
+  buildGuestImportTemplateTable,
+  buildGuestTemplateFilename,
+  parseGuestImportRows,
   parseGuestImportText
 } from "@/guest-list-utils";
 import {
@@ -509,6 +515,53 @@ function downloadTextFile(filename, content, mimeType = "text/csv;charset=utf-8;
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
+function downloadBlobFile(filename, content, mimeType) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
+function wrapPdfLine(line, font, fontSize, maxWidth) {
+  const source = String(line || "");
+
+  if (!source) {
+    return [""];
+  }
+
+  const words = source.split(/\s+/);
+  const lines = [];
+  let currentLine = "";
+
+  words.forEach((word) => {
+    const candidate = currentLine ? `${currentLine} ${word}` : word;
+    const candidateWidth = font.widthOfTextAtSize(candidate, fontSize);
+
+    if (candidateWidth <= maxWidth || !currentLine) {
+      currentLine = candidate;
+      return;
+    }
+
+    lines.push(currentLine);
+    currentLine = word;
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines.length ? lines : [source];
+}
+
 function syncEvent(events, nextEvent) {
   return events.map((event) => (event.id === nextEvent.id ? ensureEventShape(nextEvent) : event));
 }
@@ -705,6 +758,7 @@ function GuestTab({
   const [bulkGuestRows, setBulkGuestRows] = useState(() => createBulkGuestRows());
   const [bulkTemplateKey, setBulkTemplateKey] = useState("guest");
   const [exportFieldKeys, setExportFieldKeys] = useState(DEFAULT_GUEST_EXPORT_FIELDS);
+  const [guestExportFormat, setGuestExportFormat] = useState("csv");
   const [importPreview, setImportPreview] = useState(null);
   const [guestToolStatus, setGuestToolStatus] = useState("");
   const [guestWorkspaceView, setGuestWorkspaceView] = useState("info_pages");
@@ -1372,16 +1426,104 @@ function GuestTab({
     }
   }
 
-  function handleDownloadGuestTemplate() {
-    downloadTextFile("gjesteliste-mal.csv", buildGuestImportTemplateCsv());
-    setGuestToolStatus("Malen er lastet ned som CSV.");
+  async function handleDownloadGuestTemplate(format = "csv") {
+    try {
+      if (format === "xlsx") {
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.aoa_to_sheet(buildGuestImportTemplateTable());
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Gjesteliste-mal");
+        const workbookBytes = XLSX.write(workbook, {
+          bookType: "xlsx",
+          type: "array"
+        });
+        downloadBlobFile(
+          buildGuestTemplateFilename("xlsx"),
+          workbookBytes,
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        setGuestToolStatus("Malen er lastet ned som Excel.");
+        return;
+      }
+
+      downloadTextFile(buildGuestTemplateFilename("csv"), buildGuestImportTemplateCsv());
+      setGuestToolStatus("Malen er lastet ned som CSV.");
+    } catch (error) {
+      setGuestToolStatus(error instanceof Error ? error.message : "Kunne ikke lage malen akkurat nå.");
+    }
   }
 
-  function handleDownloadGuestExport() {
+  async function handleDownloadGuestExport() {
     const safeFieldKeys = exportFieldKeys.length ? exportFieldKeys : DEFAULT_GUEST_EXPORT_FIELDS;
-    const fileContent = buildGuestExportCsv(event.people, event.roles, safeFieldKeys);
-    downloadTextFile("gjesteliste-eksport.csv", fileContent);
-    setGuestToolStatus("Gjestelisten er eksportert som CSV.");
+
+    try {
+      if (guestExportFormat === "xlsx") {
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.aoa_to_sheet(
+          buildGuestExportTable(event.people, event.roles, safeFieldKeys)
+        );
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Gjesteliste");
+        const workbookBytes = XLSX.write(workbook, {
+          bookType: "xlsx",
+          type: "array"
+        });
+        downloadBlobFile(
+          buildGuestExportFilename("xlsx"),
+          workbookBytes,
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        setGuestToolStatus("Gjestelisten er eksportert som Excel.");
+        return;
+      }
+
+      if (guestExportFormat === "pdf") {
+        const { PDFDocument, StandardFonts } = await import("pdf-lib");
+        const pdfDocument = await PDFDocument.create();
+        const regularFont = await pdfDocument.embedFont(StandardFonts.Helvetica);
+        const boldFont = await pdfDocument.embedFont(StandardFonts.HelveticaBold);
+        const lines = buildGuestExportPdfLines(event.people, event.roles, safeFieldKeys);
+        const pageMargin = 48;
+        const fontSize = 11;
+        const lineHeight = 16;
+        let page = pdfDocument.addPage([595.28, 841.89]);
+        let currentY = page.getHeight() - pageMargin;
+        const maxWidth = page.getWidth() - pageMargin * 2;
+
+        lines.forEach((line, index) => {
+          const isTitle = index === 0;
+          const activeFont = isTitle ? boldFont : regularFont;
+          const activeSize = isTitle ? 15 : fontSize;
+          const wrappedLines = wrapPdfLine(line, activeFont, activeSize, maxWidth);
+
+          wrappedLines.forEach((wrappedLine) => {
+            if (currentY < pageMargin) {
+              page = pdfDocument.addPage([595.28, 841.89]);
+              currentY = page.getHeight() - pageMargin;
+            }
+
+            page.drawText(wrappedLine, {
+              x: pageMargin,
+              y: currentY,
+              size: activeSize,
+              font: activeFont
+            });
+            currentY -= lineHeight;
+          });
+        });
+
+        const pdfBytes = await pdfDocument.save();
+        downloadBlobFile(buildGuestExportFilename("pdf"), pdfBytes, "application/pdf");
+        setGuestToolStatus("Gjestelisten er eksportert som PDF.");
+        return;
+      }
+
+      const fileContent = buildGuestExportCsv(event.people, event.roles, safeFieldKeys);
+      downloadTextFile(buildGuestExportFilename("csv"), fileContent);
+      setGuestToolStatus("Gjestelisten er eksportert som CSV.");
+    } catch (error) {
+      setGuestToolStatus(error instanceof Error ? error.message : "Kunne ikke eksportere gjestelisten akkurat nå.");
+    }
   }
 
   function handleToggleExportField(fieldKey) {
@@ -1400,23 +1542,48 @@ function GuestTab({
       return;
     }
 
-    const text = await file.text();
-    const parsed = parseGuestImportText(text, event.roles);
-    const matchedExistingCount = parsed.rows.filter((person) =>
-      Boolean(matchImportedPerson(event.people, person))
-    ).length;
+    try {
+      const lowerName = String(file.name || "").toLowerCase();
+      let parsed;
 
-    setImportPreview({
-      ...parsed,
-      matchedExistingCount,
-      newCount: Math.max(parsed.rows.length - matchedExistingCount, 0),
-      fileName: file.name
-    });
-    setGuestToolStatus(
-      parsed.errors.length
-        ? "Importen har noen varsler. Sjekk forhåndsvisningen før du fortsetter."
-        : "Importfilen er lest inn."
-    );
+      if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
+        const XLSX = await import("xlsx");
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        const firstSheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
+        const rows = firstSheet
+          ? XLSX.utils.sheet_to_json(firstSheet, {
+              header: 1,
+              raw: false,
+              defval: ""
+            })
+          : [];
+        parsed = parseGuestImportRows(rows, event.roles);
+      } else {
+        const text = await file.text();
+        parsed = parseGuestImportText(text, event.roles);
+      }
+
+      const matchedExistingCount = parsed.rows.filter((person) =>
+        Boolean(matchImportedPerson(event.people, person))
+      ).length;
+
+      setImportPreview({
+        ...parsed,
+        matchedExistingCount,
+        newCount: Math.max(parsed.rows.length - matchedExistingCount, 0),
+        fileName: file.name
+      });
+      setGuestToolStatus(
+        parsed.errors.length
+          ? "Importen har noen varsler. Sjekk forhåndsvisningen før du fortsetter."
+          : "Importfilen er lest inn."
+      );
+    } catch (error) {
+      setImportPreview(null);
+      setGuestToolStatus(error instanceof Error ? error.message : "Kunne ikke lese importfilen.");
+    }
   }
 
   async function handleRunGuestImport() {
@@ -2316,7 +2483,7 @@ function GuestTab({
                 <div>
                   <h3>Gjesteverktøy</h3>
                   <p className="muted">
-                    Legg til enkeltgjester, fyll inn mange samtidig, eller importer og eksporter gjestelisten som CSV.
+                    Legg til enkeltgjester, fyll inn mange samtidig, eller importer og eksporter gjestelisten som CSV, Excel eller PDF.
                   </p>
                 </div>
               </div>
@@ -2333,8 +2500,8 @@ function GuestTab({
                 <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("export-people")}>
                   Eksporter gjesteliste
                 </button>
-                <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
-                  Last ned mal
+                <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("import-people")}>
+                  Maler
                 </button>
               </div>
               {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
@@ -2834,19 +3001,30 @@ function GuestTab({
       {viewerAccess.canManageGuest && guestModal === "import-people" ? (
         <ModalShell
           title="Importer gjesteliste"
-          body="Bruk CSV-malen for raskest mulig import. Eksisterende personer oppdateres hvis e-post, mobil eller navn matcher."
+          body="Bruk CSV- eller Excel-mal for raskest mulig import. Eksisterende personer oppdateres hvis e-post, mobil eller navn matcher."
           onClose={handleCloseGuestModal}
         >
           <div className="stack">
             <div className="button-row">
-              <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void handleDownloadGuestTemplate("csv")}
+              >
                 Last ned CSV-mal
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void handleDownloadGuestTemplate("xlsx")}
+              >
+                Last ned Excel-mal
               </button>
             </div>
             <label className="field">
-              <span>Velg CSV-fil</span>
+              <span>Velg CSV- eller Excel-fil</span>
               <input
-                accept=".csv,text/csv,.txt"
+                accept=".csv,text/csv,.txt,.xlsx,.xls"
                 type="file"
                 onChange={(eventObject) => void handleGuestImportFileChange(eventObject)}
               />
@@ -2887,10 +3065,21 @@ function GuestTab({
       {viewerAccess.canManageGuest && guestModal === "export-people" ? (
         <ModalShell
           title="Eksporter gjesteliste"
-          body="Velg hvilke felt som skal med i eksporten. Filen lastes ned som CSV."
+          body="Velg hvilke felt som skal med i eksporten, og last ned som CSV, Excel eller PDF."
           onClose={handleCloseGuestModal}
         >
           <div className="stack">
+            <label className="field">
+              <span>Format</span>
+              <select
+                value={guestExportFormat}
+                onChange={(eventObject) => setGuestExportFormat(eventObject.currentTarget.value)}
+              >
+                <option value="csv">CSV</option>
+                <option value="xlsx">Excel (.xlsx)</option>
+                <option value="pdf">PDF</option>
+              </select>
+            </label>
             <div className="toggle-row">
               {GUEST_LIST_FIELD_OPTIONS.map((field) => (
                 <label key={field.key}>
@@ -2904,7 +3093,7 @@ function GuestTab({
               ))}
             </div>
             <div className="button-row">
-              <button className="primary-button" type="button" onClick={handleDownloadGuestExport}>
+              <button className="primary-button" type="button" onClick={() => void handleDownloadGuestExport()}>
                 Last ned eksport
               </button>
             </div>
