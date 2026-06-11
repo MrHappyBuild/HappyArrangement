@@ -1761,25 +1761,25 @@ function GuestTab({
                     {isVenueSeatingPage ? (
                       <form className="stack" onSubmit={handleSaveGuestSeatingPageSettings}>
                         <div className="compact-grid">
-                          <label className="field checkbox-field">
+                          <div className="field checkbox-field">
                             <span>Tekst og etiketter</span>
-                            <span className="checkbox-inline">
+                            <label className="checkbox-inline">
                               <input
                                 defaultChecked={event.venuePlan?.guestSeatingPage?.showItemLabels !== false}
                                 name="showItemLabels"
                                 type="checkbox"
                               />
                               <span>Vis navn på bord og soner</span>
-                            </span>
-                            <span className="checkbox-inline">
+                            </label>
+                            <label className="checkbox-inline">
                               <input
                                 defaultChecked={event.venuePlan?.guestSeatingPage?.showSeatLabels !== false}
                                 name="showSeatLabels"
                                 type="checkbox"
                               />
                               <span>Vis plasser i bordlista</span>
-                            </span>
-                          </label>
+                            </label>
+                          </div>
                           <label className="field">
                             <span>Navn på gjestene</span>
                             <select
