@@ -1263,6 +1263,140 @@ function GuestTab({
     setGuestNavDropIndicator(null);
   }
 
+  function handleOpenGuestModal(nextModal) {
+    setGuestToolStatus("");
+    setGuestModal(nextModal);
+  }
+
+  function handleCloseGuestModal() {
+    setGuestToolStatus("");
+    setImportPreview(null);
+    setGuestModal("");
+  }
+
+  function handleBulkGuestRowChange(rowId, key, value) {
+    setBulkGuestRows((currentRows) =>
+      currentRows.map((row) => (row.id === rowId ? { ...row, [key]: value } : row))
+    );
+  }
+
+  function handleAddBulkGuestRow() {
+    setBulkGuestRows((currentRows) => [...currentRows, createBulkGuestRow()]);
+  }
+
+  function handleRemoveBulkGuestRow(rowId) {
+    setBulkGuestRows((currentRows) =>
+      currentRows.length > 1 ? currentRows.filter((row) => row.id !== rowId) : currentRows
+    );
+  }
+
+  async function handleSubmitBulkGuests(formEvent) {
+    formEvent.preventDefault();
+
+    if (!viewerAccess.canManageGuest || typeof onBulkUpsertPeople !== "function") {
+      return;
+    }
+
+    const template = applyTemplate(bulkTemplateKey);
+    const templateRoleId = event.roles.find((role) => role.key === bulkTemplateKey)?.id || "";
+    const payloadPeople = bulkGuestRows
+      .map((row) => ({
+        name: String(row.name || "").trim(),
+        email: String(row.email || "").trim(),
+        phone: String(row.phone || "").trim(),
+        rsvpStatus: String(row.rsvpStatus || "pending"),
+        note: String(row.note || "").trim(),
+        allergies: String(row.allergies || "").trim(),
+        dietaryNotes: String(row.dietaryNotes || "").trim(),
+        seatingNote: String(row.seatingNote || "").trim(),
+        planningRole: template.planningRole,
+        projectRole: template.projectRole,
+        financeRole: template.financeRole,
+        roleIds: templateRoleId ? [templateRoleId] : [],
+        capabilities: template.capabilities
+      }))
+      .filter((person) => person.name);
+
+    if (payloadPeople.length === 0) {
+      setGuestToolStatus("Legg inn minst én person før du lagrer.");
+      return;
+    }
+
+    const nextEvent = await onBulkUpsertPeople(payloadPeople);
+
+    if (nextEvent) {
+      setBulkGuestRows(createBulkGuestRows());
+      setGuestModal("");
+      setGuestToolStatus("");
+    }
+  }
+
+  function handleDownloadGuestTemplate() {
+    downloadTextFile("gjesteliste-mal.csv", buildGuestImportTemplateCsv());
+    setGuestToolStatus("Malen er lastet ned som CSV.");
+  }
+
+  function handleDownloadGuestExport() {
+    const safeFieldKeys = exportFieldKeys.length ? exportFieldKeys : DEFAULT_GUEST_EXPORT_FIELDS;
+    const fileContent = buildGuestExportCsv(event.people, event.roles, safeFieldKeys);
+    downloadTextFile("gjesteliste-eksport.csv", fileContent);
+    setGuestToolStatus("Gjestelisten er eksportert som CSV.");
+  }
+
+  function handleToggleExportField(fieldKey) {
+    setExportFieldKeys((currentKeys) =>
+      currentKeys.includes(fieldKey)
+        ? currentKeys.filter((key) => key !== fieldKey)
+        : [...currentKeys, fieldKey]
+    );
+  }
+
+  async function handleGuestImportFileChange(eventObject) {
+    const file = eventObject.currentTarget.files?.[0];
+
+    if (!file) {
+      setImportPreview(null);
+      return;
+    }
+
+    const text = await file.text();
+    const parsed = parseGuestImportText(text, event.roles);
+    const matchedExistingCount = parsed.rows.filter((person) =>
+      Boolean(matchImportedPerson(event.people, person))
+    ).length;
+
+    setImportPreview({
+      ...parsed,
+      matchedExistingCount,
+      newCount: Math.max(parsed.rows.length - matchedExistingCount, 0),
+      fileName: file.name
+    });
+    setGuestToolStatus(
+      parsed.errors.length
+        ? "Importen har noen varsler. Sjekk forhåndsvisningen før du fortsetter."
+        : "Importfilen er lest inn."
+    );
+  }
+
+  async function handleRunGuestImport() {
+    if (!viewerAccess.canManageGuest || typeof onBulkUpsertPeople !== "function" || !importPreview) {
+      return;
+    }
+
+    if (importPreview.rows.length === 0) {
+      setGuestToolStatus("Ingen gyldige rader å importere.");
+      return;
+    }
+
+    const nextEvent = await onBulkUpsertPeople(importPreview.rows);
+
+    if (nextEvent) {
+      setImportPreview(null);
+      setGuestModal("");
+      setGuestToolStatus("");
+    }
+  }
+
   return (
     <div className="stack">
       <section className="panel stack">
@@ -6543,140 +6677,6 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
 
     if (nextEvent) {
       setStatusMessage("Gjestesiden er slettet.");
-    }
-  }
-
-  function handleOpenGuestModal(nextModal) {
-    setGuestToolStatus("");
-    setGuestModal(nextModal);
-  }
-
-  function handleCloseGuestModal() {
-    setGuestToolStatus("");
-    setImportPreview(null);
-    setGuestModal("");
-  }
-
-  function handleBulkGuestRowChange(rowId, key, value) {
-    setBulkGuestRows((currentRows) =>
-      currentRows.map((row) => (row.id === rowId ? { ...row, [key]: value } : row))
-    );
-  }
-
-  function handleAddBulkGuestRow() {
-    setBulkGuestRows((currentRows) => [...currentRows, createBulkGuestRow()]);
-  }
-
-  function handleRemoveBulkGuestRow(rowId) {
-    setBulkGuestRows((currentRows) =>
-      currentRows.length > 1 ? currentRows.filter((row) => row.id !== rowId) : currentRows
-    );
-  }
-
-  async function handleSubmitBulkGuests(formEvent) {
-    formEvent.preventDefault();
-
-    if (!viewerAccess.canManageGuest || typeof onBulkUpsertPeople !== "function") {
-      return;
-    }
-
-    const template = applyTemplate(bulkTemplateKey);
-    const templateRoleId = event.roles.find((role) => role.key === bulkTemplateKey)?.id || "";
-    const payloadPeople = bulkGuestRows
-      .map((row) => ({
-        name: String(row.name || "").trim(),
-        email: String(row.email || "").trim(),
-        phone: String(row.phone || "").trim(),
-        rsvpStatus: String(row.rsvpStatus || "pending"),
-        note: String(row.note || "").trim(),
-        allergies: String(row.allergies || "").trim(),
-        dietaryNotes: String(row.dietaryNotes || "").trim(),
-        seatingNote: String(row.seatingNote || "").trim(),
-        planningRole: template.planningRole,
-        projectRole: template.projectRole,
-        financeRole: template.financeRole,
-        roleIds: templateRoleId ? [templateRoleId] : [],
-        capabilities: template.capabilities
-      }))
-      .filter((person) => person.name);
-
-    if (payloadPeople.length === 0) {
-      setGuestToolStatus("Legg inn minst én person før du lagrer.");
-      return;
-    }
-
-    const nextEvent = await onBulkUpsertPeople(payloadPeople);
-
-    if (nextEvent) {
-      setBulkGuestRows(createBulkGuestRows());
-      setGuestModal("");
-      setGuestToolStatus("");
-    }
-  }
-
-  function handleDownloadGuestTemplate() {
-    downloadTextFile("gjesteliste-mal.csv", buildGuestImportTemplateCsv());
-    setGuestToolStatus("Malen er lastet ned som CSV.");
-  }
-
-  function handleDownloadGuestExport() {
-    const safeFieldKeys = exportFieldKeys.length ? exportFieldKeys : DEFAULT_GUEST_EXPORT_FIELDS;
-    const fileContent = buildGuestExportCsv(event.people, event.roles, safeFieldKeys);
-    downloadTextFile("gjesteliste-eksport.csv", fileContent);
-    setGuestToolStatus("Gjestelisten er eksportert som CSV.");
-  }
-
-  function handleToggleExportField(fieldKey) {
-    setExportFieldKeys((currentKeys) =>
-      currentKeys.includes(fieldKey)
-        ? currentKeys.filter((key) => key !== fieldKey)
-        : [...currentKeys, fieldKey]
-    );
-  }
-
-  async function handleGuestImportFileChange(eventObject) {
-    const file = eventObject.currentTarget.files?.[0];
-
-    if (!file) {
-      setImportPreview(null);
-      return;
-    }
-
-    const text = await file.text();
-    const parsed = parseGuestImportText(text, event.roles);
-    const matchedExistingCount = parsed.rows.filter((person) =>
-      Boolean(matchImportedPerson(event.people, person))
-    ).length;
-
-    setImportPreview({
-      ...parsed,
-      matchedExistingCount,
-      newCount: Math.max(parsed.rows.length - matchedExistingCount, 0),
-      fileName: file.name
-    });
-    setGuestToolStatus(
-      parsed.errors.length
-        ? "Importen har noen varsler. Sjekk forhåndsvisningen før du fortsetter."
-        : "Importfilen er lest inn."
-    );
-  }
-
-  async function handleRunGuestImport() {
-    if (!viewerAccess.canManageGuest || typeof onBulkUpsertPeople !== "function" || !importPreview) {
-      return;
-    }
-
-    if (importPreview.rows.length === 0) {
-      setGuestToolStatus("Ingen gyldige rader å importere.");
-      return;
-    }
-
-    const nextEvent = await onBulkUpsertPeople(importPreview.rows);
-
-    if (nextEvent) {
-      setImportPreview(null);
-      setGuestModal("");
-      setGuestToolStatus("");
     }
   }
 

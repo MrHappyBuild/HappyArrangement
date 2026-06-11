@@ -119,7 +119,7 @@ export default async function GuestSitePage({ params }) {
   const guestSiteShellStyle =
     guestSiteBackgroundMode === "shell" ? guestSiteBackgroundStyles.shellStyle : undefined;
   const selectedMenuLabel = selectedPage.menuLabel || selectedPage.title;
-  const infoPages = pages.filter((page) => page.kind === "page");
+  const infoPages = pages.filter((page) => page.kind === "content_page");
 
   return (
     <main
