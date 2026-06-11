@@ -198,7 +198,8 @@ test("ensureEventShape keeps guest allergies and creates a normalized venue plan
         isPublished: true,
         navigationLabel: "Bordoversikt",
         guestNameDisplay: "hidden",
-        showItemLabels: false
+        showItemLabels: false,
+        showSeatLabels: false
       }
     },
     people: [
@@ -220,6 +221,7 @@ test("ensureEventShape keeps guest allergies and creates a normalized venue plan
   assert.equal(event.venuePlan.guestSeatingPage.navigationLabel, "Bordoversikt");
   assert.equal(event.venuePlan.guestSeatingPage.guestNameDisplay, "hidden");
   assert.equal(event.venuePlan.guestSeatingPage.showItemLabels, false);
+  assert.equal(event.venuePlan.guestSeatingPage.showSeatLabels, false);
   assert.deepEqual(event.venuePlan.items, []);
 });
 

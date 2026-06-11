@@ -1031,6 +1031,7 @@ function GuestTab({
         guestSeatingPage: {
           ...currentGuestSeatingPage,
           showItemLabels: formData.get("showItemLabels") === "on",
+          showSeatLabels: formData.get("showSeatLabels") === "on",
           guestNameDisplay:
             String(
               formData.get("guestNameDisplay") ||
@@ -1769,6 +1770,14 @@ function GuestTab({
                                 type="checkbox"
                               />
                               <span>Vis navn på bord og soner</span>
+                            </span>
+                            <span className="checkbox-inline">
+                              <input
+                                defaultChecked={event.venuePlan?.guestSeatingPage?.showSeatLabels !== false}
+                                name="showSeatLabels"
+                                type="checkbox"
+                              />
+                              <span>Vis plasser i bordlista</span>
                             </span>
                           </label>
                           <label className="field">

@@ -106,6 +106,7 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
   const venueState = useMemo(() => buildVenuePlanningState(event), [event]);
   const seatingPageSettings = venueState.venuePlan.guestSeatingPage || {};
   const showItemLabels = seatingPageSettings.showItemLabels !== false;
+  const showSeatLabels = seatingPageSettings.showSeatLabels !== false;
   const guestNameDisplay = seatingPageSettings.guestNameDisplay || "initials";
   const visibleTypes = seatingPageSettings.visibleTypes || {};
   const visibleMapItems = useMemo(
@@ -475,9 +476,9 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
                   {item.assignedSeats.length ? (
                     <ul className="guest-seating-guest-list">
                       {item.assignedSeats.map((seat) => (
-                        <li key={seat.id}>
+                        <li className={showSeatLabels ? "" : "is-seat-label-hidden"} key={seat.id}>
                           <span title={seat.guest.name}>{seat.guest.name}</span>
-                          <strong>{seat.label}</strong>
+                          {showSeatLabels ? <strong>{seat.label}</strong> : null}
                         </li>
                       ))}
                     </ul>

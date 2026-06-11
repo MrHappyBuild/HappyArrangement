@@ -3039,6 +3039,10 @@ p {
   background: rgba(255, 250, 242, 0.78);
 }
 
+.guest-seating-guest-list li.is-seat-label-hidden {
+  justify-content: flex-start;
+}
+
 .guest-seating-guest-list li span {
   min-width: 0;
   font-weight: 600;

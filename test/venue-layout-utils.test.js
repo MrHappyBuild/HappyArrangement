@@ -49,6 +49,7 @@ test("normalizeVenuePlan keeps guest seating page publishing settings", () => {
       isPublished: true,
       navigationLabel: "Bordplassering",
       showItemLabels: false,
+      showSeatLabels: false,
       guestNameDisplay: "full",
       visibleTypes: {
         round_table: true,
@@ -68,6 +69,7 @@ test("normalizeVenuePlan keeps guest seating page publishing settings", () => {
   assert.equal(plan.guestSeatingPage.isPublished, true);
   assert.equal(plan.guestSeatingPage.navigationLabel, "Bordplassering");
   assert.equal(plan.guestSeatingPage.showItemLabels, false);
+  assert.equal(plan.guestSeatingPage.showSeatLabels, false);
   assert.equal(plan.guestSeatingPage.guestNameDisplay, "full");
   assert.equal(plan.guestSeatingPage.visibleTypes.chair, false);
   assert.equal(plan.guestSeatingPage.visibleTypes.bar, false);

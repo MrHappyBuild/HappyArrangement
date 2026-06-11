@@ -22,6 +22,7 @@ const DEFAULT_GUEST_SEATING_PAGE = {
   isPublished: false,
   navigationLabel: "Sitteplan",
   showItemLabels: true,
+  showSeatLabels: true,
   guestNameDisplay: "initials",
   visibleTypes: DEFAULT_GUEST_SEATING_VISIBLE_TYPES
 };
@@ -446,6 +447,10 @@ export function normalizeVenuePlan(plan) {
         Object.prototype.hasOwnProperty.call(guestSeatingPage, "showItemLabels")
           ? normalizeBooleanFlag(guestSeatingPage.showItemLabels)
           : DEFAULT_GUEST_SEATING_PAGE.showItemLabels,
+      showSeatLabels:
+        Object.prototype.hasOwnProperty.call(guestSeatingPage, "showSeatLabels")
+          ? normalizeBooleanFlag(guestSeatingPage.showSeatLabels)
+          : DEFAULT_GUEST_SEATING_PAGE.showSeatLabels,
       guestNameDisplay: normalizeGuestSeatingNameDisplay(guestSeatingPage.guestNameDisplay),
       visibleTypes: normalizeGuestSeatingVisibleTypes(guestSeatingPage.visibleTypes)
     }
