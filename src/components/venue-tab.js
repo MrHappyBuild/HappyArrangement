@@ -1666,12 +1666,13 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                                 list={`venue-seat-people-${event.id}`}
                                 placeholder="Skriv navn eller velg gjest"
                                 value={seatAssignmentDrafts[seat.id] || ""}
-                                onChange={(eventObject) =>
+                                onChange={(eventObject) => {
+                                  const nextValue = eventObject.currentTarget.value;
                                   setSeatAssignmentDrafts((currentDrafts) => ({
                                     ...currentDrafts,
-                                    [seat.id]: eventObject.currentTarget.value
-                                  }))
-                                }
+                                    [seat.id]: nextValue
+                                  }));
+                                }}
                               />
                               <button
                                 className="secondary-button compact-action-button"
