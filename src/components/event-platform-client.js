@@ -671,6 +671,7 @@ function GuestTab({
   const [exportFieldKeys, setExportFieldKeys] = useState(DEFAULT_GUEST_EXPORT_FIELDS);
   const [importPreview, setImportPreview] = useState(null);
   const [guestToolStatus, setGuestToolStatus] = useState("");
+  const [guestWorkspaceView, setGuestWorkspaceView] = useState("info_pages");
   const [draggedGuestNavId, setDraggedGuestNavId] = useState("");
   const [guestNavDropIndicator, setGuestNavDropIndicator] = useState(null);
   const [textSelection, setTextSelection] = useState({ start: 0, end: 0 });
@@ -1402,196 +1403,228 @@ function GuestTab({
       <section className="panel stack">
         <div className="panel-header-inline">
           <div>
-            <h3>Gjestenettside</h3>
+            <h3>Gjest</h3>
             <p className="muted">
-              Lag egne informasjonssider for gjestene, og la dem navigere i en venstremeny som hører til dette arrangementet.
+              Bytt mellom infosider for gjestenettsiden og gjestelisten med roller, verktøy og personopplysninger.
             </p>
           </div>
         </div>
-        <GuestSiteLinksPanel
-          baseUrl={guestSiteBaseUrl}
-          canManageGuest={viewerAccess.canManageGuest}
-          introText={guestSiteIntroDraft}
-          navigationLabel={guestSiteNavigationLabelDraft}
-          backgroundImageUrl={guestSiteBackgroundImageUrlDraft}
-          backgroundMode={guestSiteBackgroundModeDraft}
-          backgroundUploadStatus={guestSiteBackgroundStatus}
-          isUploadingBackground={isUploadingGuestSiteBackground}
-          pageLinks={guestPageLinks}
-          onIntroTextChange={setGuestSiteIntroDraft}
-          onNavigationLabelChange={setGuestSiteNavigationLabelDraft}
-          onBackgroundModeChange={setGuestSiteBackgroundModeDraft}
-          onBackgroundUpload={handleGuestSiteBackgroundUpload}
-          onRemoveBackgroundImage={handleRemoveGuestSiteBackgroundImage}
-          onSaveIntro={handleSaveGuestSiteIntro}
-          onIntroBlur={() => {
-            if (guestSiteIntroDraft !== (event.guestSite?.introText || "")) {
-              void handleSaveGuestSiteIntro();
-            }
-          }}
-          onNavigationLabelBlur={() => {
-            if (guestSiteNavigationLabelDraft !== (event.guestSite?.navigationLabel || "Navigasjon")) {
-              void handleSaveGuestSiteIntro();
-            }
-          }}
-          onBackgroundModeBlur={() => {
-            if (guestSiteBackgroundModeDraft !== (event.guestSite?.backgroundMode || "shell")) {
-              void handleSaveGuestSiteIntro();
-            }
-          }}
-        />
-        <div
-          className={`guest-site-preview-frame ${guestSiteBackgroundModeDraft === "page" ? "is-page-background guest-site-page-background-host" : ""}`}
-        >
-          {guestSitePageLayerStyle ? (
-            <div
-              aria-hidden="true"
-              className="guest-site-page-background-layer"
-              style={guestSitePageLayerStyle}
-            />
-          ) : null}
-          <div className="guest-site-shell" style={guestSiteShellStyle}>
-            <aside className="guest-site-sidebar">
-              <div className="stack">
-                <div className="panel-header-inline">
-                  <p className="eyebrow">{guestSiteNavigationLabelDraft || "Navigasjon"}</p>
-                  {viewerAccess.canManageGuest && visiblePages.length > 1 ? (
-                    <span className="muted guest-site-nav-help">Dra eller flytt for aa endre rekkefolgen</span>
-                  ) : null}
-                </div>
-                <nav className="guest-site-menu">
-                  {visiblePages.map((page, index) => {
-                    const dropPosition =
-                      guestNavDropIndicator?.pageId === page.id
-                        ? guestNavDropIndicator.position
-                        : null;
+        <div className="tab-row" role="tablist" aria-label="Undermeny for gjest">
+          <button
+            aria-selected={guestWorkspaceView === "info_pages"}
+            className={`tab-chip ${guestWorkspaceView === "info_pages" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setGuestWorkspaceView("info_pages")}
+          >
+            Infosider
+          </button>
+          <button
+            aria-selected={guestWorkspaceView === "guest_list"}
+            className={`tab-chip ${guestWorkspaceView === "guest_list" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setGuestWorkspaceView("guest_list")}
+          >
+            Gjesteliste
+          </button>
+        </div>
+      </section>
 
-                    return (
-                      <div
-                        className={`guest-site-nav-row ${draggedGuestNavId === page.id ? "is-dragging" : ""} ${
-                          dropPosition ? `is-drop-${dropPosition}` : ""
-                        }`}
-                        draggable={viewerAccess.canManageGuest && visiblePages.length > 1}
-                        key={page.id}
-                        onDragEnd={handleGuestNavigationDragEnd}
-                        onDragOver={(eventObject) => handleGuestNavigationDragOver(page.id, eventObject)}
-                        onDragStart={(eventObject) =>
-                          handleGuestNavigationDragStart(page.id, eventObject)
-                        }
-                        onDrop={(eventObject) => handleGuestNavigationDrop(page.id, eventObject)}
-                      >
-                        {viewerAccess.canManageGuest ? (
-                          <div className="guest-site-nav-row-actions">
-                            <button
-                              aria-label={`Flytt ${page.menuLabel || page.title} opp`}
-                              className="ghost-button compact-icon-button"
-                              disabled={index === 0}
-                              type="button"
-                              onClick={() => void handleMoveGuestNavigation(page.id, -1)}
-                            >
-                              ↑
-                            </button>
-                            <button
-                              aria-label={`Flytt ${page.menuLabel || page.title} ned`}
-                              className="ghost-button compact-icon-button"
-                              disabled={index === visiblePages.length - 1}
-                              type="button"
-                              onClick={() => void handleMoveGuestNavigation(page.id, 1)}
-                            >
-                              ↓
-                            </button>
-                            <span aria-hidden="true" className="guest-site-nav-drag-handle">
-                              ⋮⋮
-                            </span>
-                          </div>
-                        ) : null}
-                        <button
-                          className={`guest-site-link ${selectedPage?.id === page.id ? "is-active" : ""}`}
-                          type="button"
-                          onClick={() => setSelectedPageId(page.id)}
-                        >
-                          <strong>{page.menuLabel || page.title}</strong>
-                          <span>{page.title}</span>
-                          {viewerAccess.canManageGuest &&
-                          page.kind !== "venue_seating" &&
-                          page.kind !== "guest_agenda" ? (
-                            <small className="guest-page-visibility-badge">
-                              {getGuestPageVisibilityLabel(page.visibility)}
-                            </small>
-                          ) : null}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </nav>
-              </div>
-            {viewerAccess.canManageGuest ? (
-              <section className="stack guest-page-composer">
-                <div className="panel-header-inline">
-                  <div>
-                    <strong>Infosider</strong>
-                    <p className="muted">Opprett nye infosider i et eget vindu i stedet for å ha en åpen draft liggende i sidepanelet.</p>
-                  </div>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => handleOpenGuestModal("new-page")}
-                  >
-                    Legg til ny infoside
-                  </button>
-                </div>
-              </section>
+      {guestWorkspaceView === "info_pages" ? (
+        <section className="panel stack">
+          <div className="panel-header-inline">
+            <div>
+              <h3>Gjestenettside</h3>
+              <p className="muted">
+                Lag egne informasjonssider for gjestene, og la dem navigere i en venstremeny som hører til dette arrangementet.
+              </p>
+            </div>
+          </div>
+          <GuestSiteLinksPanel
+            baseUrl={guestSiteBaseUrl}
+            canManageGuest={viewerAccess.canManageGuest}
+            introText={guestSiteIntroDraft}
+            navigationLabel={guestSiteNavigationLabelDraft}
+            backgroundImageUrl={guestSiteBackgroundImageUrlDraft}
+            backgroundMode={guestSiteBackgroundModeDraft}
+            backgroundUploadStatus={guestSiteBackgroundStatus}
+            isUploadingBackground={isUploadingGuestSiteBackground}
+            pageLinks={guestPageLinks}
+            onIntroTextChange={setGuestSiteIntroDraft}
+            onNavigationLabelChange={setGuestSiteNavigationLabelDraft}
+            onBackgroundModeChange={setGuestSiteBackgroundModeDraft}
+            onBackgroundUpload={handleGuestSiteBackgroundUpload}
+            onRemoveBackgroundImage={handleRemoveGuestSiteBackgroundImage}
+            onSaveIntro={handleSaveGuestSiteIntro}
+            onIntroBlur={() => {
+              if (guestSiteIntroDraft !== (event.guestSite?.introText || "")) {
+                void handleSaveGuestSiteIntro();
+              }
+            }}
+            onNavigationLabelBlur={() => {
+              if (guestSiteNavigationLabelDraft !== (event.guestSite?.navigationLabel || "Navigasjon")) {
+                void handleSaveGuestSiteIntro();
+              }
+            }}
+            onBackgroundModeBlur={() => {
+              if (guestSiteBackgroundModeDraft !== (event.guestSite?.backgroundMode || "shell")) {
+                void handleSaveGuestSiteIntro();
+              }
+            }}
+          />
+          <div
+            className={`guest-site-preview-frame ${guestSiteBackgroundModeDraft === "page" ? "is-page-background guest-site-page-background-host" : ""}`}
+          >
+            {guestSitePageLayerStyle ? (
+              <div
+                aria-hidden="true"
+                className="guest-site-page-background-layer"
+                style={guestSitePageLayerStyle}
+              />
             ) : null}
-            </aside>
+            <div className="guest-site-shell" style={guestSiteShellStyle}>
+              <aside className="guest-site-sidebar">
+                <div className="stack">
+                  <div className="panel-header-inline">
+                    <p className="eyebrow">{guestSiteNavigationLabelDraft || "Navigasjon"}</p>
+                    {viewerAccess.canManageGuest && visiblePages.length > 1 ? (
+                      <span className="muted guest-site-nav-help">Dra eller flytt for aa endre rekkefolgen</span>
+                    ) : null}
+                  </div>
+                  <nav className="guest-site-menu">
+                    {visiblePages.map((page, index) => {
+                      const dropPosition =
+                        guestNavDropIndicator?.pageId === page.id
+                          ? guestNavDropIndicator.position
+                          : null;
 
-            <div className="guest-site-stage stack">
-            {selectedPage ? (
-              <>
-                <article className="guest-site-preview">
-                  <h2>{previewPage?.title || selectedPage.title}</h2>
-                  {viewerAccess.canManageGuest && !isGeneratedGuestPage ? (
-                    <div className="guest-page-settings-summary">
-                      <p className="guest-page-visibility-note">
-                        Synlighet: {getGuestPageVisibilityLabel(previewPage?.visibility || selectedPage.visibility)}
-                      </p>
-                      <p className="guest-page-visibility-note">
-                        Font: {getGuestPageFontLabel(previewPage?.fontPreset || selectedPage.fontPreset)}
-                      </p>
-                      <p className="guest-page-visibility-note">
-                        Størrelse: {getGuestPageTextSizeLabel(previewPage?.textSize || selectedPage.textSize)}
-                      </p>
-                      <p className="guest-page-visibility-note">
-                        Tekstvekt: {getGuestPageTextWeightLabel(previewPage?.textWeight || selectedPage.textWeight)}
-                      </p>
-                      <p className="guest-page-visibility-note">
-                        Bildetekst: {Boolean(previewPage?.showImageCaption) ? "Vises" : "Skjult"}
-                      </p>
+                      return (
+                        <div
+                          className={`guest-site-nav-row ${draggedGuestNavId === page.id ? "is-dragging" : ""} ${
+                            dropPosition ? `is-drop-${dropPosition}` : ""
+                          }`}
+                          draggable={viewerAccess.canManageGuest && visiblePages.length > 1}
+                          key={page.id}
+                          onDragEnd={handleGuestNavigationDragEnd}
+                          onDragOver={(eventObject) => handleGuestNavigationDragOver(page.id, eventObject)}
+                          onDragStart={(eventObject) =>
+                            handleGuestNavigationDragStart(page.id, eventObject)
+                          }
+                          onDrop={(eventObject) => handleGuestNavigationDrop(page.id, eventObject)}
+                        >
+                          {viewerAccess.canManageGuest ? (
+                            <div className="guest-site-nav-row-actions">
+                              <button
+                                aria-label={`Flytt ${page.menuLabel || page.title} opp`}
+                                className="ghost-button compact-icon-button"
+                                disabled={index === 0}
+                                type="button"
+                                onClick={() => void handleMoveGuestNavigation(page.id, -1)}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                aria-label={`Flytt ${page.menuLabel || page.title} ned`}
+                                className="ghost-button compact-icon-button"
+                                disabled={index === visiblePages.length - 1}
+                                type="button"
+                                onClick={() => void handleMoveGuestNavigation(page.id, 1)}
+                              >
+                                ↓
+                              </button>
+                              <span aria-hidden="true" className="guest-site-nav-drag-handle">
+                                ⋮⋮
+                              </span>
+                            </div>
+                          ) : null}
+                          <button
+                            className={`guest-site-link ${selectedPage?.id === page.id ? "is-active" : ""}`}
+                            type="button"
+                            onClick={() => setSelectedPageId(page.id)}
+                          >
+                            <strong>{page.menuLabel || page.title}</strong>
+                            <span>{page.title}</span>
+                            {viewerAccess.canManageGuest &&
+                            page.kind !== "venue_seating" &&
+                            page.kind !== "guest_agenda" ? (
+                              <small className="guest-page-visibility-badge">
+                                {getGuestPageVisibilityLabel(page.visibility)}
+                              </small>
+                            ) : null}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </nav>
+                </div>
+              {viewerAccess.canManageGuest ? (
+                <section className="stack guest-page-composer">
+                  <div className="panel-header-inline">
+                    <div>
+                      <strong>Infosider</strong>
+                      <p className="muted">Opprett nye infosider i et eget vindu i stedet for å ha en åpen draft liggende i sidepanelet.</p>
                     </div>
-                  ) : null}
-                  {isVenueSeatingPage ? (
-                    <GuestSeatingPageView event={event} title={selectedPage.title} />
-                  ) : isGuestAgendaPage ? (
-                    <GuestAgendaPageView event={event} title={selectedPage.title} />
-                  ) : (
-                    <div
-                      className={`guest-site-copy guest-page-font-${previewPage?.fontPreset || "clean"} guest-page-size-${
-                        previewPage?.textSize || "md"
-                      } guest-page-weight-${previewPage?.textWeight || "regular"}`}
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => handleOpenGuestModal("new-page")}
                     >
-                      <GuestPageContentView
-                        content={previewPage?.content || ""}
-                        showImageCaption={Boolean(previewPage?.showImageCaption)}
-                      />
-                    </div>
-                  )}
-                </article>
+                      Legg til ny infoside
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+              </aside>
 
-                {viewerAccess.canManageGuest && !isGeneratedGuestPage ? (
-                  <form
-                    className="panel stack guest-page-editor"
-                    key={selectedPage.id}
-                    onSubmit={(eventObject) => onUpdateGuestPage(eventObject, selectedPage, draftPage)}
-                  >
+              <div className="guest-site-stage stack">
+              {selectedPage ? (
+                <>
+                  <article className="guest-site-preview">
+                    <h2>{previewPage?.title || selectedPage.title}</h2>
+                    {viewerAccess.canManageGuest && !isGeneratedGuestPage ? (
+                      <div className="guest-page-settings-summary">
+                        <p className="guest-page-visibility-note">
+                          Synlighet: {getGuestPageVisibilityLabel(previewPage?.visibility || selectedPage.visibility)}
+                        </p>
+                        <p className="guest-page-visibility-note">
+                          Font: {getGuestPageFontLabel(previewPage?.fontPreset || selectedPage.fontPreset)}
+                        </p>
+                        <p className="guest-page-visibility-note">
+                          Størrelse: {getGuestPageTextSizeLabel(previewPage?.textSize || selectedPage.textSize)}
+                        </p>
+                        <p className="guest-page-visibility-note">
+                          Tekstvekt: {getGuestPageTextWeightLabel(previewPage?.textWeight || selectedPage.textWeight)}
+                        </p>
+                        <p className="guest-page-visibility-note">
+                          Bildetekst: {Boolean(previewPage?.showImageCaption) ? "Vises" : "Skjult"}
+                        </p>
+                      </div>
+                    ) : null}
+                    {isVenueSeatingPage ? (
+                      <GuestSeatingPageView event={event} title={selectedPage.title} />
+                    ) : isGuestAgendaPage ? (
+                      <GuestAgendaPageView event={event} title={selectedPage.title} />
+                    ) : (
+                      <div
+                        className={`guest-site-copy guest-page-font-${previewPage?.fontPreset || "clean"} guest-page-size-${
+                          previewPage?.textSize || "md"
+                        } guest-page-weight-${previewPage?.textWeight || "regular"}`}
+                      >
+                        <GuestPageContentView
+                          content={previewPage?.content || ""}
+                          showImageCaption={Boolean(previewPage?.showImageCaption)}
+                        />
+                      </div>
+                    )}
+                  </article>
+
+                  {viewerAccess.canManageGuest && !isGeneratedGuestPage ? (
+                    <form
+                      className="panel stack guest-page-editor"
+                      key={selectedPage.id}
+                      onSubmit={(eventObject) => onUpdateGuestPage(eventObject, selectedPage, draftPage)}
+                    >
                     <div className="panel-header-inline">
                       <div>
                         <h3>Rediger side</h3>
@@ -2075,438 +2108,443 @@ function GuestTab({
           </div>
         </div>
         </div>
-      </section>
+        </section>
+      ) : null}
 
-      {viewerAccess.canManageGuest ? (
+      {guestWorkspaceView === "guest_list" ? (
         <>
-          <section className="panel stack">
-            <h3>Roller og tilganger</h3>
-            <p className="muted">
-              Lag roller for arrangementet og gi dem tilgang til planlegging, oppgaver, faktura og ekstra handlinger.
-            </p>
-            <form className="grid-form compact-grid" onSubmit={onAddRole}>
-              <label className="field">
-                <span>Navn på rolle</span>
-                <input name="name" placeholder="F.eks. Toastmaster, Familiekoordinator eller Regnskapsansvarlig" required />
-              </label>
-              <label className="field">
-                <span>Start fra</span>
-                <select defaultValue="guest" name="template">
-                  {templateList.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field field-span-full">
-                <span>Beskrivelse</span>
-                <input name="description" placeholder="Hva skal denne rollen brukes til?" />
-              </label>
-              <button className="primary-button" type="submit">
-                Opprett rolle
-              </button>
-            </form>
-            <div className="person-list">
-              <div className="person-list-header person-role-list-header">
-                <span>Rolle</span>
-                <span>Planlegging</span>
-                <span>Oppgaver</span>
-                <span>Faktura</span>
-                <span>Tilganger</span>
-                <span>Detaljer</span>
-              </div>
-              {event.roles.map((role) => {
-                const isOpen = openRoleId === role.id;
-                const capabilitySummary = CAPABILITY_OPTIONS.filter(
-                  (option) => role.capabilities?.[option.key]
-                )
-                  .map((option) => option.label)
-                  .join(" · ");
+          {viewerAccess.canManageGuest ? (
+            <>
+              <section className="panel stack">
+                <h3>Roller og tilganger</h3>
+                <p className="muted">
+                  Lag roller for arrangementet og gi dem tilgang til planlegging, oppgaver, faktura og ekstra handlinger.
+                </p>
+                <form className="grid-form compact-grid" onSubmit={onAddRole}>
+                  <label className="field">
+                    <span>Navn på rolle</span>
+                    <input name="name" placeholder="F.eks. Toastmaster, Familiekoordinator eller Regnskapsansvarlig" required />
+                  </label>
+                  <label className="field">
+                    <span>Start fra</span>
+                    <select defaultValue="guest" name="template">
+                      {templateList.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field field-span-full">
+                    <span>Beskrivelse</span>
+                    <input name="description" placeholder="Hva skal denne rollen brukes til?" />
+                  </label>
+                  <button className="primary-button" type="submit">
+                    Opprett rolle
+                  </button>
+                </form>
+                <div className="person-list">
+                  <div className="person-list-header person-role-list-header">
+                    <span>Rolle</span>
+                    <span>Planlegging</span>
+                    <span>Oppgaver</span>
+                    <span>Faktura</span>
+                    <span>Tilganger</span>
+                    <span>Detaljer</span>
+                  </div>
+                  {event.roles.map((role) => {
+                    const isOpen = openRoleId === role.id;
+                    const capabilitySummary = CAPABILITY_OPTIONS.filter(
+                      (option) => role.capabilities?.[option.key]
+                    )
+                      .map((option) => option.label)
+                      .join(" · ");
 
-                return (
-                  <article className={`person-list-item ${isOpen ? "is-open" : ""}`} key={role.id}>
-                    <div className="person-list-row person-role-list-row">
-                      <div className="person-list-main">
-                        <strong>{role.name}</strong>
-                        <span>{role.description || "Ingen beskrivelse enda"}</span>
-                      </div>
-                      <span className="role-pill">
-                        {PLANNING_ROLE_OPTIONS.find((option) => option.value === role.planningRole)?.label || "Ingen"}
-                      </span>
-                      <span className="role-pill">
-                        {PROJECT_ROLE_OPTIONS.find((option) => option.value === role.projectRole)?.label || "Ingen"}
-                      </span>
-                      <span className="role-pill">
-                        {FINANCE_ROLE_OPTIONS.find((option) => option.value === role.financeRole)?.label || "Ingen"}
-                      </span>
-                      <span className="person-list-summary">{capabilitySummary || "Ingen ekstra"}</span>
-                      <button
-                        className="secondary-button compact-action-button"
-                        type="button"
-                        onClick={() =>
-                          setOpenRoleId((currentValue) => (currentValue === role.id ? "" : role.id))
-                        }
-                      >
-                        {isOpen ? "Lukk" : "Åpne"}
-                      </button>
-                    </div>
-                    {isOpen ? (
-                      <form
-                        className="person-list-detail stack"
-                        onSubmit={(eventObject) => onUpdateRole(eventObject, role)}
-                      >
-                        <div className="compact-grid">
-                          <label className="field">
-                            <span>Navn</span>
-                            <input defaultValue={role.name} name="name" required />
-                          </label>
-                          <label className="field field-span-full">
-                            <span>Beskrivelse</span>
-                            <input defaultValue={role.description} name="description" placeholder="Hva rollen skal brukes til" />
-                          </label>
-                          <label className="field">
-                            <span>Planlegging</span>
-                            <select defaultValue={role.planningRole} name="planningRole">
-                              {PLANNING_ROLE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="field">
-                            <span>Oppgaver</span>
-                            <select defaultValue={role.projectRole} name="projectRole">
-                              {PROJECT_ROLE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="field">
-                            <span>Faktura</span>
-                            <select defaultValue={role.financeRole} name="financeRole">
-                              {FINANCE_ROLE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                        <div className="toggle-row">
-                          {CAPABILITY_OPTIONS.map((option) => (
-                            <label key={option.key}>
-                              <input
-                                defaultChecked={Boolean(role.capabilities?.[option.key])}
-                                name={option.key}
-                                type="checkbox"
-                              />
-                              {option.label}
-                            </label>
-                          ))}
-                        </div>
-                        <div className="button-row">
-                          <button className="secondary-button" type="submit">
-                            Lagre rolle
+                    return (
+                      <article className={`person-list-item ${isOpen ? "is-open" : ""}`} key={role.id}>
+                        <div className="person-list-row person-role-list-row">
+                          <div className="person-list-main">
+                            <strong>{role.name}</strong>
+                            <span>{role.description || "Ingen beskrivelse enda"}</span>
+                          </div>
+                          <span className="role-pill">
+                            {PLANNING_ROLE_OPTIONS.find((option) => option.value === role.planningRole)?.label || "Ingen"}
+                          </span>
+                          <span className="role-pill">
+                            {PROJECT_ROLE_OPTIONS.find((option) => option.value === role.projectRole)?.label || "Ingen"}
+                          </span>
+                          <span className="role-pill">
+                            {FINANCE_ROLE_OPTIONS.find((option) => option.value === role.financeRole)?.label || "Ingen"}
+                          </span>
+                          <span className="person-list-summary">{capabilitySummary || "Ingen ekstra"}</span>
+                          <button
+                            className="secondary-button compact-action-button"
+                            type="button"
+                            onClick={() =>
+                              setOpenRoleId((currentValue) => (currentValue === role.id ? "" : role.id))
+                            }
+                          >
+                            {isOpen ? "Lukk" : "Åpne"}
                           </button>
                         </div>
-                      </form>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
-          </section>
+                        {isOpen ? (
+                          <form
+                            className="person-list-detail stack"
+                            onSubmit={(eventObject) => onUpdateRole(eventObject, role)}
+                          >
+                            <div className="compact-grid">
+                              <label className="field">
+                                <span>Navn</span>
+                                <input defaultValue={role.name} name="name" required />
+                              </label>
+                              <label className="field field-span-full">
+                                <span>Beskrivelse</span>
+                                <input defaultValue={role.description} name="description" placeholder="Hva rollen skal brukes til" />
+                              </label>
+                              <label className="field">
+                                <span>Planlegging</span>
+                                <select defaultValue={role.planningRole} name="planningRole">
+                                  {PLANNING_ROLE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="field">
+                                <span>Oppgaver</span>
+                                <select defaultValue={role.projectRole} name="projectRole">
+                                  {PROJECT_ROLE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="field">
+                                <span>Faktura</span>
+                                <select defaultValue={role.financeRole} name="financeRole">
+                                  {FINANCE_ROLE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            <div className="toggle-row">
+                              {CAPABILITY_OPTIONS.map((option) => (
+                                <label key={option.key}>
+                                  <input
+                                    defaultChecked={Boolean(role.capabilities?.[option.key])}
+                                    name={option.key}
+                                    type="checkbox"
+                                  />
+                                  {option.label}
+                                </label>
+                              ))}
+                            </div>
+                            <div className="button-row">
+                              <button className="secondary-button" type="submit">
+                                Lagre rolle
+                              </button>
+                            </div>
+                          </form>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="panel stack">
+                <div className="panel-header-inline">
+                  <div>
+                    <h3>Gjesteverktøy</h3>
+                    <p className="muted">
+                      Legg til enkeltgjester, fyll inn mange samtidig, eller importer og eksporter gjestelisten som CSV.
+                    </p>
+                  </div>
+                </div>
+                <div className="button-row">
+                  <button className="primary-button" type="button" onClick={() => handleOpenGuestModal("add-person")}>
+                    Legg til person
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("bulk-people")}>
+                    Legg til mange
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("import-people")}>
+                    Importer gjesteliste
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("export-people")}>
+                    Eksporter gjesteliste
+                  </button>
+                  <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
+                    Last ned mal
+                  </button>
+                </div>
+                {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
+              </section>
+            </>
+          ) : null}
 
           <section className="panel stack">
             <div className="panel-header-inline">
               <div>
-                <h3>Gjesteverktøy</h3>
-                <p className="muted">
-                  Legg til enkeltgjester, fyll inn mange samtidig, eller importer og eksporter gjestelisten som CSV.
-                </p>
+                <h3>Personer i arrangementet</h3>
+                <p className="muted">Søk på navn, kontaktinfo, roller eller kostbehov for å finne riktig person raskere.</p>
               </div>
+              <label className="field person-search-field">
+                <span>Søk i listen</span>
+                <input
+                  placeholder="Navn, e-post, rolle eller allergi"
+                  value={personSearch}
+                  onChange={(eventObject) => setPersonSearch(eventObject.currentTarget.value)}
+                />
+              </label>
             </div>
-            <div className="button-row">
-              <button className="primary-button" type="button" onClick={() => handleOpenGuestModal("add-person")}>
-                Legg til person
-              </button>
-              <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("bulk-people")}>
-                Legg til mange
-              </button>
-              <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("import-people")}>
-                Importer gjesteliste
-              </button>
-              <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("export-people")}>
-                Eksporter gjesteliste
-              </button>
-              <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
-                Last ned mal
-              </button>
-            </div>
-            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
+            {filteredPeople.length === 0 ? (
+              <EmptyState
+                title={event.people.length === 0 ? "Ingen personer enda" : "Ingen treff i gjestelisten"}
+                body={
+                  event.people.length === 0
+                    ? "Legg til gjester, hjelpere eller fakturamedlemmer for aa styre tilgangene."
+                    : "Juster søket eller importer flere gjester."
+                }
+              />
+            ) : (
+              <div className="person-list">
+                <div className="person-list-header">
+                  <span>Person</span>
+                  <span>RSVP</span>
+                  <span>Allergier og mat</span>
+                  <span>Roller</span>
+                  <span>Merknader</span>
+                  <span>Detaljer</span>
+                </div>
+                {filteredPeople.map((person) => {
+                  const canEditSelf = !viewerAccess.canManageGuest && viewerPerson?.id === person.id;
+                  const canSave = viewerAccess.canManageGuest || canEditSelf;
+                  const isOpen = openPersonId === person.id;
+                  const roleLabel = buildPersonRoleSummary(person, event.roles);
+                  const dietarySummary = buildPersonDietarySummary(person);
+                  const contextSummary = buildPersonContextSummary(person);
+
+                  return (
+                    <article className={`person-list-item ${isOpen ? "is-open" : ""}`} key={person.id}>
+                      <div className="person-list-row">
+                        <div className="person-list-main">
+                          <strong>{person.name}</strong>
+                          <span>{[person.email || "Ingen e-post", person.phone || "Ingen mobil"].join(" · ")}</span>
+                        </div>
+                        <span className={`role-pill role-pill-rsvp role-pill-rsvp-${person.rsvpStatus || "pending"}`}>
+                          {getRsvpLabel(person.rsvpStatus)}
+                        </span>
+                        <span className="person-list-summary">{dietarySummary}</span>
+                        <span className="role-pill">{roleLabel}</span>
+                        <span className="person-list-summary">{contextSummary}</span>
+                        <button
+                          className="secondary-button compact-action-button"
+                          type="button"
+                          onClick={() =>
+                            setOpenPersonId((currentValue) => (currentValue === person.id ? "" : person.id))
+                          }
+                        >
+                          {isOpen ? "Lukk" : "Åpne"}
+                        </button>
+                      </div>
+                      {isOpen ? (
+                        <form
+                          className="person-list-detail stack"
+                          onSubmit={(eventObject) => onUpdatePerson(eventObject, person)}
+                        >
+                          <input name="personId" type="hidden" value={person.id} />
+                          <div className="compact-grid">
+                            <label className="field">
+                              <span>Navn</span>
+                              <input
+                                defaultValue={person.name}
+                                disabled={!canSave}
+                                name="name"
+                                placeholder="Fornavn Etternavn"
+                                required
+                              />
+                            </label>
+                            <label className="field">
+                              <span>E-post</span>
+                              <input
+                                defaultValue={person.email}
+                                disabled={!canSave}
+                                name="email"
+                                placeholder="navn@epost.no"
+                                type="email"
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Mobilnummer</span>
+                              <input
+                                defaultValue={person.phone}
+                                disabled={!canSave}
+                                name="phone"
+                                placeholder="+47 900 00 000"
+                                type="tel"
+                              />
+                            </label>
+                            <label className="field">
+                              <span>RSVP</span>
+                              <select defaultValue={person.rsvpStatus} disabled={!canSave} name="rsvpStatus">
+                                {RSVP_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            {viewerAccess.canManageGuest ? (
+                              <label className="field field-span-full">
+                                <span>Roller</span>
+                                <RoleChecklist
+                                  disabled={!viewerAccess.canManageGuest}
+                                  roles={event.roles}
+                                  selectedIds={person.roleIds || []}
+                                />
+                              </label>
+                            ) : null}
+                          </div>
+                          {viewerAccess.canManageGuest ? (
+                            <>
+                              <div className="notice">
+                                <strong>Direkte overstyring</strong>
+                                <p>
+                                  Roller styrer normalt tilgangen. Bruk feltene under bare hvis denne personen skal ha ekstra eller avvikende tilgang utover rollene sine.
+                                </p>
+                              </div>
+                              <div className="toggle-row">
+                                <label>
+                                  <input
+                                    defaultChecked={Boolean(person.useDirectAccessOverrides)}
+                                    name="useDirectAccessOverrides"
+                                    type="checkbox"
+                                  />
+                                  Bruk direkte overstyring i tillegg til rollene
+                                </label>
+                              </div>
+                              <div className="compact-grid">
+                                <label className="field">
+                                  <span>Planlegging</span>
+                                  <select
+                                    defaultValue={person.planningRole}
+                                    disabled={!viewerAccess.canManageGuest}
+                                    name="planningRole"
+                                  >
+                                    {PLANNING_ROLE_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="field">
+                                  <span>Oppgaver</span>
+                                  <select
+                                    defaultValue={person.projectRole}
+                                    disabled={!viewerAccess.canManageGuest}
+                                    name="projectRole"
+                                  >
+                                    {PROJECT_ROLE_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="field">
+                                  <span>Faktura</span>
+                                  <select
+                                    defaultValue={person.financeRole}
+                                    disabled={!viewerAccess.canManageGuest}
+                                    name="financeRole"
+                                  >
+                                    {FINANCE_ROLE_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <div className="toggle-row">
+                                {CAPABILITY_OPTIONS.map((option) => (
+                                  <label key={option.key}>
+                                    <input
+                                      defaultChecked={Boolean(person.capabilities?.[option.key])}
+                                      disabled={!viewerAccess.canManageGuest}
+                                      name={option.key}
+                                      type="checkbox"
+                                    />
+                                    {option.label}
+                                  </label>
+                                ))}
+                              </div>
+                            </>
+                          ) : null}
+                          <div className="compact-grid">
+                            <label className="field">
+                              <span>Notat</span>
+                              <input
+                                defaultValue={person.note}
+                                disabled={!canSave}
+                                name="note"
+                                placeholder="Rolle, ansvar eller info"
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Allergier</span>
+                              <input
+                                defaultValue={person.allergies}
+                                disabled={!canSave}
+                                name="allergies"
+                                placeholder="F.eks. gluten eller notter"
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Matpreferanser</span>
+                              <input
+                                defaultValue={person.dietaryNotes}
+                                disabled={!canSave}
+                                name="dietaryNotes"
+                                placeholder="F.eks. vegetar eller alkoholfritt"
+                              />
+                            </label>
+                            <label className="field field-span-full">
+                              <span>Sitteinfo</span>
+                              <input
+                                defaultValue={person.seatingNote}
+                                disabled={!canSave}
+                                name="seatingNote"
+                                placeholder="F.eks. narmt scene, ved partner eller unna trekk"
+                              />
+                            </label>
+                          </div>
+                          {canSave ? (
+                            <div className="button-row">
+                              <button className="secondary-button" type="submit">
+                                {viewerAccess.canManageGuest ? "Lagre person" : "Oppdater mitt svar"}
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="muted">Lesetilgang for denne visningen.</p>
+                          )}
+                        </form>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </>
       ) : null}
-
-      <section className="panel stack">
-        <div className="panel-header-inline">
-          <div>
-            <h3>Personer i arrangementet</h3>
-            <p className="muted">Søk på navn, kontaktinfo, roller eller kostbehov for å finne riktig person raskere.</p>
-          </div>
-          <label className="field person-search-field">
-            <span>Søk i listen</span>
-            <input
-              placeholder="Navn, e-post, rolle eller allergi"
-              value={personSearch}
-              onChange={(eventObject) => setPersonSearch(eventObject.currentTarget.value)}
-            />
-          </label>
-        </div>
-        {filteredPeople.length === 0 ? (
-          <EmptyState
-            title={event.people.length === 0 ? "Ingen personer enda" : "Ingen treff i gjestelisten"}
-            body={
-              event.people.length === 0
-                ? "Legg til gjester, hjelpere eller fakturamedlemmer for aa styre tilgangene."
-                : "Juster søket eller importer flere gjester."
-            }
-          />
-        ) : (
-          <div className="person-list">
-            <div className="person-list-header">
-              <span>Person</span>
-              <span>RSVP</span>
-              <span>Allergier og mat</span>
-              <span>Roller</span>
-              <span>Merknader</span>
-              <span>Detaljer</span>
-            </div>
-            {filteredPeople.map((person) => {
-              const canEditSelf = !viewerAccess.canManageGuest && viewerPerson?.id === person.id;
-              const canSave = viewerAccess.canManageGuest || canEditSelf;
-              const isOpen = openPersonId === person.id;
-              const roleLabel = buildPersonRoleSummary(person, event.roles);
-              const dietarySummary = buildPersonDietarySummary(person);
-              const contextSummary = buildPersonContextSummary(person);
-
-              return (
-                <article className={`person-list-item ${isOpen ? "is-open" : ""}`} key={person.id}>
-                  <div className="person-list-row">
-                    <div className="person-list-main">
-                      <strong>{person.name}</strong>
-                      <span>{[person.email || "Ingen e-post", person.phone || "Ingen mobil"].join(" · ")}</span>
-                    </div>
-                    <span className={`role-pill role-pill-rsvp role-pill-rsvp-${person.rsvpStatus || "pending"}`}>
-                      {getRsvpLabel(person.rsvpStatus)}
-                    </span>
-                    <span className="person-list-summary">{dietarySummary}</span>
-                    <span className="role-pill">{roleLabel}</span>
-                    <span className="person-list-summary">{contextSummary}</span>
-                    <button
-                      className="secondary-button compact-action-button"
-                      type="button"
-                      onClick={() =>
-                        setOpenPersonId((currentValue) => (currentValue === person.id ? "" : person.id))
-                      }
-                    >
-                      {isOpen ? "Lukk" : "Åpne"}
-                    </button>
-                  </div>
-                  {isOpen ? (
-                    <form
-                      className="person-list-detail stack"
-                      onSubmit={(eventObject) => onUpdatePerson(eventObject, person)}
-                    >
-                      <input name="personId" type="hidden" value={person.id} />
-                      <div className="compact-grid">
-                        <label className="field">
-                          <span>Navn</span>
-                          <input
-                            defaultValue={person.name}
-                            disabled={!canSave}
-                            name="name"
-                            placeholder="Fornavn Etternavn"
-                            required
-                          />
-                        </label>
-                        <label className="field">
-                          <span>E-post</span>
-                          <input
-                            defaultValue={person.email}
-                            disabled={!canSave}
-                            name="email"
-                            placeholder="navn@epost.no"
-                            type="email"
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Mobilnummer</span>
-                          <input
-                            defaultValue={person.phone}
-                            disabled={!canSave}
-                            name="phone"
-                            placeholder="+47 900 00 000"
-                            type="tel"
-                          />
-                        </label>
-                        <label className="field">
-                          <span>RSVP</span>
-                          <select defaultValue={person.rsvpStatus} disabled={!canSave} name="rsvpStatus">
-                            {RSVP_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        {viewerAccess.canManageGuest ? (
-                          <label className="field field-span-full">
-                            <span>Roller</span>
-                            <RoleChecklist
-                              disabled={!viewerAccess.canManageGuest}
-                              roles={event.roles}
-                              selectedIds={person.roleIds || []}
-                            />
-                          </label>
-                        ) : null}
-                      </div>
-                      {viewerAccess.canManageGuest ? (
-                        <>
-                          <div className="notice">
-                            <strong>Direkte overstyring</strong>
-                            <p>
-                              Roller styrer normalt tilgangen. Bruk feltene under bare hvis denne personen skal ha ekstra eller avvikende tilgang utover rollene sine.
-                            </p>
-                          </div>
-                          <div className="toggle-row">
-                            <label>
-                              <input
-                                defaultChecked={Boolean(person.useDirectAccessOverrides)}
-                                name="useDirectAccessOverrides"
-                                type="checkbox"
-                              />
-                              Bruk direkte overstyring i tillegg til rollene
-                            </label>
-                          </div>
-                          <div className="compact-grid">
-                            <label className="field">
-                              <span>Planlegging</span>
-                              <select
-                                defaultValue={person.planningRole}
-                                disabled={!viewerAccess.canManageGuest}
-                                name="planningRole"
-                              >
-                                {PLANNING_ROLE_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="field">
-                              <span>Oppgaver</span>
-                              <select
-                                defaultValue={person.projectRole}
-                                disabled={!viewerAccess.canManageGuest}
-                                name="projectRole"
-                              >
-                                {PROJECT_ROLE_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="field">
-                              <span>Faktura</span>
-                              <select
-                                defaultValue={person.financeRole}
-                                disabled={!viewerAccess.canManageGuest}
-                                name="financeRole"
-                              >
-                                {FINANCE_ROLE_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                          <div className="toggle-row">
-                            {CAPABILITY_OPTIONS.map((option) => (
-                              <label key={option.key}>
-                                <input
-                                  defaultChecked={Boolean(person.capabilities?.[option.key])}
-                                  disabled={!viewerAccess.canManageGuest}
-                                  name={option.key}
-                                  type="checkbox"
-                                />
-                                {option.label}
-                              </label>
-                            ))}
-                          </div>
-                        </>
-                      ) : null}
-                      <div className="compact-grid">
-                        <label className="field">
-                          <span>Notat</span>
-                          <input
-                            defaultValue={person.note}
-                            disabled={!canSave}
-                            name="note"
-                            placeholder="Rolle, ansvar eller info"
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Allergier</span>
-                          <input
-                            defaultValue={person.allergies}
-                            disabled={!canSave}
-                            name="allergies"
-                            placeholder="F.eks. gluten eller notter"
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Matpreferanser</span>
-                          <input
-                            defaultValue={person.dietaryNotes}
-                            disabled={!canSave}
-                            name="dietaryNotes"
-                            placeholder="F.eks. vegetar eller alkoholfritt"
-                          />
-                        </label>
-                        <label className="field field-span-full">
-                          <span>Sitteinfo</span>
-                          <input
-                            defaultValue={person.seatingNote}
-                            disabled={!canSave}
-                            name="seatingNote"
-                            placeholder="F.eks. narmt scene, ved partner eller unna trekk"
-                          />
-                        </label>
-                      </div>
-                      {canSave ? (
-                        <div className="button-row">
-                          <button className="secondary-button" type="submit">
-                            {viewerAccess.canManageGuest ? "Lagre person" : "Oppdater mitt svar"}
-                          </button>
-                        </div>
-                      ) : (
-                        <p className="muted">Lesetilgang for denne visningen.</p>
-                      )}
-                    </form>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       {viewerAccess.canManageGuest && guestModal === "new-page" ? (
         <ModalShell
