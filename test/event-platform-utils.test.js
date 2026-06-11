@@ -193,6 +193,14 @@ test("ensureEventShape keeps guest allergies and creates a normalized venue plan
   const event = ensureEventShape({
     id: "event-venue",
     name: "Bryllup",
+    venuePlan: {
+      guestSeatingPage: {
+        isPublished: true,
+        navigationLabel: "Bordoversikt",
+        guestNameDisplay: "hidden",
+        showItemLabels: false
+      }
+    },
     people: [
       {
         id: "guest-1",
@@ -208,6 +216,10 @@ test("ensureEventShape keeps guest allergies and creates a normalized venue plan
   assert.equal(event.people[0].dietaryNotes, "Vegetar");
   assert.equal(event.people[0].seatingNote, "Bor sitte narmt familien");
   assert.equal(event.venuePlan.room.name, "Hovedsal");
+  assert.equal(event.venuePlan.guestSeatingPage.isPublished, true);
+  assert.equal(event.venuePlan.guestSeatingPage.navigationLabel, "Bordoversikt");
+  assert.equal(event.venuePlan.guestSeatingPage.guestNameDisplay, "hidden");
+  assert.equal(event.venuePlan.guestSeatingPage.showItemLabels, false);
   assert.deepEqual(event.venuePlan.items, []);
 });
 

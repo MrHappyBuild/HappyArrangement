@@ -2855,13 +2855,14 @@ p {
   overflow: auto;
   padding-bottom: 2px;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: auto;
 }
 
 .guest-seating-map {
   position: relative;
   flex: 0 0 auto;
-  min-height: 360px;
+  box-sizing: border-box;
+  min-height: 0;
   border-radius: 22px;
   overflow: hidden;
   background:
@@ -2910,7 +2911,24 @@ p {
   overflow: visible;
 }
 
-.guest-seating-item.is-highlighted,
+.guest-seating-map-item {
+  cursor: default;
+}
+
+.guest-seating-map-item .venue-item-card {
+  overflow: visible;
+}
+
+.guest-seating-map-item .venue-item-label {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.guest-seating-map-item .venue-seat-dot {
+  pointer-events: none;
+}
+
+.guest-seating-map-item.is-highlighted .venue-item-card,
 .guest-seating-table-card.is-highlighted {
   border-color: rgba(36, 95, 82, 0.3);
   box-shadow: 0 0 0 2px rgba(36, 95, 82, 0.14);

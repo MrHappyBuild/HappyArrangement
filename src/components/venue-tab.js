@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   VENUE_CUSTOM_SHAPE_OPTIONS,
   VENUE_ITEM_LIBRARY,
+  VENUE_LONG_TABLE_SEAT_LAYOUT_OPTIONS,
   assignGuestToVenueSeat,
   buildVenuePlanningState,
   clearGuestFromVenueSeat,
@@ -125,8 +126,8 @@ function isCircularVenueItem(item) {
 
 function getVenueZoomBounds(isFocusMode) {
   return {
-    min: 5,
-    max: isFocusMode ? 4000 : 2000
+    min: 1,
+    max: isFocusMode ? 10000 : 5000
   };
 }
 
@@ -134,10 +135,10 @@ function getVenueFitCanvasWidth(shellWidthPixels) {
   const numeric = Number(shellWidthPixels);
 
   if (!Number.isFinite(numeric) || numeric <= 0) {
-    return 860;
+    return 848;
   }
 
-  return Math.max(260, Math.round(numeric));
+  return Math.max(220, Math.round(numeric - 12));
 }
 
 function mapResizeDeltaByRotation(rotation, deltaWidthMeters, deltaHeightMeters) {
@@ -477,8 +478,12 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
         return;
       }
 
-      const deltaXPercent = pointerPosition.xPercent - seatDrag.startPointerXPercent;
-      const deltaYPercent = pointerPosition.yPercent - seatDrag.startPointerYPercent;
+      const itemWidthPercent = Math.max(seatDrag.itemWidthPercent || 1, 0.1);
+      const itemHeightPercent = Math.max(seatDrag.itemHeightPercent || 1, 0.1);
+      const deltaXPercent =
+        ((pointerPosition.xPercent - seatDrag.startPointerXPercent) / itemWidthPercent) * 100;
+      const deltaYPercent =
+        ((pointerPosition.yPercent - seatDrag.startPointerYPercent) / itemHeightPercent) * 100;
 
       applyPreviewPlan((currentPlan) =>
         updateVenueSeatOffsetInPlan(
@@ -588,6 +593,10 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       shape: nextShape,
       widthMeters: nextWidthMeters,
       heightMeters: nextHeightMeters,
+      seatLayout:
+        selectedItem.type === "long_table"
+          ? String(formData.get("seatLayout") || selectedItem.seatLayout || "both_sides").trim()
+          : selectedItem.seatLayout,
       seatCount: selectedItem.seatable
         ? Number(formData.get("seatCount") || selectedItem.seatCount)
         : selectedItem.seatCount
@@ -680,15 +689,10 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     const zoomBounds = getVenueZoomBounds(isFocusMode);
 
     setZoomPercent((currentValue) => {
-      const multiplier = direction > 0 ? 1.2 : 1 / 1.2;
-      const nextValue = Math.round((currentValue * multiplier) / 5) * 5;
-      const fallbackValue = currentValue + direction * 5;
+      const multiplier = direction > 0 ? 1.1 : 0.9;
+      const nextValue = Math.max(1, Math.round(currentValue * multiplier));
 
-      return clampNumber(
-        nextValue === currentValue ? fallbackValue : nextValue,
-        zoomBounds.min,
-        zoomBounds.max
-      );
+      return clampNumber(nextValue === currentValue ? currentValue + direction : nextValue, zoomBounds.min, zoomBounds.max);
     });
   }
 
@@ -718,7 +722,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   };
   const zoomBounds = getVenueZoomBounds(isFocusMode);
   const baseCanvasWidth = getVenueFitCanvasWidth(shellViewportWidth);
-  const scaledCanvasWidth = Math.max(180, Math.round(baseCanvasWidth * (zoomPercent / 100)));
+  const scaledCanvasWidth = Math.max(32, Math.round(baseCanvasWidth * (zoomPercent / 100)));
   const canvasScaleStyle = {
     width: `${scaledCanvasWidth}px`,
     minWidth: `${scaledCanvasWidth}px`
@@ -781,7 +785,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                       )
                     )
                   }
-                  step="5"
+                  step="1"
                   type="range"
                   value={zoomPercent}
                 />
@@ -800,7 +804,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                       )
                     )
                   }
-                  step="5"
+                  step="1"
                   type="number"
                   value={zoomPercent}
                 />
@@ -1278,6 +1282,9 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                               startPointerYPercent: pointerPosition.yPercent,
                               startOffsetX: seat.offsetX || 0,
                               startOffsetY: seat.offsetY || 0,
+                              itemWidthPercent: item.widthPercent,
+                              itemHeightPercent:
+                                item.shape === "circle" ? item.widthPercent : item.heightPercent,
                               initialPlan: planDraftRef.current
                               });
                             }}
@@ -1435,6 +1442,22 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                       />
                     </label>
                   ) : null}
+                  {selectedItem.type === "long_table" ? (
+                    <label className="field">
+                      <span>Plasser på</span>
+                      <select
+                        defaultValue={selectedItem.seatLayout || "both_sides"}
+                        disabled={!canManageVenue}
+                        name="seatLayout"
+                      >
+                        {VENUE_LONG_TABLE_SEAT_LAYOUT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
                 <label className="field">
                   <span>Notat</span>
@@ -1451,7 +1474,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                     <strong>Plassjustering</strong>
                     <p>
                       Standardplassene legges jevnt automatisk. Slå på justering hvis du vil
-                      finflytte enkeltplasser manuelt på bordet.
+                      flytte plassene fritt rundt det valgte objektet.
                     </p>
                   </div>
                 ) : null}

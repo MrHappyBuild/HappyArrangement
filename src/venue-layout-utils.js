@@ -5,9 +5,25 @@ const DEFAULT_ROOM = {
   notes: ""
 };
 
+const DEFAULT_GUEST_SEATING_VISIBLE_TYPES = {
+  round_table: true,
+  long_table: true,
+  chair: true,
+  custom_zone: true,
+  stage: true,
+  dance_floor: true,
+  buffet: true,
+  bar: true,
+  restroom: true,
+  emergency_exit: true
+};
+
 const DEFAULT_GUEST_SEATING_PAGE = {
   isPublished: false,
-  navigationLabel: "Sitteplan"
+  navigationLabel: "Sitteplan",
+  showItemLabels: true,
+  guestNameDisplay: "initials",
+  visibleTypes: DEFAULT_GUEST_SEATING_VISIBLE_TYPES
 };
 
 const DEFAULT_ITEM_ORDER = [
@@ -142,6 +158,16 @@ export const VENUE_CUSTOM_SHAPE_OPTIONS = [
   { value: "oval", label: "Oval" },
   { value: "circle", label: "Sirkel" }
 ];
+export const VENUE_GUEST_NAME_DISPLAY_OPTIONS = [
+  { value: "hidden", label: "Ingen navn" },
+  { value: "initials", label: "Initialer" },
+  { value: "full", label: "Fulle navn" }
+];
+export const VENUE_LONG_TABLE_SEAT_LAYOUT_OPTIONS = [
+  { value: "both_sides", label: "Begge sider" },
+  { value: "top_side", label: "Kun en side" },
+  { value: "bottom_side", label: "Kun motsatt side" }
+];
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -183,6 +209,26 @@ function normalizeRotation(value) {
   const allowed = [0, 90, 180, 270];
   const numeric = typeof value === "number" ? value : Number.parseInt(String(value || ""), 10);
   return allowed.includes(numeric) ? numeric : 0;
+}
+
+function normalizeGuestSeatingNameDisplay(value) {
+  return value === "hidden" || value === "full" ? value : "initials";
+}
+
+function normalizeGuestSeatingVisibleTypes(value) {
+  const safeValue = value && typeof value === "object" ? value : {};
+
+  return DEFAULT_ITEM_ORDER.reduce((accumulator, type) => {
+    accumulator[type] =
+      Object.prototype.hasOwnProperty.call(safeValue, type)
+        ? normalizeBooleanFlag(safeValue[type])
+        : DEFAULT_GUEST_SEATING_VISIBLE_TYPES[type];
+    return accumulator;
+  }, {});
+}
+
+function normalizeLongTableSeatLayout(value) {
+  return value === "top_side" || value === "bottom_side" ? value : "both_sides";
 }
 
 function getLibraryEntry(type) {
@@ -272,8 +318,8 @@ function normalizeSeats(itemId, type, inputSeats, seatCount) {
             ? "Stol"
             : `Plass ${index + 1}`,
       guestId: typeof sourceSeat.guestId === "string" ? sourceSeat.guestId : "",
-      offsetX: clamp(parseNumber(sourceSeat.offsetX, 0), -40, 40),
-      offsetY: clamp(parseNumber(sourceSeat.offsetY, 0), -40, 40)
+      offsetX: clamp(parseNumber(sourceSeat.offsetX, 0), -180, 180),
+      offsetY: clamp(parseNumber(sourceSeat.offsetY, 0), -180, 180)
     });
   }
 
@@ -309,6 +355,7 @@ export function createVenueItem(type, index = 0, room = DEFAULT_ROOM) {
     heightMeters: height,
     rotation: 0,
     shape: normalizeItemShape(entry.type, entry.defaultShape),
+    seatLayout: normalizeLongTableSeatLayout(entry.type === "long_table" ? "both_sides" : ""),
     seatCount,
     seats: normalizeSeats(itemId, normalizedType, [], seatCount),
     created_at: new Date().toISOString()
@@ -362,6 +409,7 @@ function normalizeVenueItem(item, index = 0, room = DEFAULT_ROOM) {
     heightPercent,
     rotation,
     shape,
+    seatLayout: normalizedType === "long_table" ? normalizeLongTableSeatLayout(safeItem.seatLayout) : "both_sides",
     seatCount,
     seats: normalizeSeats(itemId, entry.type, safeItem.seats, seatCount),
     created_at: safeItem.created_at || new Date(0).toISOString()
@@ -393,7 +441,13 @@ export function normalizeVenuePlan(plan) {
       navigationLabel:
         typeof guestSeatingPage.navigationLabel === "string" && guestSeatingPage.navigationLabel.trim()
           ? guestSeatingPage.navigationLabel.trim()
-          : DEFAULT_GUEST_SEATING_PAGE.navigationLabel
+          : DEFAULT_GUEST_SEATING_PAGE.navigationLabel,
+      showItemLabels:
+        Object.prototype.hasOwnProperty.call(guestSeatingPage, "showItemLabels")
+          ? normalizeBooleanFlag(guestSeatingPage.showItemLabels)
+          : DEFAULT_GUEST_SEATING_PAGE.showItemLabels,
+      guestNameDisplay: normalizeGuestSeatingNameDisplay(guestSeatingPage.guestNameDisplay),
+      visibleTypes: normalizeGuestSeatingVisibleTypes(guestSeatingPage.visibleTypes)
     }
   };
 }
@@ -486,9 +540,24 @@ function buildLongTableSeatPositions(item) {
     return [];
   }
 
+  const seatLayout = normalizeLongTableSeatLayout(item.seatLayout);
   const topCount = Math.ceil(item.seatCount / 2);
   const bottomCount = item.seatCount - topCount;
   const positions = [];
+
+  if (seatLayout === "top_side" || seatLayout === "bottom_side") {
+    const lineTop = seatLayout === "top_side" ? -6 : 106;
+
+    for (let index = 0; index < item.seatCount; index += 1) {
+      positions.push({
+        ...item.seats[index],
+        left: ((index + 1) / (item.seatCount + 1)) * 100 + (item.seats[index].offsetX || 0),
+        top: lineTop + (item.seats[index].offsetY || 0)
+      });
+    }
+
+    return positions;
+  }
 
   for (let index = 0; index < topCount; index += 1) {
     positions.push({
@@ -738,8 +807,8 @@ export function updateVenueSeatOffsetInPlan(venuePlan, itemId, seatId, offsetX, 
         item.id === itemId && seat.id === seatId
           ? {
               ...seat,
-              offsetX: clamp(parseNumber(offsetX, seat.offsetX || 0), -40, 40),
-              offsetY: clamp(parseNumber(offsetY, seat.offsetY || 0), -40, 40)
+              offsetX: clamp(parseNumber(offsetX, seat.offsetX || 0), -180, 180),
+              offsetY: clamp(parseNumber(offsetY, seat.offsetY || 0), -180, 180)
             }
           : seat
       )

@@ -14,6 +14,10 @@ import {
   parseGuestPageImageMarkup
 } from "@/guest-page-content";
 import {
+  VENUE_GUEST_NAME_DISPLAY_OPTIONS,
+  VENUE_ITEM_LIBRARY
+} from "@/venue-layout-utils";
+import {
   CAPABILITY_OPTIONS,
   FINANCE_ROLE_OPTIONS,
   GUEST_PAGE_FONT_OPTIONS,
@@ -522,6 +526,7 @@ function GuestTab({
   viewerAccess,
   viewerPerson,
   onUpdateGuestSite,
+  onSaveVenuePlan,
   onAddGuestPage,
   onUpdateGuestPage,
   onDeleteGuestPage,
@@ -999,6 +1004,44 @@ function GuestTab({
         ? nextEvent.guestSite.navigationOrder
         : nextOrder;
     setGuestSiteNavigationOrderDraft(persistedOrder);
+  }
+
+  async function handleSaveGuestSeatingPageSettings(formEvent) {
+    formEvent.preventDefault();
+
+    if (!viewerAccess.canManageGuest || typeof onSaveVenuePlan !== "function") {
+      return;
+    }
+
+    const formData = new FormData(formEvent.currentTarget);
+    const currentVenuePlan =
+      event.venuePlan && typeof event.venuePlan === "object" ? event.venuePlan : {};
+    const currentGuestSeatingPage =
+      currentVenuePlan.guestSeatingPage && typeof currentVenuePlan.guestSeatingPage === "object"
+        ? currentVenuePlan.guestSeatingPage
+        : {};
+    const visibleTypes = VENUE_ITEM_LIBRARY.reduce((accumulator, entry) => {
+      accumulator[entry.type] = formData.get(`visibleType:${entry.type}`) === "on";
+      return accumulator;
+    }, {});
+
+    await onSaveVenuePlan(
+      {
+        ...currentVenuePlan,
+        guestSeatingPage: {
+          ...currentGuestSeatingPage,
+          showItemLabels: formData.get("showItemLabels") === "on",
+          guestNameDisplay:
+            String(
+              formData.get("guestNameDisplay") ||
+                currentGuestSeatingPage.guestNameDisplay ||
+                "initials"
+            ).trim() || "initials",
+          visibleTypes
+        }
+      },
+      "Visningen av sitteplanen på gjestenettsiden ble oppdatert."
+    );
   }
 
   function buildGuestNavigationOrderMove(sourceId, targetId, position = "before") {
@@ -1714,6 +1757,54 @@ function GuestTab({
                           : "Denne siden viser bare aktiviteter som er merket med `Vises på agenda`, i tidsrekkefølge for gjestene."}
                       </p>
                     </div>
+                    {isVenueSeatingPage ? (
+                      <form className="stack" onSubmit={handleSaveGuestSeatingPageSettings}>
+                        <div className="compact-grid">
+                          <label className="field checkbox-field">
+                            <span>Tekst og etiketter</span>
+                            <span className="checkbox-inline">
+                              <input
+                                defaultChecked={event.venuePlan?.guestSeatingPage?.showItemLabels !== false}
+                                name="showItemLabels"
+                                type="checkbox"
+                              />
+                              <span>Vis navn på bord og soner</span>
+                            </span>
+                          </label>
+                          <label className="field">
+                            <span>Navn på gjestene</span>
+                            <select
+                              defaultValue={event.venuePlan?.guestSeatingPage?.guestNameDisplay || "initials"}
+                              name="guestNameDisplay"
+                            >
+                              {VENUE_GUEST_NAME_DISPLAY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="stack">
+                          <strong>Vis komponenter på sitteplansiden</strong>
+                          <div className="toggle-row">
+                            {VENUE_ITEM_LIBRARY.map((entry) => (
+                              <label key={entry.type}>
+                                <input
+                                  defaultChecked={event.venuePlan?.guestSeatingPage?.visibleTypes?.[entry.type] !== false}
+                                  name={`visibleType:${entry.type}`}
+                                  type="checkbox"
+                                />
+                                {entry.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <button className="secondary-button" type="submit">
+                          Lagre sitteplanside
+                        </button>
+                      </form>
+                    ) : null}
                   </section>
                 ) : null}
               </>
@@ -6760,6 +6851,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                 <GuestTab
                   event={selectedEvent}
                   onUpdateGuestSite={handleUpdateGuestSite}
+                  onSaveVenuePlan={handleSaveVenuePlan}
                   onAddGuestPage={handleAddGuestPage}
                   onAddRole={handleAddRole}
                   onAddPerson={handleAddPerson}

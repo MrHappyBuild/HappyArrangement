@@ -61,10 +61,38 @@ function getGuestMapFitWidth(viewportWidthPixels) {
   const numeric = Number(viewportWidthPixels);
 
   if (!Number.isFinite(numeric) || numeric <= 0) {
-    return 520;
+    return 512;
   }
 
-  return Math.max(240, Math.round(numeric));
+  return Math.max(220, Math.round(numeric - 8));
+}
+
+function getGuestSeatNameDirectionClass(seat) {
+  if (!seat || !seat.guest) {
+    return "";
+  }
+
+  if (seat.top < 26) {
+    return "name-direction-top";
+  }
+
+  if (seat.top > 74) {
+    return "name-direction-bottom";
+  }
+
+  return seat.left < 50 ? "name-direction-left" : "name-direction-right";
+}
+
+function getGuestSeatDisplayValue(seat, guestNameDisplay) {
+  if (!seat?.guest) {
+    return "";
+  }
+
+  if (guestNameDisplay === "initials") {
+    return formatGuestInitials(seat.guest.name);
+  }
+
+  return "";
 }
 
 export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
@@ -76,17 +104,27 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
   const mapViewportRef = useRef(null);
   const searchValue = normalizeSearchValue(search);
   const venueState = useMemo(() => buildVenuePlanningState(event), [event]);
+  const seatingPageSettings = venueState.venuePlan.guestSeatingPage || {};
+  const showItemLabels = seatingPageSettings.showItemLabels !== false;
+  const guestNameDisplay = seatingPageSettings.guestNameDisplay || "initials";
+  const visibleTypes = seatingPageSettings.visibleTypes || {};
+  const visibleMapItems = useMemo(
+    () =>
+      venueState.items.filter((item) =>
+        Object.prototype.hasOwnProperty.call(visibleTypes, item.type) ? visibleTypes[item.type] !== false : true
+      ).map((item) => ({
+        ...item,
+        assignedSeats: [...item.seats].filter((seat) => seat.guest).sort(sortSeatsByGuestName),
+        searchIndex: buildItemSearchText(item)
+      })),
+    [venueState.items, visibleTypes]
+  );
   const seatableItems = useMemo(
     () =>
-      venueState.items
+      visibleMapItems
         .filter((item) => item.seatable && item.seats.length > 0)
-        .map((item) => ({
-          ...item,
-          assignedSeats: [...item.seats].filter((seat) => seat.guest).sort(sortSeatsByGuestName),
-          searchIndex: buildItemSearchText(item)
-        }))
         .sort((left, right) => String(left.label || "").localeCompare(String(right.label || ""), "nb")),
-    [venueState.items]
+    [visibleMapItems]
   );
   const searchMatches = useMemo(() => {
     if (!searchValue) {
@@ -94,9 +132,14 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
     }
 
     return venueState.seatSummaries
-      .filter((seat) => seat.guest && normalizeSearchValue(seat.guest.name).includes(searchValue))
+      .filter(
+        (seat) =>
+          seat.guest &&
+          visibleMapItems.some((item) => item.id === seat.itemId) &&
+          normalizeSearchValue(seat.guest.name).includes(searchValue)
+      )
       .sort((left, right) => String(left.guest?.name || "").localeCompare(String(right.guest?.name || ""), "nb"));
-  }, [searchValue, venueState.seatSummaries]);
+  }, [searchValue, venueState.seatSummaries, visibleMapItems]);
   const highlightedItemIds = useMemo(
     () => new Set(searchMatches.map((seat) => seat.itemId)),
     [searchMatches]
@@ -106,7 +149,7 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
     aspectRatio: `${venueState.venuePlan.room.widthMeters} / ${venueState.venuePlan.room.heightMeters}`
   };
   const mapFitWidth = getGuestMapFitWidth(mapViewportWidth);
-  const mapRenderWidth = Math.max(220, Math.round(mapFitWidth * (mapZoomPercent / 100)));
+  const mapRenderWidth = Math.max(32, Math.round(mapFitWidth * (mapZoomPercent / 100)));
   const mapSurfaceStyle = {
     ...roomStyle,
     width: `${mapRenderWidth}px`,
@@ -260,7 +303,9 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
                 className="secondary-button compact-action-button"
                 type="button"
                 onClick={() =>
-                  setMapZoomPercent((currentValue) => clampNumber(Math.round(currentValue / 1.2), 60, 260))
+                  setMapZoomPercent((currentValue) =>
+                    clampNumber(Math.max(1, Math.round(currentValue * 0.9)), 1, 10000)
+                  )
                 }
               >
                 -
@@ -270,25 +315,38 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
                 className="secondary-button compact-action-button"
                 type="button"
                 onClick={() =>
-                  setMapZoomPercent((currentValue) => clampNumber(Math.round(currentValue * 1.2), 60, 260))
+                  setMapZoomPercent((currentValue) =>
+                    clampNumber(Math.max(1, Math.round(currentValue * 1.1)), 1, 10000)
+                  )
                 }
               >
                 +
               </button>
-              <button className="secondary-button compact-action-button" type="button" onClick={() => setMapZoomPercent(100)}>
+              <button
+                className="secondary-button compact-action-button"
+                type="button"
+                onClick={() => {
+                  setMapZoomPercent(100);
+                  const viewport = mapViewportRef.current;
+
+                  if (viewport) {
+                    viewport.scrollTo({ left: 0, top: 0 });
+                  }
+                }}
+              >
                 Tilpass
               </button>
             </div>
           </div>
-          <div className="guest-seating-map-shell" ref={mapViewportRef}>
-            <div className="guest-seating-map-scroll">
+          <div className="guest-seating-map-shell">
+            <div className="guest-seating-map-scroll" ref={mapViewportRef}>
               <div className="guest-seating-map" style={mapSurfaceStyle}>
                 <div className="guest-seating-map-grid" />
-                {seatableItems.map((item) => (
+                {visibleMapItems.map((item) => (
                   <div
-                    className={`guest-seating-item guest-seating-shape-${item.shape} ${
+                    className={`venue-item-shell guest-seating-map-item ${
                       highlightedItemIds.has(item.id) ? "is-highlighted" : ""
-                    }`}
+                    } venue-item-${item.type} venue-shape-${item.shape}`}
                     key={item.id}
                     style={{
                       left: `${item.x}%`,
@@ -303,19 +361,45 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
                           })
                     }}
                   >
-                    <div className="guest-seating-item-label">
-                      <strong>{item.label}</strong>
-                      <span>{item.assignedSeats.length} navn</span>
-                    </div>
-                    <div className="guest-seating-item-seat-dots">
-                      {item.assignedSeats.slice(0, 10).map((seat) => (
-                        <span className="guest-seating-seat-dot" key={seat.id} title={seat.guest.name}>
-                          {formatGuestInitials(seat.guest.name)}
-                        </span>
-                      ))}
-                      {item.assignedSeats.length > 10 ? (
-                        <span className="guest-seating-seat-dot is-overflow">+{item.assignedSeats.length - 10}</span>
+                    <div
+                      className="venue-item-card"
+                      style={{
+                        transform: `rotate(${item.rotation}deg)`
+                      }}
+                    >
+                      {showItemLabels ? (
+                        <div className="venue-item-label">
+                          <strong>{item.label}</strong>
+                          <span>
+                            {item.seatable ? `${item.assignedSeats?.length || 0} navn` : item.library.shortLabel}
+                          </span>
+                        </div>
                       ) : null}
+                      {item.seatable
+                        ? item.assignedSeats.map((seat) => {
+                            const showSeatName = guestNameDisplay === "full";
+                            const seatNameDirectionClass = getGuestSeatNameDirectionClass(seat);
+
+                            return (
+                              <div
+                                className={`venue-seat-dot is-filled ${
+                                  showSeatName ? `is-name-mode ${seatNameDirectionClass}` : ""
+                                }`}
+                                key={seat.id}
+                                style={{
+                                  left: `${seat.left}%`,
+                                  top: `${seat.top}%`
+                                }}
+                                title={seat.guest.name}
+                              >
+                                <span className="venue-seat-value">
+                                  {getGuestSeatDisplayValue(seat, guestNameDisplay)}
+                                </span>
+                                {showSeatName ? <span className="venue-seat-name">{seat.guest.name}</span> : null}
+                              </div>
+                            );
+                          })
+                        : null}
                     </div>
                   </div>
                 ))}
@@ -347,7 +431,13 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
                     <ul className="guest-seating-guest-list">
                       {item.assignedSeats.map((seat) => (
                         <li key={seat.id}>
-                          <span>{seat.guest.name}</span>
+                          <span>
+                            {guestNameDisplay === "full"
+                              ? seat.guest.name
+                              : guestNameDisplay === "initials"
+                                ? formatGuestInitials(seat.guest.name)
+                                : "Opptatt plass"}
+                          </span>
                           <strong>{seat.label}</strong>
                         </li>
                       ))}

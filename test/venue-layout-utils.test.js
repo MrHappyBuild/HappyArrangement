@@ -47,12 +47,31 @@ test("normalizeVenuePlan keeps guest seating page publishing settings", () => {
     },
     guestSeatingPage: {
       isPublished: true,
-      navigationLabel: "Bordplassering"
+      navigationLabel: "Bordplassering",
+      showItemLabels: false,
+      guestNameDisplay: "full",
+      visibleTypes: {
+        round_table: true,
+        long_table: true,
+        chair: false,
+        custom_zone: true,
+        stage: false,
+        dance_floor: true,
+        buffet: true,
+        bar: false,
+        restroom: true,
+        emergency_exit: true
+      }
     }
   });
 
   assert.equal(plan.guestSeatingPage.isPublished, true);
   assert.equal(plan.guestSeatingPage.navigationLabel, "Bordplassering");
+  assert.equal(plan.guestSeatingPage.showItemLabels, false);
+  assert.equal(plan.guestSeatingPage.guestNameDisplay, "full");
+  assert.equal(plan.guestSeatingPage.visibleTypes.chair, false);
+  assert.equal(plan.guestSeatingPage.visibleTypes.bar, false);
+  assert.equal(plan.guestSeatingPage.visibleTypes.round_table, true);
 });
 
 test("custom zone keeps editable shape information", () => {
@@ -282,16 +301,33 @@ test("venue seat offsets can be adjusted and reset manually", () => {
     },
     table.id,
     seatId,
-    12,
-    -6
+    120,
+    -95
   );
 
-  assert.equal(moved.items[0].seats[0].offsetX, 12);
-  assert.equal(moved.items[0].seats[0].offsetY, -6);
+  assert.equal(moved.items[0].seats[0].offsetX, 120);
+  assert.equal(moved.items[0].seats[0].offsetY, -95);
 
   const reset = resetVenueSeatOffsetsInPlan(moved, table.id);
   assert.equal(reset.items[0].seats[0].offsetX, 0);
   assert.equal(reset.items[0].seats[0].offsetY, 0);
+});
+
+test("long table can place every seat on one side", () => {
+  const table = createVenueItem("long_table", 0);
+  const plan = updateVenueItemInPlan(
+    {
+      room: { name: "Sal", widthMeters: 18, heightMeters: 10, notes: "" },
+      items: [table]
+    },
+    table.id,
+    { seatCount: 6, seatLayout: "top_side" }
+  );
+  const state = buildVenuePlanningState({ venuePlan: plan, people: [] });
+  const seatTops = state.items[0].seats.map((seat) => seat.top);
+
+  assert.equal(state.items[0].seatLayout, "top_side");
+  assert.ok(seatTops.every((top) => top < 0));
 });
 
 test("legacy full_round_table items are normalized into standard round tables", () => {
