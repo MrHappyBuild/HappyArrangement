@@ -1655,6 +1655,10 @@ p {
   border-top: 1px solid rgba(91, 59, 18, 0.08);
 }
 
+.person-search-field {
+  min-width: min(320px, 100%);
+}
+
 .person-card,
 .task-card {
   display: grid;
@@ -2410,6 +2414,11 @@ p {
   align-items: start;
 }
 
+.guest-site-mobile-nav-group {
+  display: grid;
+  gap: 12px;
+}
+
 .guest-site-preview-frame {
   display: grid;
   gap: 18px;
@@ -2445,6 +2454,11 @@ p {
   border-radius: 24px;
   border: 1px solid rgba(91, 59, 18, 0.1);
   background: rgba(255, 252, 247, 0.88);
+}
+
+.guest-site-info-nav {
+  padding-top: 8px;
+  border-top: 1px solid rgba(91, 59, 18, 0.08);
 }
 
 .guest-site-nav-help {
@@ -3230,6 +3244,47 @@ p {
   min-width: 0;
 }
 
+.guest-bulk-table {
+  display: grid;
+  gap: 10px;
+}
+
+.guest-bulk-table-head,
+.guest-bulk-table-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns:
+    minmax(180px, 1.4fr)
+    minmax(180px, 1.2fr)
+    minmax(140px, 1fr)
+    minmax(120px, 0.9fr)
+    minmax(160px, 1fr)
+    minmax(160px, 1fr)
+    minmax(160px, 1fr)
+    auto;
+  align-items: center;
+}
+
+.guest-bulk-table-head {
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.guest-bulk-table-row {
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 252, 247, 0.88);
+}
+
+.guest-import-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
 .guest-page-design-grid {
   display: grid;
   gap: 12px;
@@ -3542,6 +3597,13 @@ p {
   max-height: 420px;
   overflow: auto;
   padding-right: 4px;
+}
+
+.venue-side-panel.is-sticky-on-guest {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
 }
 
 .venue-guest-chip {
@@ -3928,9 +3990,20 @@ p {
   background: rgba(255, 252, 247, 0.82);
 }
 
-.venue-seat-roster-row div:first-child {
+.venue-seat-roster-row div:first-child,
+.venue-seat-roster-main {
   display: grid;
   gap: 2px;
+}
+
+.venue-seat-roster-actions {
+  display: grid;
+  gap: 10px;
+  min-width: min(360px, 100%);
+}
+
+.venue-seat-assign-field {
+  min-width: 0;
 }
 
 .venue-seat-roster-row span {

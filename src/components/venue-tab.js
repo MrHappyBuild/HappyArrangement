@@ -175,6 +175,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   const [shellViewportWidth, setShellViewportWidth] = useState(0);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [seatAdjustMode, setSeatAdjustMode] = useState(false);
+  const [seatAssignmentDrafts, setSeatAssignmentDrafts] = useState({});
   const [planDraft, setPlanDraft] = useState(() => normalizeVenuePlan(event.venuePlan));
   const [draggedGuestId, setDraggedGuestId] = useState("");
   const [itemDrag, setItemDrag] = useState(null);
@@ -271,6 +272,22 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   }, [selectedItem?.id, selectedItem?.seatable]);
 
   useEffect(() => {
+    if (!selectedItem?.seats?.length) {
+      setSeatAssignmentDrafts({});
+      return;
+    }
+
+    setSeatAssignmentDrafts((currentDrafts) =>
+      selectedItem.seats.reduce((nextDrafts, seat) => {
+        nextDrafts[seat.id] = Object.prototype.hasOwnProperty.call(currentDrafts, seat.id)
+          ? currentDrafts[seat.id]
+          : seat.guest?.name || "";
+        return nextDrafts;
+      }, {})
+    );
+  }, [selectedItem?.id, selectedItem?.seats]);
+
+  useEffect(() => {
     if (!isRoomMode) {
       setSeatAdjustMode(false);
     }
@@ -291,6 +308,10 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       return buildGuestSearchIndex(person).includes(query);
     });
   }, [guestFilter, guestSearch, venueState]);
+  const seatAssignmentPeople = useMemo(
+    () => venueState.people.filter((person) => person.rsvpStatus !== "declined"),
+    [venueState.people]
+  );
 
   async function commitPlan(nextPlan, successMessage, previousPlan = planDraftRef.current) {
     const normalizedPlan = normalizeVenuePlan(nextPlan);
@@ -635,6 +656,10 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       `${seatGuest?.name || "Gjesten"} ble plassert i lokalet.`,
       previousPlan
     );
+    setSeatAssignmentDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [seatId]: seatGuest?.name || ""
+    }));
   }
 
   async function handleClearSeat(itemId, seatId) {
@@ -645,6 +670,10 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     const previousPlan = planDraftRef.current;
     const nextPlan = clearGuestFromVenueSeat(previousPlan, itemId, seatId);
     await commitPlan(nextPlan, "Plasseringen ble fjernet.", previousPlan);
+    setSeatAssignmentDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [seatId]: ""
+    }));
   }
 
   async function handleGuestDropBack(guestId) {
@@ -659,6 +688,37 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     }
 
     await handleClearSeat(assignment.itemId, assignment.seatId);
+  }
+
+  async function handleAssignSeatFromDraft(itemId, seatId) {
+    if (!canPlaceGuests) {
+      return;
+    }
+
+    const rawValue = String(seatAssignmentDrafts[seatId] || "").trim().toLowerCase();
+
+    if (!rawValue) {
+      return;
+    }
+
+    const matchedPerson = seatAssignmentPeople.find((person) => {
+      const name = String(person.name || "").trim().toLowerCase();
+      const email = String(person.email || "").trim().toLowerCase();
+      const phone = String(person.phone || "").replace(/\s+/g, "");
+      const normalizedRawPhone = rawValue.replace(/\s+/g, "");
+
+      return rawValue === name || rawValue === email || rawValue === normalizedRawPhone || name.includes(rawValue);
+    });
+
+    if (!matchedPerson) {
+      return;
+    }
+
+    await handleSeatDrop(itemId, seatId, matchedPerson.id);
+    setSeatAssignmentDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [seatId]: matchedPerson.name
+    }));
   }
 
   async function handleQuickResize(delta) {
@@ -869,7 +929,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       <section className={`venue-planner-grid ${isFocusMode ? "is-focus-mode" : ""}`}>
         <div className="stack">
           {isRoomMode ? (
-          <section className="panel stack">
+          <section className={`panel stack venue-side-panel ${isGuestMode ? "is-sticky-on-guest" : ""}`}>
             <div className="panel-header-inline">
               <div>
                 <h3>Romoppsett</h3>
@@ -962,7 +1022,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
           ) : null}
 
           {isRoomMode ? (
-          <section className="panel stack">
+          <section className={`panel stack venue-side-panel ${isGuestMode ? "is-sticky-on-guest" : ""}`}>
             <div className="panel-header-inline">
               <div>
                 <h3>Mobelbibliotek</h3>
@@ -991,7 +1051,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
           ) : null}
 
           {isGuestMode ? (
-          <section className="panel stack">
+          <section className="panel stack venue-side-panel is-sticky-on-guest">
             <div className="panel-header-inline">
               <div>
                 <h3>Gjester som skal plasseres</h3>
@@ -1346,7 +1406,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
 
         <div className="stack">
           {isRoomMode ? (
-          <section className="panel stack">
+          <section className="panel stack venue-side-panel is-sticky-on-guest">
             <div className="panel-header-inline">
               <div>
                 <h3>Valgt element</h3>
@@ -1566,7 +1626,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
           ) : null}
 
           {isGuestMode ? (
-          <section className="panel stack">
+          <section className="panel stack venue-side-panel is-sticky-on-guest">
             <div className="panel-header-inline">
               <div>
                 <h3>Valgt bord eller stol</h3>
@@ -1581,17 +1641,48 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                   <div className="notice">
                     <strong>{selectedItem.label}</strong>
                     <p>
-                      {selectedItem.seatCount} plasser • dra gjester inn pa setene i midtpanelet for aa bygge sitteplanen.
+                      {selectedItem.seatCount} plasser • dra gjester inn pa setene i midtpanelet, eller skriv navn direkte pa hver plass under.
                     </p>
                   </div>
                   <div className="venue-seat-roster">
+                    <datalist id={`venue-seat-people-${event.id}`}>
+                      {seatAssignmentPeople.map((person) => (
+                        <option key={person.id} value={person.name}>
+                          {person.email || person.phone || ""}
+                        </option>
+                      ))}
+                    </datalist>
                     {selectedItem.seats.map((seat) => (
                       <div className="venue-seat-roster-row" key={seat.id}>
-                        <div>
+                        <div className="venue-seat-roster-main">
                           <strong>{seat.label}</strong>
                           <span>{seat.guest ? seat.guest.name : "Ledig plass"}</span>
                         </div>
-                        <div className="button-row">
+                        <div className="venue-seat-roster-actions">
+                          <label className="field venue-seat-assign-field">
+                            <span>Sett person på plassen</span>
+                            <div className="button-row">
+                              <input
+                                list={`venue-seat-people-${event.id}`}
+                                placeholder="Skriv navn eller velg gjest"
+                                value={seatAssignmentDrafts[seat.id] || ""}
+                                onChange={(eventObject) =>
+                                  setSeatAssignmentDrafts((currentDrafts) => ({
+                                    ...currentDrafts,
+                                    [seat.id]: eventObject.currentTarget.value
+                                  }))
+                                }
+                              />
+                              <button
+                                className="secondary-button compact-action-button"
+                                type="button"
+                                onClick={() => void handleAssignSeatFromDraft(selectedItem.id, seat.id)}
+                              >
+                                Sett plass
+                              </button>
+                            </div>
+                          </label>
+                          <div className="button-row">
                           {seat.guest && hasDietaryInfo(seat.guest) ? (
                             <span className="role-pill">Kostbehov</span>
                           ) : null}
@@ -1604,6 +1695,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                               Fjern
                             </button>
                           ) : null}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1625,7 +1717,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
           ) : null}
 
           {isGuestMode ? (
-          <section className="panel stack">
+          <section className="panel stack venue-side-panel is-sticky-on-guest">
             <div className="panel-header-inline">
               <div>
                 <h3>Servering og hensyn</h3>

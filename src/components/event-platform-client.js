@@ -14,6 +14,13 @@ import {
   parseGuestPageImageMarkup
 } from "@/guest-page-content";
 import {
+  DEFAULT_GUEST_EXPORT_FIELDS,
+  GUEST_LIST_FIELD_OPTIONS,
+  buildGuestExportCsv,
+  buildGuestImportTemplateCsv,
+  parseGuestImportText
+} from "@/guest-list-utils";
+import {
   VENUE_GUEST_NAME_DISPLAY_OPTIONS,
   VENUE_ITEM_LIBRARY
 } from "@/venue-layout-utils";
@@ -379,6 +386,94 @@ function buildPersonRoleSummary(person, eventRoles) {
   return `${names.length} roller`;
 }
 
+function buildPersonSearchIndex(person, eventRoles) {
+  return [
+    person.name,
+    person.email,
+    person.phone,
+    person.note,
+    person.allergies,
+    person.dietaryNotes,
+    person.seatingNote,
+    buildPersonRoleSummary(person, eventRoles),
+    getRsvpLabel(person.rsvpStatus)
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function matchImportedPerson(existingPeople, incomingPerson) {
+  const incomingEmail = String(incomingPerson?.email || "").trim().toLowerCase();
+  const incomingPhone = String(incomingPerson?.phone || "").replace(/\s+/g, "");
+  const incomingName = String(incomingPerson?.name || "").trim().toLowerCase();
+  const people = Array.isArray(existingPeople) ? existingPeople : [];
+
+  if (incomingEmail) {
+    const match = people.find(
+      (person) => String(person?.email || "").trim().toLowerCase() === incomingEmail
+    );
+
+    if (match) {
+      return match;
+    }
+  }
+
+  if (incomingPhone) {
+    const match = people.find(
+      (person) => String(person?.phone || "").replace(/\s+/g, "") === incomingPhone
+    );
+
+    if (match) {
+      return match;
+    }
+  }
+
+  if (incomingName) {
+    return (
+      people.find(
+        (person) => String(person?.name || "").trim().toLowerCase() === incomingName
+      ) || null
+    );
+  }
+
+  return null;
+}
+
+function createBulkGuestRow() {
+  return {
+    id: `bulk-${Math.random().toString(36).slice(2, 10)}`,
+    name: "",
+    email: "",
+    phone: "",
+    rsvpStatus: "pending",
+    note: "",
+    allergies: "",
+    dietaryNotes: "",
+    seatingNote: ""
+  };
+}
+
+function createBulkGuestRows(count = 5) {
+  return Array.from({ length: count }, () => createBulkGuestRow());
+}
+
+function downloadTextFile(filename, content, mimeType = "text/csv;charset=utf-8;") {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
 function syncEvent(events, nextEvent) {
   return events.map((event) => (event.id === nextEvent.id ? ensureEventShape(nextEvent) : event));
 }
@@ -517,6 +612,243 @@ function OverviewTab({ event, jobs, financeSummary, guestSummary, projectSummary
           </ul>
         </article>
       </section>
+
+      {viewerAccess.canManageGuest && guestModal === "new-page" ? (
+        <ModalShell
+          title="Legg til ny infoside"
+          body="Opprett en ny side for program, FAQ, transport, overnatting eller annen informasjon gjestene trenger."
+          onClose={handleCloseGuestModal}
+        >
+          <form className="grid-form compact-grid" onSubmit={async (formEvent) => {
+            const nextEvent = await onAddGuestPage(formEvent);
+
+            if (nextEvent) {
+              handleCloseGuestModal();
+            }
+          }}>
+            <label className="field">
+              <span>Tittel</span>
+              <input name="title" placeholder="F.eks. Program, Overnatting eller FAQ" required />
+            </label>
+            <label className="field">
+              <span>Synlighet</span>
+              <select defaultValue="open" name="visibility">
+                {GUEST_PAGE_VISIBILITY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="button-row field-span-full">
+              <button className="primary-button" type="submit">
+                Opprett infoside
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {viewerAccess.canManageGuest && guestModal === "add-person" ? (
+        <ModalShell
+          title="Legg til person"
+          body="Opprett én gjest eller hjelper av gangen. Hvis du har mange, bruk heller 'Legg til mange' eller importer fra mal."
+          onClose={handleCloseGuestModal}
+        >
+          <form className="grid-form compact-grid" onSubmit={async (formEvent) => {
+            const nextEvent = await onAddPerson(formEvent);
+
+            if (nextEvent) {
+              handleCloseGuestModal();
+            }
+          }}>
+            <label className="field">
+              <span>Navn</span>
+              <input name="name" placeholder="Fornavn Etternavn" required />
+            </label>
+            <label className="field">
+              <span>E-post</span>
+              <input name="email" placeholder="navn@epost.no" type="email" />
+            </label>
+            <label className="field">
+              <span>Mobilnummer</span>
+              <input name="phone" placeholder="+47 900 00 000" type="tel" />
+            </label>
+            <label className="field">
+              <span>Startrolle</span>
+              <select defaultValue="guest" name="template">
+                {templateList.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Notat</span>
+              <input name="note" placeholder="F.eks. toastmaster eller sjafor" />
+            </label>
+            <label className="field">
+              <span>Allergier</span>
+              <input name="allergies" placeholder="F.eks. notter, skalldyr eller laktose" />
+            </label>
+            <label className="field">
+              <span>Matpreferanser</span>
+              <input name="dietaryNotes" placeholder="F.eks. vegetar, halal eller alkoholfritt" />
+            </label>
+            <label className="field field-span-full">
+              <span>Sitteinfo</span>
+              <input
+                name="seatingNote"
+                placeholder="F.eks. bor sitte narmt familien, unna hoy musikk eller ved barnestol"
+              />
+            </label>
+            <div className="button-row field-span-full">
+              <button className="primary-button" type="submit">
+                Lagre person
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {viewerAccess.canManageGuest && guestModal === "bulk-people" ? (
+        <ModalShell
+          title="Legg til mange personer"
+          body="Fyll ut flere rader i samme tabell og legg dem inn i én operasjon."
+          onClose={handleCloseGuestModal}
+        >
+          <form className="stack" onSubmit={handleSubmitBulkGuests}>
+            <div className="compact-grid">
+              <label className="field">
+                <span>Startrolle for nye personer</span>
+                <select value={bulkTemplateKey} onChange={(eventObject) => setBulkTemplateKey(eventObject.currentTarget.value)}>
+                  {templateList.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="guest-bulk-table">
+              <div className="guest-bulk-table-head">
+                <span>Navn</span>
+                <span>E-post</span>
+                <span>Mobil</span>
+                <span>RSVP</span>
+                <span>Allergier</span>
+                <span>Mat</span>
+                <span>Notat</span>
+                <span>Rad</span>
+              </div>
+              {bulkGuestRows.map((row) => (
+                <div className="guest-bulk-table-row" key={row.id}>
+                  <input placeholder="Navn" value={row.name} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "name", eventObject.currentTarget.value)} />
+                  <input placeholder="E-post" value={row.email} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "email", eventObject.currentTarget.value)} />
+                  <input placeholder="Mobil" value={row.phone} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "phone", eventObject.currentTarget.value)} />
+                  <select value={row.rsvpStatus} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "rsvpStatus", eventObject.currentTarget.value)}>
+                    {RSVP_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input placeholder="Allergier" value={row.allergies} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "allergies", eventObject.currentTarget.value)} />
+                  <input placeholder="Mat" value={row.dietaryNotes} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "dietaryNotes", eventObject.currentTarget.value)} />
+                  <input placeholder="Notat" value={row.note} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "note", eventObject.currentTarget.value)} />
+                  <button className="ghost-button compact-icon-button" type="button" onClick={() => handleRemoveBulkGuestRow(row.id)}>
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={handleAddBulkGuestRow}>
+                Legg til rad
+              </button>
+              <button className="primary-button" type="submit">
+                Lagre personer
+              </button>
+            </div>
+            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {viewerAccess.canManageGuest && guestModal === "import-people" ? (
+        <ModalShell
+          title="Importer gjesteliste"
+          body="Bruk CSV-malen for raskest mulig import. Eksisterende personer oppdateres hvis e-post, mobil eller navn matcher."
+          onClose={handleCloseGuestModal}
+        >
+          <div className="stack">
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
+                Last ned CSV-mal
+              </button>
+            </div>
+            <label className="field">
+              <span>Velg CSV-fil</span>
+              <input accept=".csv,text/csv,.txt" type="file" onChange={(eventObject) => void handleGuestImportFileChange(eventObject)} />
+            </label>
+            {importPreview ? (
+              <div className="stack">
+                <div className="overview-grid guest-import-summary-grid">
+                  <InfoCard label="Rader klare" value={importPreview.rows.length} />
+                  <InfoCard label="Oppdaterer eksisterende" value={importPreview.matchedExistingCount} tone="warning" />
+                  <InfoCard label="Nye personer" value={importPreview.newCount} tone="success" />
+                </div>
+                {importPreview.errors.length ? (
+                  <div className="notice">
+                    <strong>Varsler i importen</strong>
+                    <ul className="compact-list">
+                      {importPreview.errors.slice(0, 6).map((error) => (
+                        <li key={error}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <div className="button-row">
+                  <button className="primary-button" type="button" onClick={() => void handleRunGuestImport()}>
+                    Importer gjester
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
+          </div>
+        </ModalShell>
+      ) : null}
+
+      {viewerAccess.canManageGuest && guestModal === "export-people" ? (
+        <ModalShell
+          title="Eksporter gjesteliste"
+          body="Velg hvilke felt som skal med i eksporten. Filen lastes ned som CSV."
+          onClose={handleCloseGuestModal}
+        >
+          <div className="stack">
+            <div className="toggle-row">
+              {GUEST_LIST_FIELD_OPTIONS.map((field) => (
+                <label key={field.key}>
+                  <input
+                    checked={exportFieldKeys.includes(field.key)}
+                    type="checkbox"
+                    onChange={() => handleToggleExportField(field.key)}
+                  />
+                  {field.label}
+                </label>
+              ))}
+            </div>
+            <div className="button-row">
+              <button className="primary-button" type="button" onClick={handleDownloadGuestExport}>
+                Last ned eksport
+              </button>
+            </div>
+            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
+          </div>
+        </ModalShell>
+      ) : null}
     </div>
   );
 }
@@ -533,7 +865,8 @@ function GuestTab({
   onAddRole,
   onUpdateRole,
   onAddPerson,
-  onUpdatePerson
+  onUpdatePerson,
+  onBulkUpsertPeople
 }) {
   const templateList = templateOptions();
   const rawNavigationEntries = useMemo(() => buildGuestSiteNavigationEntries(event), [event]);
@@ -567,6 +900,13 @@ function GuestTab({
   const [isUploadingGuestSiteBackground, setIsUploadingGuestSiteBackground] = useState(false);
   const [openRoleId, setOpenRoleId] = useState("");
   const [openPersonId, setOpenPersonId] = useState("");
+  const [personSearch, setPersonSearch] = useState("");
+  const [guestModal, setGuestModal] = useState("");
+  const [bulkGuestRows, setBulkGuestRows] = useState(() => createBulkGuestRows());
+  const [bulkTemplateKey, setBulkTemplateKey] = useState("guest");
+  const [exportFieldKeys, setExportFieldKeys] = useState(DEFAULT_GUEST_EXPORT_FIELDS);
+  const [importPreview, setImportPreview] = useState(null);
+  const [guestToolStatus, setGuestToolStatus] = useState("");
   const [draggedGuestNavId, setDraggedGuestNavId] = useState("");
   const [guestNavDropIndicator, setGuestNavDropIndicator] = useState(null);
   const [textSelection, setTextSelection] = useState({ start: 0, end: 0 });
@@ -617,6 +957,17 @@ function GuestTab({
       })),
     [guestSiteOrigin, navigationEntries]
   );
+  const filteredPeople = useMemo(() => {
+    const query = personSearch.trim().toLowerCase();
+
+    if (!query) {
+      return event.people;
+    }
+
+    return event.people.filter((person) =>
+      buildPersonSearchIndex(person, event.roles).includes(query)
+    );
+  }, [event.people, event.roles, personSearch]);
 
   useEffect(() => {
     if (!visiblePages.some((page) => page.id === selectedPageId)) {
@@ -1277,25 +1628,21 @@ function GuestTab({
                 </nav>
               </div>
             {viewerAccess.canManageGuest ? (
-              <form className="stack guest-page-composer" onSubmit={onAddGuestPage}>
-                <label className="field">
-                  <span>Ny side</span>
-                  <input name="title" placeholder="F.eks. Program, Overnatting eller FAQ" required />
-                </label>
-                <label className="field">
-                  <span>Synlighet</span>
-                  <select defaultValue="open" name="visibility">
-                    {GUEST_PAGE_VISIBILITY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button className="secondary-button" type="submit">
-                  Opprett side
-                </button>
-              </form>
+              <section className="stack guest-page-composer">
+                <div className="panel-header-inline">
+                  <div>
+                    <strong>Infosider</strong>
+                    <p className="muted">Opprett nye infosider i et eget vindu i stedet for å ha en åpen draft liggende i sidepanelet.</p>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => handleOpenGuestModal("new-page")}
+                  >
+                    Legg til ny infoside
+                  </button>
+                </div>
+              </section>
             ) : null}
             </aside>
 
@@ -1977,63 +2324,59 @@ function GuestTab({
           </section>
 
           <section className="panel stack">
-            <h3>Inviter ny person</h3>
-            <form className="grid-form compact-grid" onSubmit={onAddPerson}>
-              <label className="field">
-                <span>Navn</span>
-                <input name="name" placeholder="Fornavn Etternavn" required />
-              </label>
-              <label className="field">
-                <span>E-post</span>
-                <input name="email" placeholder="navn@epost.no" type="email" />
-              </label>
-              <label className="field">
-                <span>Mobilnummer</span>
-                <input name="phone" placeholder="+47 900 00 000" type="tel" />
-              </label>
-              <label className="field">
-                <span>Startrolle</span>
-                <select defaultValue="guest" name="template">
-                  {templateList.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Notat</span>
-                <input name="note" placeholder="F.eks. toastmaster eller sjafor" />
-              </label>
-              <label className="field">
-                <span>Allergier</span>
-                <input name="allergies" placeholder="F.eks. notter, skalldyr eller laktose" />
-              </label>
-              <label className="field">
-                <span>Matpreferanser</span>
-                <input name="dietaryNotes" placeholder="F.eks. vegetar, halal eller alkoholfritt" />
-              </label>
-              <label className="field field-span-full">
-                <span>Sitteinfo</span>
-                <input
-                  name="seatingNote"
-                  placeholder="F.eks. bor sitte narmt familien, unna hoy musikk eller ved barnestol"
-                />
-              </label>
-              <button className="primary-button" type="submit">
+            <div className="panel-header-inline">
+              <div>
+                <h3>Gjesteverktøy</h3>
+                <p className="muted">
+                  Legg til enkeltgjester, fyll inn mange samtidig, eller importer og eksporter gjestelisten som CSV.
+                </p>
+              </div>
+            </div>
+            <div className="button-row">
+              <button className="primary-button" type="button" onClick={() => handleOpenGuestModal("add-person")}>
                 Legg til person
               </button>
-            </form>
+              <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("bulk-people")}>
+                Legg til mange
+              </button>
+              <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("import-people")}>
+                Importer gjesteliste
+              </button>
+              <button className="secondary-button" type="button" onClick={() => handleOpenGuestModal("export-people")}>
+                Eksporter gjesteliste
+              </button>
+              <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
+                Last ned mal
+              </button>
+            </div>
+            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
           </section>
         </>
       ) : null}
 
       <section className="panel stack">
-        <h3>Personer i arrangementet</h3>
-        {event.people.length === 0 ? (
+        <div className="panel-header-inline">
+          <div>
+            <h3>Personer i arrangementet</h3>
+            <p className="muted">Søk på navn, kontaktinfo, roller eller kostbehov for å finne riktig person raskere.</p>
+          </div>
+          <label className="field person-search-field">
+            <span>Søk i listen</span>
+            <input
+              placeholder="Navn, e-post, rolle eller allergi"
+              value={personSearch}
+              onChange={(eventObject) => setPersonSearch(eventObject.currentTarget.value)}
+            />
+          </label>
+        </div>
+        {filteredPeople.length === 0 ? (
           <EmptyState
-            title="Ingen personer enda"
-            body="Legg til gjester, hjelpere eller fakturamedlemmer for aa styre tilgangene."
+            title={event.people.length === 0 ? "Ingen personer enda" : "Ingen treff i gjestelisten"}
+            body={
+              event.people.length === 0
+                ? "Legg til gjester, hjelpere eller fakturamedlemmer for aa styre tilgangene."
+                : "Juster søket eller importer flere gjester."
+            }
           />
         ) : (
           <div className="person-list">
@@ -2045,7 +2388,7 @@ function GuestTab({
               <span>Merknader</span>
               <span>Detaljer</span>
             </div>
-            {event.people.map((person) => {
+            {filteredPeople.map((person) => {
               const canEditSelf = !viewerAccess.canManageGuest && viewerPerson?.id === person.id;
               const canSave = viewerAccess.canManageGuest || canEditSelf;
               const isOpen = openPersonId === person.id;
@@ -6081,6 +6424,8 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
       form.reset();
       setStatusMessage("Ny gjesteside er opprettet.");
     }
+
+    return nextEvent;
   }
 
   async function handleUpdateGuestPage(formEvent, page, draftSnapshot) {
@@ -6135,6 +6480,140 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
 
     if (nextEvent) {
       setStatusMessage("Gjestesiden er slettet.");
+    }
+  }
+
+  function handleOpenGuestModal(nextModal) {
+    setGuestToolStatus("");
+    setGuestModal(nextModal);
+  }
+
+  function handleCloseGuestModal() {
+    setGuestToolStatus("");
+    setImportPreview(null);
+    setGuestModal("");
+  }
+
+  function handleBulkGuestRowChange(rowId, key, value) {
+    setBulkGuestRows((currentRows) =>
+      currentRows.map((row) => (row.id === rowId ? { ...row, [key]: value } : row))
+    );
+  }
+
+  function handleAddBulkGuestRow() {
+    setBulkGuestRows((currentRows) => [...currentRows, createBulkGuestRow()]);
+  }
+
+  function handleRemoveBulkGuestRow(rowId) {
+    setBulkGuestRows((currentRows) =>
+      currentRows.length > 1 ? currentRows.filter((row) => row.id !== rowId) : currentRows
+    );
+  }
+
+  async function handleSubmitBulkGuests(formEvent) {
+    formEvent.preventDefault();
+
+    if (!viewerAccess.canManageGuest || typeof onBulkUpsertPeople !== "function") {
+      return;
+    }
+
+    const template = applyTemplate(bulkTemplateKey);
+    const templateRoleId = event.roles.find((role) => role.key === bulkTemplateKey)?.id || "";
+    const payloadPeople = bulkGuestRows
+      .map((row) => ({
+        name: String(row.name || "").trim(),
+        email: String(row.email || "").trim(),
+        phone: String(row.phone || "").trim(),
+        rsvpStatus: String(row.rsvpStatus || "pending"),
+        note: String(row.note || "").trim(),
+        allergies: String(row.allergies || "").trim(),
+        dietaryNotes: String(row.dietaryNotes || "").trim(),
+        seatingNote: String(row.seatingNote || "").trim(),
+        planningRole: template.planningRole,
+        projectRole: template.projectRole,
+        financeRole: template.financeRole,
+        roleIds: templateRoleId ? [templateRoleId] : [],
+        capabilities: template.capabilities
+      }))
+      .filter((person) => person.name);
+
+    if (payloadPeople.length === 0) {
+      setGuestToolStatus("Legg inn minst én person før du lagrer.");
+      return;
+    }
+
+    const nextEvent = await onBulkUpsertPeople(payloadPeople);
+
+    if (nextEvent) {
+      setBulkGuestRows(createBulkGuestRows());
+      setGuestModal("");
+      setGuestToolStatus("");
+    }
+  }
+
+  function handleDownloadGuestTemplate() {
+    downloadTextFile("gjesteliste-mal.csv", buildGuestImportTemplateCsv());
+    setGuestToolStatus("Malen er lastet ned som CSV.");
+  }
+
+  function handleDownloadGuestExport() {
+    const safeFieldKeys = exportFieldKeys.length ? exportFieldKeys : DEFAULT_GUEST_EXPORT_FIELDS;
+    const fileContent = buildGuestExportCsv(event.people, event.roles, safeFieldKeys);
+    downloadTextFile("gjesteliste-eksport.csv", fileContent);
+    setGuestToolStatus("Gjestelisten er eksportert som CSV.");
+  }
+
+  function handleToggleExportField(fieldKey) {
+    setExportFieldKeys((currentKeys) =>
+      currentKeys.includes(fieldKey)
+        ? currentKeys.filter((key) => key !== fieldKey)
+        : [...currentKeys, fieldKey]
+    );
+  }
+
+  async function handleGuestImportFileChange(eventObject) {
+    const file = eventObject.currentTarget.files?.[0];
+
+    if (!file) {
+      setImportPreview(null);
+      return;
+    }
+
+    const text = await file.text();
+    const parsed = parseGuestImportText(text, event.roles);
+    const matchedExistingCount = parsed.rows.filter((person) =>
+      Boolean(matchImportedPerson(event.people, person))
+    ).length;
+
+    setImportPreview({
+      ...parsed,
+      matchedExistingCount,
+      newCount: Math.max(parsed.rows.length - matchedExistingCount, 0),
+      fileName: file.name
+    });
+    setGuestToolStatus(
+      parsed.errors.length
+        ? "Importen har noen varsler. Sjekk forhåndsvisningen før du fortsetter."
+        : "Importfilen er lest inn."
+    );
+  }
+
+  async function handleRunGuestImport() {
+    if (!viewerAccess.canManageGuest || typeof onBulkUpsertPeople !== "function" || !importPreview) {
+      return;
+    }
+
+    if (importPreview.rows.length === 0) {
+      setGuestToolStatus("Ingen gyldige rader å importere.");
+      return;
+    }
+
+    const nextEvent = await onBulkUpsertPeople(importPreview.rows);
+
+    if (nextEvent) {
+      setImportPreview(null);
+      setGuestModal("");
+      setGuestToolStatus("");
     }
   }
 
@@ -6237,6 +6716,24 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
       form.reset();
       setStatusMessage("Personen er lagt til.");
     }
+
+    return nextEvent;
+  }
+
+  async function handleBulkUpsertPeople(people) {
+    if (!viewerAccess.canManageGuest) {
+      return null;
+    }
+
+    const nextEvent = await patchEvent("bulk_upsert_people", {
+      people
+    });
+
+    if (nextEvent) {
+      setStatusMessage(`${people.length} personer ble lagt til eller oppdatert.`);
+    }
+
+    return nextEvent;
   }
 
   async function handleUpdatePerson(formEvent, person) {
@@ -6864,6 +7361,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                   onAddGuestPage={handleAddGuestPage}
                   onAddRole={handleAddRole}
                   onAddPerson={handleAddPerson}
+                  onBulkUpsertPeople={handleBulkUpsertPeople}
                   onDeleteGuestPage={handleDeleteGuestPage}
                   onUpdateGuestPage={handleUpdateGuestPage}
                   onUpdateRole={handleUpdateRole}

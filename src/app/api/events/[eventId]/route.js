@@ -44,6 +44,40 @@ function cleanIdList(values) {
   );
 }
 
+function findMatchingPersonIndex(people, incomingPerson) {
+  const incomingEmail = cleanString(incomingPerson?.email).toLowerCase();
+  const incomingPhone = cleanString(incomingPerson?.phone).replace(/\s+/g, "");
+  const incomingName = cleanString(incomingPerson?.name).toLowerCase();
+
+  if (incomingEmail) {
+    const index = people.findIndex(
+      (person) => cleanString(person?.email).toLowerCase() === incomingEmail
+    );
+
+    if (index >= 0) {
+      return index;
+    }
+  }
+
+  if (incomingPhone) {
+    const index = people.findIndex(
+      (person) => cleanString(person?.phone).replace(/\s+/g, "") === incomingPhone
+    );
+
+    if (index >= 0) {
+      return index;
+    }
+  }
+
+  if (incomingName) {
+    return people.findIndex(
+      (person) => cleanString(person?.name).toLowerCase() === incomingName
+    );
+  }
+
+  return -1;
+}
+
 function normalizeGuestPageVisibility(value) {
   return cleanString(value) === "guests" ? "guests" : "open";
 }
@@ -505,6 +539,63 @@ export async function PATCH(request, context) {
                   : {}
             }
           ]
+        };
+      }
+
+      if (action === "bulk_upsert_people") {
+        const incomingPeople = Array.isArray(payload?.people) ? payload.people : [];
+        const currentPeople = Array.isArray(current.people) ? [...current.people] : [];
+
+        incomingPeople.forEach((incomingPerson) => {
+          const name = cleanString(incomingPerson?.name);
+
+          if (!name) {
+            return;
+          }
+
+          const matchIndex = findMatchingPersonIndex(currentPeople, incomingPerson);
+          const nextPersonValues = {
+            name,
+            email: cleanString(incomingPerson?.email),
+            phone: cleanString(incomingPerson?.phone),
+            note: cleanString(incomingPerson?.note),
+            allergies: cleanString(incomingPerson?.allergies),
+            dietaryNotes: cleanString(incomingPerson?.dietaryNotes),
+            seatingNote: cleanString(incomingPerson?.seatingNote),
+            rsvpStatus: cleanString(incomingPerson?.rsvpStatus) || "pending",
+            roleIds: cleanIdList(incomingPerson?.roleIds)
+          };
+
+          if (matchIndex >= 0) {
+            const currentPerson = currentPeople[matchIndex];
+            currentPeople[matchIndex] = {
+              ...currentPerson,
+              ...nextPersonValues,
+              respondedAt: new Date().toISOString()
+            };
+            return;
+          }
+
+          currentPeople.push({
+            id: crypto.randomUUID(),
+            created_at: new Date().toISOString(),
+            invitedAt: new Date().toISOString(),
+            respondedAt: null,
+            planningRole: cleanString(incomingPerson?.planningRole) || "viewer",
+            projectRole: cleanString(incomingPerson?.projectRole) || "none",
+            financeRole: cleanString(incomingPerson?.financeRole) || "none",
+            useDirectAccessOverrides: false,
+            capabilities:
+              incomingPerson?.capabilities && typeof incomingPerson.capabilities === "object"
+                ? incomingPerson.capabilities
+                : {},
+            ...nextPersonValues
+          });
+        });
+
+        return {
+          ...current,
+          people: currentPeople
         };
       }
 
