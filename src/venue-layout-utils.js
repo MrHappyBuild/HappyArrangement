@@ -512,6 +512,94 @@ export function findVenueSeatAssignment(venuePlan, guestId) {
   return null;
 }
 
+function normalizeVenueGuestLookupValue(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeVenueGuestLookupPhone(value) {
+  return String(value || "").replace(/\s+/g, "");
+}
+
+export function findVenueGuestMatchForSeatAssignment(people, venuePlan, rawValue) {
+  const normalizedQuery = normalizeVenueGuestLookupValue(rawValue);
+  const normalizedPhoneQuery = normalizeVenueGuestLookupPhone(rawValue);
+
+  if (!normalizedQuery && !normalizedPhoneQuery) {
+    return {
+      person: null,
+      reason: "empty"
+    };
+  }
+
+  const peopleList = Array.isArray(people) ? people : [];
+  const candidates = peopleList.map((person) => ({
+    person,
+    assignment: findVenueSeatAssignment(venuePlan, person?.id),
+    name: normalizeVenueGuestLookupValue(person?.name),
+    email: normalizeVenueGuestLookupValue(person?.email),
+    phone: normalizeVenueGuestLookupPhone(person?.phone)
+  }));
+
+  const exactMatches = candidates.filter(
+    (candidate) =>
+      candidate.name === normalizedQuery ||
+      candidate.email === normalizedQuery ||
+      (normalizedPhoneQuery && candidate.phone === normalizedPhoneQuery)
+  );
+
+  if (exactMatches.length === 1) {
+    return {
+      person: exactMatches[0].person,
+      reason: "exact"
+    };
+  }
+
+  if (exactMatches.length > 1) {
+    const unassignedExactMatches = exactMatches.filter((candidate) => !candidate.assignment);
+
+    if (unassignedExactMatches.length === 1) {
+      return {
+        person: unassignedExactMatches[0].person,
+        reason: "exact_unassigned"
+      };
+    }
+
+    return {
+      person: null,
+      reason: "ambiguous"
+    };
+  }
+
+  const fuzzyMatches = candidates.filter(
+    (candidate) =>
+      !candidate.assignment &&
+      (candidate.name.includes(normalizedQuery) ||
+        candidate.email.includes(normalizedQuery) ||
+        (normalizedPhoneQuery && candidate.phone.includes(normalizedPhoneQuery)))
+  );
+
+  if (fuzzyMatches.length === 1) {
+    return {
+      person: fuzzyMatches[0].person,
+      reason: "fuzzy_unassigned"
+    };
+  }
+
+  if (fuzzyMatches.length > 1) {
+    return {
+      person: null,
+      reason: "ambiguous"
+    };
+  }
+
+  return {
+    person: null,
+    reason: "not_found"
+  };
+}
+
 function createEmptySeatPosition(index) {
   return {
     id: `empty-seat-${index}`,

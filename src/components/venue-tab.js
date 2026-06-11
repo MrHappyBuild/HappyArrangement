@@ -10,6 +10,7 @@ import {
   buildVenuePlanningState,
   clearGuestFromVenueSeat,
   createVenueItem,
+  findVenueGuestMatchForSeatAssignment,
   findVenueSeatAssignment,
   normalizeVenuePlan,
   removeVenueItemFromPlan,
@@ -176,6 +177,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [seatAdjustMode, setSeatAdjustMode] = useState(false);
   const [seatAssignmentDrafts, setSeatAssignmentDrafts] = useState({});
+  const [seatAssignmentNotice, setSeatAssignmentNotice] = useState("");
   const [planDraft, setPlanDraft] = useState(() => normalizeVenuePlan(event.venuePlan));
   const [draggedGuestId, setDraggedGuestId] = useState("");
   const [itemDrag, setItemDrag] = useState(null);
@@ -277,11 +279,9 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       return;
     }
 
-    setSeatAssignmentDrafts((currentDrafts) =>
+    setSeatAssignmentDrafts(
       selectedItem.seats.reduce((nextDrafts, seat) => {
-        nextDrafts[seat.id] = Object.prototype.hasOwnProperty.call(currentDrafts, seat.id)
-          ? currentDrafts[seat.id]
-          : seat.guest?.name || "";
+        nextDrafts[seat.id] = seat.guest?.name || "";
         return nextDrafts;
       }, {})
     );
@@ -292,6 +292,10 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       setSeatAdjustMode(false);
     }
   }, [isRoomMode]);
+
+  useEffect(() => {
+    setSeatAssignmentNotice("");
+  }, [selectedItem?.id, venueMode]);
 
   const filteredGuests = useMemo(() => {
     const query = guestSearch.trim().toLowerCase();
@@ -651,6 +655,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     const previousPlan = planDraftRef.current;
     const nextPlan = assignGuestToVenueSeat(previousPlan, itemId, seatId, guestId);
     const seatGuest = venueState.people.find((person) => person.id === guestId);
+    setSeatAssignmentNotice("");
     await commitPlan(
       nextPlan,
       `${seatGuest?.name || "Gjesten"} ble plassert i lokalet.`,
@@ -669,6 +674,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
 
     const previousPlan = planDraftRef.current;
     const nextPlan = clearGuestFromVenueSeat(previousPlan, itemId, seatId);
+    setSeatAssignmentNotice("");
     await commitPlan(nextPlan, "Plasseringen ble fjernet.", previousPlan);
     setSeatAssignmentDrafts((currentDrafts) => ({
       ...currentDrafts,
@@ -695,22 +701,27 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       return;
     }
 
-    const rawValue = String(seatAssignmentDrafts[seatId] || "").trim().toLowerCase();
+    const rawValue = String(seatAssignmentDrafts[seatId] || "").trim();
 
     if (!rawValue) {
+      setSeatAssignmentNotice("Skriv inn et navn, en e-post eller et mobilnummer før du setter plassen.");
       return;
     }
 
-    const matchedPerson = seatAssignmentPeople.find((person) => {
-      const name = String(person.name || "").trim().toLowerCase();
-      const email = String(person.email || "").trim().toLowerCase();
-      const phone = String(person.phone || "").replace(/\s+/g, "");
-      const normalizedRawPhone = rawValue.replace(/\s+/g, "");
-
-      return rawValue === name || rawValue === email || rawValue === normalizedRawPhone || name.includes(rawValue);
-    });
+    const matchResult = findVenueGuestMatchForSeatAssignment(
+      seatAssignmentPeople,
+      planDraftRef.current,
+      rawValue
+    );
+    const matchedPerson = matchResult.person;
 
     if (!matchedPerson) {
+      if (matchResult.reason === "ambiguous") {
+        setSeatAssignmentNotice("Fant flere mulige gjester. Skriv et mer presist navn, e-post eller mobilnummer.");
+        return;
+      }
+
+      setSeatAssignmentNotice("Fant ingen tydelig gjest med den teksten. Velg et mer presist navn fra listen.");
       return;
     }
 
@@ -719,6 +730,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
       ...currentDrafts,
       [seatId]: matchedPerson.name
     }));
+    setSeatAssignmentNotice("");
   }
 
   async function handleQuickResize(delta) {
@@ -1644,6 +1656,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                       {selectedItem.seatCount} plasser • dra gjester inn pa setene i midtpanelet, eller skriv navn direkte pa hver plass under.
                     </p>
                   </div>
+                  {seatAssignmentNotice ? <p className="notice">{seatAssignmentNotice}</p> : null}
                   <div className="venue-seat-roster">
                     <datalist id={`venue-seat-people-${event.id}`}>
                       {seatAssignmentPeople.map((person) => (

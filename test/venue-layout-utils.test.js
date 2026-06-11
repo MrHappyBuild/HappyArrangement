@@ -6,6 +6,7 @@ import {
   buildVenuePlanningState,
   clearGuestFromVenueSeat,
   createVenueItem,
+  findVenueGuestMatchForSeatAssignment,
   findVenueSeatAssignment,
   normalizeVenuePlan,
   resetVenueSeatOffsetsInPlan,
@@ -234,6 +235,68 @@ test("assignGuestToVenueSeat moves the guest to only one seat", () => {
     seatId: secondSeatId,
     seatLabel: assignedTwice.items[0].seats[1].label
   });
+});
+
+test("findVenueGuestMatchForSeatAssignment resolves exact typed names safely", () => {
+  const item = createVenueItem("round_table", 0);
+  const plan = updateVenueItemInPlan(
+    {
+      room: { name: "Sal", widthMeters: 12, heightMeters: 8, notes: "" },
+      items: [item]
+    },
+    item.id,
+    { seatCount: 2 }
+  );
+  const firstSeatId = plan.items[0].seats[0].id;
+  const occupiedPlan = assignGuestToVenueSeat(plan, item.id, firstSeatId, "guest-aki");
+  const people = [
+    { id: "guest-aki", name: "Aki", email: "", phone: "" },
+    { id: "guest-ida", name: "Ida", email: "", phone: "" }
+  ];
+
+  const result = findVenueGuestMatchForSeatAssignment(people, occupiedPlan, "Ida");
+
+  assert.equal(result.reason, "exact");
+  assert.equal(result.person?.id, "guest-ida");
+});
+
+test("findVenueGuestMatchForSeatAssignment only uses fuzzy matching for unassigned guests", () => {
+  const item = createVenueItem("round_table", 0);
+  const plan = updateVenueItemInPlan(
+    {
+      room: { name: "Sal", widthMeters: 12, heightMeters: 8, notes: "" },
+      items: [item]
+    },
+    item.id,
+    { seatCount: 2 }
+  );
+  const firstSeatId = plan.items[0].seats[0].id;
+  const occupiedPlan = assignGuestToVenueSeat(plan, item.id, firstSeatId, "guest-ole");
+  const people = [
+    { id: "guest-ole", name: "Ole", email: "", phone: "" },
+    { id: "guest-oliver", name: "Oliver", email: "", phone: "" }
+  ];
+
+  const result = findVenueGuestMatchForSeatAssignment(people, occupiedPlan, "Oli");
+
+  assert.equal(result.reason, "fuzzy_unassigned");
+  assert.equal(result.person?.id, "guest-oliver");
+});
+
+test("findVenueGuestMatchForSeatAssignment reports ambiguous fuzzy matches instead of guessing", () => {
+  const people = [
+    { id: "guest-1", name: "Anders", email: "", phone: "" },
+    { id: "guest-2", name: "Andrine", email: "", phone: "" }
+  ];
+
+  const result = findVenueGuestMatchForSeatAssignment(
+    people,
+    normalizeVenuePlan({ items: [] }),
+    "And"
+  );
+
+  assert.equal(result.reason, "ambiguous");
+  assert.equal(result.person, null);
 });
 
 test("buildVenuePlanningState highlights missing exits and dietary guests without seats", () => {
