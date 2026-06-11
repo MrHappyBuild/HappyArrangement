@@ -613,242 +613,6 @@ function OverviewTab({ event, jobs, financeSummary, guestSummary, projectSummary
         </article>
       </section>
 
-      {viewerAccess.canManageGuest && guestModal === "new-page" ? (
-        <ModalShell
-          title="Legg til ny infoside"
-          body="Opprett en ny side for program, FAQ, transport, overnatting eller annen informasjon gjestene trenger."
-          onClose={handleCloseGuestModal}
-        >
-          <form className="grid-form compact-grid" onSubmit={async (formEvent) => {
-            const nextEvent = await onAddGuestPage(formEvent);
-
-            if (nextEvent) {
-              handleCloseGuestModal();
-            }
-          }}>
-            <label className="field">
-              <span>Tittel</span>
-              <input name="title" placeholder="F.eks. Program, Overnatting eller FAQ" required />
-            </label>
-            <label className="field">
-              <span>Synlighet</span>
-              <select defaultValue="open" name="visibility">
-                {GUEST_PAGE_VISIBILITY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="button-row field-span-full">
-              <button className="primary-button" type="submit">
-                Opprett infoside
-              </button>
-            </div>
-          </form>
-        </ModalShell>
-      ) : null}
-
-      {viewerAccess.canManageGuest && guestModal === "add-person" ? (
-        <ModalShell
-          title="Legg til person"
-          body="Opprett én gjest eller hjelper av gangen. Hvis du har mange, bruk heller 'Legg til mange' eller importer fra mal."
-          onClose={handleCloseGuestModal}
-        >
-          <form className="grid-form compact-grid" onSubmit={async (formEvent) => {
-            const nextEvent = await onAddPerson(formEvent);
-
-            if (nextEvent) {
-              handleCloseGuestModal();
-            }
-          }}>
-            <label className="field">
-              <span>Navn</span>
-              <input name="name" placeholder="Fornavn Etternavn" required />
-            </label>
-            <label className="field">
-              <span>E-post</span>
-              <input name="email" placeholder="navn@epost.no" type="email" />
-            </label>
-            <label className="field">
-              <span>Mobilnummer</span>
-              <input name="phone" placeholder="+47 900 00 000" type="tel" />
-            </label>
-            <label className="field">
-              <span>Startrolle</span>
-              <select defaultValue="guest" name="template">
-                {templateList.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Notat</span>
-              <input name="note" placeholder="F.eks. toastmaster eller sjafor" />
-            </label>
-            <label className="field">
-              <span>Allergier</span>
-              <input name="allergies" placeholder="F.eks. notter, skalldyr eller laktose" />
-            </label>
-            <label className="field">
-              <span>Matpreferanser</span>
-              <input name="dietaryNotes" placeholder="F.eks. vegetar, halal eller alkoholfritt" />
-            </label>
-            <label className="field field-span-full">
-              <span>Sitteinfo</span>
-              <input
-                name="seatingNote"
-                placeholder="F.eks. bor sitte narmt familien, unna hoy musikk eller ved barnestol"
-              />
-            </label>
-            <div className="button-row field-span-full">
-              <button className="primary-button" type="submit">
-                Lagre person
-              </button>
-            </div>
-          </form>
-        </ModalShell>
-      ) : null}
-
-      {viewerAccess.canManageGuest && guestModal === "bulk-people" ? (
-        <ModalShell
-          title="Legg til mange personer"
-          body="Fyll ut flere rader i samme tabell og legg dem inn i én operasjon."
-          onClose={handleCloseGuestModal}
-        >
-          <form className="stack" onSubmit={handleSubmitBulkGuests}>
-            <div className="compact-grid">
-              <label className="field">
-                <span>Startrolle for nye personer</span>
-                <select value={bulkTemplateKey} onChange={(eventObject) => setBulkTemplateKey(eventObject.currentTarget.value)}>
-                  {templateList.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="guest-bulk-table">
-              <div className="guest-bulk-table-head">
-                <span>Navn</span>
-                <span>E-post</span>
-                <span>Mobil</span>
-                <span>RSVP</span>
-                <span>Allergier</span>
-                <span>Mat</span>
-                <span>Notat</span>
-                <span>Rad</span>
-              </div>
-              {bulkGuestRows.map((row) => (
-                <div className="guest-bulk-table-row" key={row.id}>
-                  <input placeholder="Navn" value={row.name} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "name", eventObject.currentTarget.value)} />
-                  <input placeholder="E-post" value={row.email} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "email", eventObject.currentTarget.value)} />
-                  <input placeholder="Mobil" value={row.phone} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "phone", eventObject.currentTarget.value)} />
-                  <select value={row.rsvpStatus} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "rsvpStatus", eventObject.currentTarget.value)}>
-                    {RSVP_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <input placeholder="Allergier" value={row.allergies} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "allergies", eventObject.currentTarget.value)} />
-                  <input placeholder="Mat" value={row.dietaryNotes} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "dietaryNotes", eventObject.currentTarget.value)} />
-                  <input placeholder="Notat" value={row.note} onChange={(eventObject) => handleBulkGuestRowChange(row.id, "note", eventObject.currentTarget.value)} />
-                  <button className="ghost-button compact-icon-button" type="button" onClick={() => handleRemoveBulkGuestRow(row.id)}>
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="button-row">
-              <button className="secondary-button" type="button" onClick={handleAddBulkGuestRow}>
-                Legg til rad
-              </button>
-              <button className="primary-button" type="submit">
-                Lagre personer
-              </button>
-            </div>
-            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
-          </form>
-        </ModalShell>
-      ) : null}
-
-      {viewerAccess.canManageGuest && guestModal === "import-people" ? (
-        <ModalShell
-          title="Importer gjesteliste"
-          body="Bruk CSV-malen for raskest mulig import. Eksisterende personer oppdateres hvis e-post, mobil eller navn matcher."
-          onClose={handleCloseGuestModal}
-        >
-          <div className="stack">
-            <div className="button-row">
-              <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
-                Last ned CSV-mal
-              </button>
-            </div>
-            <label className="field">
-              <span>Velg CSV-fil</span>
-              <input accept=".csv,text/csv,.txt" type="file" onChange={(eventObject) => void handleGuestImportFileChange(eventObject)} />
-            </label>
-            {importPreview ? (
-              <div className="stack">
-                <div className="overview-grid guest-import-summary-grid">
-                  <InfoCard label="Rader klare" value={importPreview.rows.length} />
-                  <InfoCard label="Oppdaterer eksisterende" value={importPreview.matchedExistingCount} tone="warning" />
-                  <InfoCard label="Nye personer" value={importPreview.newCount} tone="success" />
-                </div>
-                {importPreview.errors.length ? (
-                  <div className="notice">
-                    <strong>Varsler i importen</strong>
-                    <ul className="compact-list">
-                      {importPreview.errors.slice(0, 6).map((error) => (
-                        <li key={error}>{error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                <div className="button-row">
-                  <button className="primary-button" type="button" onClick={() => void handleRunGuestImport()}>
-                    Importer gjester
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
-          </div>
-        </ModalShell>
-      ) : null}
-
-      {viewerAccess.canManageGuest && guestModal === "export-people" ? (
-        <ModalShell
-          title="Eksporter gjesteliste"
-          body="Velg hvilke felt som skal med i eksporten. Filen lastes ned som CSV."
-          onClose={handleCloseGuestModal}
-        >
-          <div className="stack">
-            <div className="toggle-row">
-              {GUEST_LIST_FIELD_OPTIONS.map((field) => (
-                <label key={field.key}>
-                  <input
-                    checked={exportFieldKeys.includes(field.key)}
-                    type="checkbox"
-                    onChange={() => handleToggleExportField(field.key)}
-                  />
-                  {field.label}
-                </label>
-              ))}
-            </div>
-            <div className="button-row">
-              <button className="primary-button" type="button" onClick={handleDownloadGuestExport}>
-                Last ned eksport
-              </button>
-            </div>
-            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
-          </div>
-        </ModalShell>
-      ) : null}
     </div>
   );
 }
@@ -2609,6 +2373,305 @@ function GuestTab({
           </div>
         )}
       </section>
+
+      {viewerAccess.canManageGuest && guestModal === "new-page" ? (
+        <ModalShell
+          title="Legg til ny infoside"
+          body="Opprett en ny side for program, FAQ, transport, overnatting eller annen informasjon gjestene trenger."
+          onClose={handleCloseGuestModal}
+        >
+          <form
+            className="grid-form compact-grid"
+            onSubmit={async (formEvent) => {
+              const nextEvent = await onAddGuestPage(formEvent);
+
+              if (nextEvent) {
+                handleCloseGuestModal();
+              }
+            }}
+          >
+            <label className="field">
+              <span>Tittel</span>
+              <input name="title" placeholder="F.eks. Program, Overnatting eller FAQ" required />
+            </label>
+            <label className="field">
+              <span>Synlighet</span>
+              <select defaultValue="open" name="visibility">
+                {GUEST_PAGE_VISIBILITY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="button-row field-span-full">
+              <button className="primary-button" type="submit">
+                Opprett infoside
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {viewerAccess.canManageGuest && guestModal === "add-person" ? (
+        <ModalShell
+          title="Legg til person"
+          body="Opprett én gjest eller hjelper av gangen. Hvis du har mange, bruk heller 'Legg til mange' eller importer fra mal."
+          onClose={handleCloseGuestModal}
+        >
+          <form
+            className="grid-form compact-grid"
+            onSubmit={async (formEvent) => {
+              const nextEvent = await onAddPerson(formEvent);
+
+              if (nextEvent) {
+                handleCloseGuestModal();
+              }
+            }}
+          >
+            <label className="field">
+              <span>Navn</span>
+              <input name="name" placeholder="Fornavn Etternavn" required />
+            </label>
+            <label className="field">
+              <span>E-post</span>
+              <input name="email" placeholder="navn@epost.no" type="email" />
+            </label>
+            <label className="field">
+              <span>Mobilnummer</span>
+              <input name="phone" placeholder="+47 900 00 000" type="tel" />
+            </label>
+            <label className="field">
+              <span>Startrolle</span>
+              <select defaultValue="guest" name="template">
+                {templateList.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Notat</span>
+              <input name="note" placeholder="F.eks. toastmaster eller sjafor" />
+            </label>
+            <label className="field">
+              <span>Allergier</span>
+              <input name="allergies" placeholder="F.eks. notter, skalldyr eller laktose" />
+            </label>
+            <label className="field">
+              <span>Matpreferanser</span>
+              <input name="dietaryNotes" placeholder="F.eks. vegetar, halal eller alkoholfritt" />
+            </label>
+            <label className="field field-span-full">
+              <span>Sitteinfo</span>
+              <input
+                name="seatingNote"
+                placeholder="F.eks. bor sitte narmt familien, unna hoy musikk eller ved barnestol"
+              />
+            </label>
+            <div className="button-row field-span-full">
+              <button className="primary-button" type="submit">
+                Lagre person
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {viewerAccess.canManageGuest && guestModal === "bulk-people" ? (
+        <ModalShell
+          title="Legg til mange personer"
+          body="Fyll ut flere rader i samme tabell og legg dem inn i én operasjon."
+          onClose={handleCloseGuestModal}
+        >
+          <form className="stack" onSubmit={handleSubmitBulkGuests}>
+            <div className="compact-grid">
+              <label className="field">
+                <span>Startrolle for nye personer</span>
+                <select
+                  value={bulkTemplateKey}
+                  onChange={(eventObject) => setBulkTemplateKey(eventObject.currentTarget.value)}
+                >
+                  {templateList.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="guest-bulk-table">
+              <div className="guest-bulk-table-head">
+                <span>Navn</span>
+                <span>E-post</span>
+                <span>Mobil</span>
+                <span>RSVP</span>
+                <span>Allergier</span>
+                <span>Mat</span>
+                <span>Notat</span>
+                <span>Rad</span>
+              </div>
+              {bulkGuestRows.map((row) => (
+                <div className="guest-bulk-table-row" key={row.id}>
+                  <input
+                    placeholder="Navn"
+                    value={row.name}
+                    onChange={(eventObject) =>
+                      handleBulkGuestRowChange(row.id, "name", eventObject.currentTarget.value)
+                    }
+                  />
+                  <input
+                    placeholder="E-post"
+                    value={row.email}
+                    onChange={(eventObject) =>
+                      handleBulkGuestRowChange(row.id, "email", eventObject.currentTarget.value)
+                    }
+                  />
+                  <input
+                    placeholder="Mobil"
+                    value={row.phone}
+                    onChange={(eventObject) =>
+                      handleBulkGuestRowChange(row.id, "phone", eventObject.currentTarget.value)
+                    }
+                  />
+                  <select
+                    value={row.rsvpStatus}
+                    onChange={(eventObject) =>
+                      handleBulkGuestRowChange(row.id, "rsvpStatus", eventObject.currentTarget.value)
+                    }
+                  >
+                    {RSVP_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    placeholder="Allergier"
+                    value={row.allergies}
+                    onChange={(eventObject) =>
+                      handleBulkGuestRowChange(row.id, "allergies", eventObject.currentTarget.value)
+                    }
+                  />
+                  <input
+                    placeholder="Mat"
+                    value={row.dietaryNotes}
+                    onChange={(eventObject) =>
+                      handleBulkGuestRowChange(row.id, "dietaryNotes", eventObject.currentTarget.value)
+                    }
+                  />
+                  <input
+                    placeholder="Notat"
+                    value={row.note}
+                    onChange={(eventObject) =>
+                      handleBulkGuestRowChange(row.id, "note", eventObject.currentTarget.value)
+                    }
+                  />
+                  <button
+                    className="ghost-button compact-icon-button"
+                    type="button"
+                    onClick={() => handleRemoveBulkGuestRow(row.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={handleAddBulkGuestRow}>
+                Legg til rad
+              </button>
+              <button className="primary-button" type="submit">
+                Lagre personer
+              </button>
+            </div>
+            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {viewerAccess.canManageGuest && guestModal === "import-people" ? (
+        <ModalShell
+          title="Importer gjesteliste"
+          body="Bruk CSV-malen for raskest mulig import. Eksisterende personer oppdateres hvis e-post, mobil eller navn matcher."
+          onClose={handleCloseGuestModal}
+        >
+          <div className="stack">
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={handleDownloadGuestTemplate}>
+                Last ned CSV-mal
+              </button>
+            </div>
+            <label className="field">
+              <span>Velg CSV-fil</span>
+              <input
+                accept=".csv,text/csv,.txt"
+                type="file"
+                onChange={(eventObject) => void handleGuestImportFileChange(eventObject)}
+              />
+            </label>
+            {importPreview ? (
+              <div className="stack">
+                <div className="overview-grid guest-import-summary-grid">
+                  <InfoCard label="Rader klare" value={importPreview.rows.length} />
+                  <InfoCard
+                    label="Oppdaterer eksisterende"
+                    value={importPreview.matchedExistingCount}
+                    tone="warning"
+                  />
+                  <InfoCard label="Nye personer" value={importPreview.newCount} tone="success" />
+                </div>
+                {importPreview.errors.length ? (
+                  <div className="notice">
+                    <strong>Varsler i importen</strong>
+                    <ul className="compact-list">
+                      {importPreview.errors.slice(0, 6).map((error) => (
+                        <li key={error}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <div className="button-row">
+                  <button className="primary-button" type="button" onClick={() => void handleRunGuestImport()}>
+                    Importer gjester
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
+          </div>
+        </ModalShell>
+      ) : null}
+
+      {viewerAccess.canManageGuest && guestModal === "export-people" ? (
+        <ModalShell
+          title="Eksporter gjesteliste"
+          body="Velg hvilke felt som skal med i eksporten. Filen lastes ned som CSV."
+          onClose={handleCloseGuestModal}
+        >
+          <div className="stack">
+            <div className="toggle-row">
+              {GUEST_LIST_FIELD_OPTIONS.map((field) => (
+                <label key={field.key}>
+                  <input
+                    checked={exportFieldKeys.includes(field.key)}
+                    type="checkbox"
+                    onChange={() => handleToggleExportField(field.key)}
+                  />
+                  {field.label}
+                </label>
+              ))}
+            </div>
+            <div className="button-row">
+              <button className="primary-button" type="button" onClick={handleDownloadGuestExport}>
+                Last ned eksport
+              </button>
+            </div>
+            {guestToolStatus ? <p className="notice">{guestToolStatus}</p> : null}
+          </div>
+        </ModalShell>
+      ) : null}
     </div>
   );
 }
