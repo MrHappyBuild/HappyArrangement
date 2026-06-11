@@ -119,7 +119,6 @@ export default async function GuestSitePage({ params }) {
   const guestSiteShellStyle =
     guestSiteBackgroundMode === "shell" ? guestSiteBackgroundStyles.shellStyle : undefined;
   const selectedMenuLabel = selectedPage.menuLabel || selectedPage.title;
-  const infoPages = pages.filter((page) => page.kind === "content_page");
 
   return (
     <main
@@ -170,36 +169,6 @@ export default async function GuestSitePage({ params }) {
             </div>
           </div>
         </details>
-
-        {infoPages.length ? (
-          <details className="guest-site-mobile-nav guest-site-mobile-nav-secondary">
-            <summary className="guest-site-mobile-nav-summary">
-              <div className="stack compact-stack">
-                <p className="eyebrow">Infosider</p>
-                <strong>Åpne infosider</strong>
-              </div>
-              <span className="role-pill">{infoPages.length}</span>
-            </summary>
-            <div className="guest-site-mobile-nav-panel stack">
-              <nav className="guest-site-menu">
-                {infoPages.map((page, index) => {
-                  const href = page.path || (index === 0 ? basePath : basePath);
-
-                  return (
-                    <Link
-                      className={`guest-site-link ${selectedPage.id === page.id ? "is-active" : ""}`}
-                      href={href}
-                      key={`mobile-info-${page.id}`}
-                    >
-                      <strong>{page.menuLabel || page.title}</strong>
-                      <span>{page.title}</span>
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-          </details>
-        ) : null}
       </div>
 
       <section className="guest-site-shell guest-site-public-shell" style={guestSiteShellStyle}>
@@ -223,27 +192,6 @@ export default async function GuestSitePage({ params }) {
               })}
             </nav>
           </div>
-          {infoPages.length ? (
-            <div className="stack guest-site-info-nav">
-              <p className="eyebrow">Infosider</p>
-              <nav className="guest-site-menu">
-                {infoPages.map((page, index) => {
-                  const href = page.path || (index === 0 ? basePath : basePath);
-
-                  return (
-                    <Link
-                      className={`guest-site-link ${selectedPage.id === page.id ? "is-active" : ""}`}
-                      href={href}
-                      key={`desktop-info-${page.id}`}
-                    >
-                      <strong>{page.menuLabel || page.title}</strong>
-                      <span>{page.title}</span>
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-          ) : null}
           <div className="stack guest-site-event-facts">
             {renderGuestSiteFacts(normalizedEvent)}
           </div>
