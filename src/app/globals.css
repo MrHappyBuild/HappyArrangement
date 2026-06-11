@@ -2580,6 +2580,7 @@ p {
 .guest-site-preview {
   display: grid;
   gap: 14px;
+  align-content: start;
   padding: 26px;
   border-radius: 28px;
   border: 1px solid rgba(91, 59, 18, 0.12);
@@ -2699,7 +2700,7 @@ p {
 }
 
 .guest-site-public-shell {
-  align-items: stretch;
+  align-items: start;
 }
 
 .guest-site-public-shell .guest-site-sidebar {
@@ -2709,7 +2710,8 @@ p {
 }
 
 .guest-site-public-preview {
-  min-height: 100%;
+  min-height: auto;
+  align-content: start;
   gap: 10px;
 }
 
