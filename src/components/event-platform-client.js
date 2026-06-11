@@ -10,6 +10,10 @@ import { GuestSeatingPageView } from "@/components/guest-seating-page-view";
 import { GuestSiteLinksPanel } from "@/components/guest-site-links-panel";
 import { VenueTab } from "@/components/venue-tab";
 import {
+  buildGuestPageImageMarkup,
+  parseGuestPageImageMarkup
+} from "@/guest-page-content";
+import {
   CAPABILITY_OPTIONS,
   FINANCE_ROLE_OPTIONS,
   GUEST_PAGE_FONT_OPTIONS,
@@ -174,6 +178,40 @@ function stripGuestInlineStyleMarkup(text) {
   return typeof text === "string"
     ? text.replace(/\[style[^\]]*\]([\s\S]*?)\[\/style\]/gi, "$1")
     : "";
+}
+
+const GUEST_PAGE_IMAGE_LAYOUT_OPTIONS = [
+  { value: "fit", label: "Vis hele bildet" },
+  { value: "crop", label: "Crop til utsnitt" }
+];
+
+const GUEST_PAGE_IMAGE_RATIO_OPTIONS = [
+  { value: "16:9", label: "16:9 liggende" },
+  { value: "4:3", label: "4:3 klassisk" },
+  { value: "1:1", label: "1:1 kvadrat" },
+  { value: "3:4", label: "3:4 stående" },
+  { value: "21:9", label: "21:9 banner" }
+];
+
+function findGuestPageImageAtSelection(content, selectionStart) {
+  const source = typeof content === "string" ? content : "";
+  const cursor = Math.max(0, Math.min(Number(selectionStart) || 0, source.length));
+  const lineStart = source.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+  const nextNewlineIndex = source.indexOf("\n", cursor);
+  const lineEnd = nextNewlineIndex === -1 ? source.length : nextNewlineIndex;
+  const rawLine = source.slice(lineStart, lineEnd);
+  const parsed = parseGuestPageImageMarkup(rawLine);
+
+  if (!parsed) {
+    return null;
+  }
+
+  return {
+    ...parsed,
+    lineStart,
+    lineEnd,
+    rawLine
+  };
 }
 
 function collectFormList(formData, name) {
@@ -552,6 +590,10 @@ function GuestTab({
   const editablePage = !isGeneratedGuestPage ? selectedPage : null;
   const previewPage =
     viewerAccess.canManageGuest && draftPage && editablePage ? { ...editablePage, ...draftPage } : editablePage;
+  const activeGuestImage = useMemo(
+    () => findGuestPageImageAtSelection(draftPage?.content || "", textSelection.start),
+    [draftPage?.content, textSelection.start]
+  );
   const guestSiteBasePath = useMemo(() => buildGuestSiteBasePath(event), [event]);
   const guestSiteBaseUrl = guestSiteOrigin ? `${guestSiteOrigin}${guestSiteBasePath}` : guestSiteBasePath;
   const guestSiteBackgroundStyles = useMemo(
@@ -651,6 +693,47 @@ function GuestTab({
     });
   }
 
+  function updateActiveGuestImage(changes) {
+    const currentContent = draftPage?.content || "";
+
+    if (!activeGuestImage) {
+      setMediaStatus("Sett markøren på en bildelinje først for å endre utsnitt eller visning.");
+      return;
+    }
+
+    const nextImage = {
+      ...activeGuestImage,
+      ...changes
+    };
+
+    if (nextImage.displayMode !== "crop") {
+      nextImage.displayMode = "fit";
+    }
+
+    if (nextImage.displayMode === "crop" && !nextImage.cropRatio) {
+      nextImage.cropRatio = "16:9";
+    }
+
+    const nextMarkup = buildGuestPageImageMarkup(nextImage);
+
+    if (!nextMarkup) {
+      setMediaStatus("Kunne ikke oppdatere bildet med de valgte innstillingene.");
+      return;
+    }
+
+    const nextContent = `${currentContent.slice(0, activeGuestImage.lineStart)}${nextMarkup}${currentContent.slice(activeGuestImage.lineEnd)}`;
+    replaceGuestPageTextSelection(
+      nextContent,
+      activeGuestImage.lineStart,
+      activeGuestImage.lineStart + nextMarkup.length
+    );
+    setMediaStatus(
+      nextImage.displayMode === "crop"
+        ? "Bildet er oppdatert med nytt utsnitt. Lagre siden for å publisere endringen."
+        : "Bildet er satt til å vise hele motivet. Lagre siden for å publisere endringen."
+    );
+  }
+
   function applyInlineStyleToSelectedText() {
     const textarea = guestPageTextareaRef.current;
     const currentContent = draftPage?.content || "";
@@ -741,19 +824,16 @@ function GuestTab({
       }
 
       const currentContent = draftPage?.content || "";
-      const nextContent = currentContent.trim()
-        ? `${currentContent.trim()}\n\n${body.markdown}`
-        : body.markdown;
+      const trimmedContent = currentContent.replace(/\s*$/, "");
+      const prefix = trimmedContent ? `${trimmedContent}\n\n` : "";
+      const nextContent = `${prefix}${body.markdown}`;
+      const imageStart = prefix.length;
+      const imageEnd = imageStart + body.markdown.length;
 
-      setDraftPage((currentDraft) =>
-        currentDraft
-          ? {
-              ...currentDraft,
-              content: nextContent
-            }
-          : currentDraft
+      replaceGuestPageTextSelection(nextContent, imageStart, imageEnd);
+      setMediaStatus(
+        "Bildet er satt inn i innholdet. Sett markøren på bildelinjen hvis du vil justere utsnittet, og lagre siden etterpå."
       );
-      setMediaStatus("Bildet er satt inn i innholdet. Lagre siden for aa beholde endringen.");
     } catch (error) {
       setMediaStatus(error instanceof Error ? error.message : "Kunne ikke laste opp bildet.");
     } finally {
@@ -1381,6 +1461,93 @@ function GuestTab({
                         Du kan ogsa bruke `[lenketekst](https://...)` for klikkbare lenker.
                       </p>
                       {mediaStatus ? <p className="guest-page-upload-status">{mediaStatus}</p> : null}
+                    </div>
+                    <div className="guest-page-image-panel">
+                      <div className="panel-header-inline">
+                        <div>
+                          <h4>Bildevisning</h4>
+                          <p className="muted">
+                            Sett markøren på en bildelinje i innholdet under for å justere hvordan akkurat det bildet skal vises på gjestenettsiden.
+                          </p>
+                        </div>
+                      </div>
+                      {activeGuestImage ? (
+                        <div className="guest-page-image-panel-grid">
+                          <label className="field">
+                            <span>Visning</span>
+                            <select
+                              value={activeGuestImage.displayMode || "fit"}
+                              onChange={(eventObject) =>
+                                updateActiveGuestImage({
+                                  displayMode: eventObject.currentTarget.value
+                                })
+                              }
+                            >
+                              {GUEST_PAGE_IMAGE_LAYOUT_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {activeGuestImage.displayMode === "crop" ? (
+                            <>
+                              <label className="field">
+                                <span>Utsnitt</span>
+                                <select
+                                  value={activeGuestImage.cropRatio || "16:9"}
+                                  onChange={(eventObject) =>
+                                    updateActiveGuestImage({
+                                      cropRatio: eventObject.currentTarget.value
+                                    })
+                                  }
+                                >
+                                  {GUEST_PAGE_IMAGE_RATIO_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="field">
+                                <span>Horisontalt fokus</span>
+                                <input
+                                  max="100"
+                                  min="0"
+                                  step="1"
+                                  type="range"
+                                  value={activeGuestImage.focusX ?? 50}
+                                  onChange={(eventObject) =>
+                                    updateActiveGuestImage({
+                                      focusX: Number(eventObject.currentTarget.value || 50)
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label className="field">
+                                <span>Vertikalt fokus</span>
+                                <input
+                                  max="100"
+                                  min="0"
+                                  step="1"
+                                  type="range"
+                                  value={activeGuestImage.focusY ?? 50}
+                                  onChange={(eventObject) =>
+                                    updateActiveGuestImage({
+                                      focusY: Number(eventObject.currentTarget.value || 50)
+                                    })
+                                  }
+                                />
+                              </label>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="guest-page-help">
+                          Ingen bildelinje er valgt akkurat nå. Last opp et bilde, eller plasser markøren på en eksisterende bildelinje som ser ut som
+                          `![Bildetekst](...)`.
+                        </p>
+                      )}
                     </div>
                     <div className="guest-page-inline-style-panel">
                       <div className="guest-page-inline-style-grid">

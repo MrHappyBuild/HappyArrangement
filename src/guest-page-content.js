@@ -26,6 +26,133 @@ function sanitizeGuestContentUrl(rawUrl) {
   return "";
 }
 
+function clampGuestImageFocus(value) {
+  const numeric = Number.parseFloat(String(value || ""));
+
+  if (!Number.isFinite(numeric)) {
+    return 50;
+  }
+
+  return Math.min(Math.max(Math.round(numeric), 0), 100);
+}
+
+function normalizeGuestImageDisplayMode(value) {
+  return String(value || "").trim().toLowerCase() === "crop" ? "crop" : "fit";
+}
+
+function normalizeGuestImageCropRatio(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const allowed = new Set(["16:9", "4:3", "1:1", "3:4", "21:9"]);
+
+  return allowed.has(normalized) ? normalized : "16:9";
+}
+
+function parseGuestPageImageAttributes(rawAttributes) {
+  const attributes = typeof rawAttributes === "string" ? rawAttributes : "";
+  const config = {
+    displayMode: "fit",
+    cropRatio: "16:9",
+    focusX: 50,
+    focusY: 50
+  };
+  const attributePattern = /([a-zA-Z]+)\s*=\s*([^\s}]+)/g;
+  let match;
+
+  while ((match = attributePattern.exec(attributes)) !== null) {
+    const [, rawKey, rawValue] = match;
+    const key = rawKey.toLowerCase();
+    const value = rawValue.trim();
+
+    if (key === "mode" || key === "display") {
+      config.displayMode = normalizeGuestImageDisplayMode(value);
+    }
+
+    if (key === "ratio") {
+      config.cropRatio = normalizeGuestImageCropRatio(value);
+    }
+
+    if (key === "focusx") {
+      config.focusX = clampGuestImageFocus(value);
+    }
+
+    if (key === "focusy") {
+      config.focusY = clampGuestImageFocus(value);
+    }
+  }
+
+  return config;
+}
+
+export function parseGuestPageImageMarkup(markdown) {
+  const source = typeof markdown === "string" ? markdown.trim() : "";
+  const imageMatch = source.match(/^!\[([^\]]*)\]\(([^)\s]+)\)(?:\{([^}]*)\})?$/);
+
+  if (!imageMatch) {
+    return null;
+  }
+
+  const [, alt, rawUrl, rawAttributes] = imageMatch;
+  const safeUrl = sanitizeGuestContentUrl(rawUrl);
+
+  if (!safeUrl) {
+    return null;
+  }
+
+  return {
+    type: "image",
+    alt: alt || "Bilde",
+    src: safeUrl,
+    ...parseGuestPageImageAttributes(rawAttributes)
+  };
+}
+
+export function buildGuestPageImageMarkup(config) {
+  const safeConfig = config && typeof config === "object" ? config : {};
+  const alt = String(safeConfig.alt || "Bilde").trim() || "Bilde";
+  const src = sanitizeGuestContentUrl(safeConfig.src || "");
+
+  if (!src) {
+    return "";
+  }
+
+  const displayMode = normalizeGuestImageDisplayMode(safeConfig.displayMode);
+  const cropRatio = normalizeGuestImageCropRatio(safeConfig.cropRatio);
+  const focusX = clampGuestImageFocus(safeConfig.focusX);
+  const focusY = clampGuestImageFocus(safeConfig.focusY);
+  const attributes = [];
+
+  if (displayMode === "crop") {
+    attributes.push("mode=crop");
+    attributes.push(`ratio=${cropRatio}`);
+    attributes.push(`focusX=${focusX}`);
+    attributes.push(`focusY=${focusY}`);
+  }
+
+  return `![${alt}](${src})${attributes.length ? `{${attributes.join(" ")}}` : ""}`;
+}
+
+export function getGuestPageImageCropAspectRatio(value) {
+  const ratio = normalizeGuestImageCropRatio(value);
+
+  if (ratio === "21:9") {
+    return "21 / 9";
+  }
+
+  if (ratio === "16:9") {
+    return "16 / 9";
+  }
+
+  if (ratio === "4:3") {
+    return "4 / 3";
+  }
+
+  if (ratio === "3:4") {
+    return "3 / 4";
+  }
+
+  return "1 / 1";
+}
+
 function decodeGuestHtmlEntities(text) {
   return String(text || "")
     .replace(/&nbsp;/gi, " ")
@@ -219,19 +346,10 @@ export function parseGuestPageContent(content) {
     .map((block) => block.trim())
     .filter(Boolean)
     .map((block) => {
-      const imageMatch = block.match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+      const imageBlock = parseGuestPageImageMarkup(block);
 
-      if (imageMatch) {
-        const [, alt, rawUrl] = imageMatch;
-        const safeUrl = sanitizeGuestContentUrl(rawUrl);
-
-        if (safeUrl) {
-          return {
-            type: "image",
-            alt: alt || "Bilde",
-            src: safeUrl
-          };
-        }
+      if (imageBlock) {
+        return imageBlock;
       }
 
       if (block.startsWith("## ")) {

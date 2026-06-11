@@ -1,4 +1,7 @@
-import { parseGuestPageContent } from "@/guest-page-content";
+import {
+  getGuestPageImageCropAspectRatio,
+  parseGuestPageContent
+} from "@/guest-page-content";
 
 function renderGuestPageInlineParts(parts, keyPrefix) {
   return parts.map((part, index) => {
@@ -59,14 +62,38 @@ export function GuestPageContentView({ content, showImageCaption = false }) {
     <div className="guest-page-rendered">
       {blocks.map((block, index) => {
         if (block.type === "image") {
+          const isCropped = block.displayMode === "crop";
+          const cropFrameStyle = isCropped
+            ? {
+                aspectRatio: getGuestPageImageCropAspectRatio(block.cropRatio)
+              }
+            : undefined;
+          const imageStyle = isCropped
+            ? {
+                objectPosition: `${block.focusX}% ${block.focusY}%`
+              }
+            : undefined;
+
           return (
-            <figure className="guest-page-figure" key={`block-${index}`}>
-              <img
-                alt={block.alt}
-                className="guest-page-image"
-                loading="lazy"
-                src={block.src}
-              />
+            <figure className={`guest-page-figure ${isCropped ? "is-cropped" : ""}`} key={`block-${index}`}>
+              {isCropped ? (
+                <div className="guest-page-image-frame" style={cropFrameStyle}>
+                  <img
+                    alt={block.alt}
+                    className="guest-page-image"
+                    loading="lazy"
+                    src={block.src}
+                    style={imageStyle}
+                  />
+                </div>
+              ) : (
+                <img
+                  alt={block.alt}
+                  className="guest-page-image"
+                  loading="lazy"
+                  src={block.src}
+                />
+              )}
               {showImageCaption && block.alt ? <figcaption>{block.alt}</figcaption> : null}
             </figure>
           );

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseGuestPageContent, parseGuestPageInlineContent } from "../src/guest-page-content.js";
+import {
+  buildGuestPageImageMarkup,
+  parseGuestPageContent,
+  parseGuestPageImageMarkup,
+  parseGuestPageInlineContent
+} from "../src/guest-page-content.js";
 
 test("parseGuestPageContent supports uploaded images and simple link markdown", () => {
   const blocks = parseGuestPageContent(`
@@ -19,6 +24,28 @@ Se [programmet](https://example.com/program).
   assert.equal(blocks[2].type, "paragraph");
   assert.equal(blocks[2].parts[1].type, "link");
   assert.equal(blocks[2].parts[1].href, "https://example.com/program");
+});
+
+test("parseGuestPageImageMarkup supports crop settings for guest page images", () => {
+  const image = parseGuestPageImageMarkup(
+    "![Kart](/api/events/event-1/guest-media/media-1){mode=crop ratio=4:3 focusX=30 focusY=70}"
+  );
+
+  assert.ok(image);
+  assert.equal(image.displayMode, "crop");
+  assert.equal(image.cropRatio, "4:3");
+  assert.equal(image.focusX, 30);
+  assert.equal(image.focusY, 70);
+});
+
+test("buildGuestPageImageMarkup omits crop settings for standard fit mode", () => {
+  const markdown = buildGuestPageImageMarkup({
+    alt: "Kart",
+    src: "/api/events/event-1/guest-media/media-1",
+    displayMode: "fit"
+  });
+
+  assert.equal(markdown, "![Kart](/api/events/event-1/guest-media/media-1)");
 });
 
 test("parseGuestPageInlineContent treats unsafe javascript links as plain text", () => {
