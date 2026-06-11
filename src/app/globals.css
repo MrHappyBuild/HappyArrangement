@@ -2784,18 +2784,26 @@ p {
 .guest-seating-map-head,
 .guest-seating-table-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   align-items: baseline;
 }
 
-.guest-seating-map-head span,
+.guest-seating-map-head > div:first-child,
+.guest-seating-table-head > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.guest-seating-map-head > div:first-child span,
 .guest-seating-table-head span {
   color: var(--muted);
   font-size: 0.86rem;
 }
 
 .guest-seating-map-shell {
+  overflow: hidden;
   padding: 14px;
   border-radius: 24px;
   border: 1px solid rgba(91, 59, 18, 0.08);
@@ -2803,13 +2811,16 @@ p {
 }
 
 .guest-seating-map-scroll {
+  max-width: 100%;
   overflow: auto;
   padding-bottom: 2px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
 }
 
 .guest-seating-map {
   position: relative;
-  width: 100%;
+  flex: 0 0 auto;
   min-height: 360px;
   border-radius: 22px;
   overflow: hidden;
@@ -2829,6 +2840,14 @@ p {
       transparent 1px,
       transparent 36px
     );
+}
+
+.guest-seating-map-tools {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .guest-seating-map-grid {
@@ -3344,6 +3363,7 @@ p {
 
 .venue-zoom-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -3354,6 +3374,10 @@ p {
 
 .venue-zoom-field input[type="range"] {
   width: 100%;
+}
+
+.venue-zoom-number-field {
+  width: 108px;
 }
 
 .venue-library-grid {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildVenuePlanningState } from "@/venue-layout-utils";
 
@@ -53,10 +53,27 @@ function buildItemSearchText(item) {
   return parts.join(" ").toLowerCase();
 }
 
+function clampNumber(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getGuestMapFitWidth(viewportWidthPixels) {
+  const numeric = Number(viewportWidthPixels);
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 520;
+  }
+
+  return Math.max(240, Math.round(numeric));
+}
+
 export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
   const [search, setSearch] = useState("");
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState("list");
+  const [mapZoomPercent, setMapZoomPercent] = useState(100);
+  const [mapViewportWidth, setMapViewportWidth] = useState(0);
+  const mapViewportRef = useRef(null);
   const searchValue = normalizeSearchValue(search);
   const venueState = useMemo(() => buildVenuePlanningState(event), [event]);
   const seatableItems = useMemo(
@@ -88,12 +105,13 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
   const roomStyle = {
     aspectRatio: `${venueState.venuePlan.room.widthMeters} / ${venueState.venuePlan.room.heightMeters}`
   };
-  const mapSurfaceStyle = isCompactLayout
-    ? {
-        ...roomStyle,
-        minWidth: "560px"
-      }
-    : roomStyle;
+  const mapFitWidth = getGuestMapFitWidth(mapViewportWidth);
+  const mapRenderWidth = Math.max(220, Math.round(mapFitWidth * (mapZoomPercent / 100)));
+  const mapSurfaceStyle = {
+    ...roomStyle,
+    width: `${mapRenderWidth}px`,
+    minWidth: `${mapRenderWidth}px`
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -123,6 +141,37 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
     mediaQuery.addListener(applyLayout);
     return () => mediaQuery.removeListener(applyLayout);
   }, []);
+
+  useEffect(() => {
+    const viewport = mapViewportRef.current;
+
+    if (!viewport) {
+      return undefined;
+    }
+
+    const updateViewportWidth = () => {
+      setMapViewportWidth(Math.max(0, Math.floor(viewport.clientWidth)));
+    };
+
+    updateViewportWidth();
+
+    if (typeof ResizeObserver === "function") {
+      const observer = new ResizeObserver(() => {
+        updateViewportWidth();
+      });
+
+      observer.observe(viewport);
+
+      return () => observer.disconnect();
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", updateViewportWidth);
+      return () => window.removeEventListener("resize", updateViewportWidth);
+    }
+
+    return undefined;
+  }, [effectiveViewMode]);
 
   return (
     <section className="guest-seating-shell stack">
@@ -200,12 +249,38 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
           }`}
         >
           <div className="guest-seating-map-head">
-            <strong>{venueState.venuePlan.room.name}</strong>
-            <span>
-              {venueState.assignedSeats} av {venueState.totalSeats} plasser fylt
-            </span>
+            <div>
+              <strong>{venueState.venuePlan.room.name}</strong>
+              <span>
+                {venueState.assignedSeats} av {venueState.totalSeats} plasser fylt
+              </span>
+            </div>
+            <div className="guest-seating-map-tools">
+              <button
+                className="secondary-button compact-action-button"
+                type="button"
+                onClick={() =>
+                  setMapZoomPercent((currentValue) => clampNumber(Math.round(currentValue / 1.2), 60, 260))
+                }
+              >
+                -
+              </button>
+              <span className="role-pill">{Math.round(mapZoomPercent)}%</span>
+              <button
+                className="secondary-button compact-action-button"
+                type="button"
+                onClick={() =>
+                  setMapZoomPercent((currentValue) => clampNumber(Math.round(currentValue * 1.2), 60, 260))
+                }
+              >
+                +
+              </button>
+              <button className="secondary-button compact-action-button" type="button" onClick={() => setMapZoomPercent(100)}>
+                Tilpass
+              </button>
+            </div>
           </div>
-          <div className="guest-seating-map-shell">
+          <div className="guest-seating-map-shell" ref={mapViewportRef}>
             <div className="guest-seating-map-scroll">
               <div className="guest-seating-map" style={mapSurfaceStyle}>
                 <div className="guest-seating-map-grid" />

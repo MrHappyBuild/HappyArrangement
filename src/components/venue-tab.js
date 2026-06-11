@@ -123,12 +123,21 @@ function isCircularVenueItem(item) {
   return item?.shape === "circle";
 }
 
-function getMinimumVenueCanvasWidth(roomWidthMeters, roomHeightMeters) {
-  const safeWidth = Number(roomWidthMeters) > 0 ? Number(roomWidthMeters) : 12;
-  const safeHeight = Number(roomHeightMeters) > 0 ? Number(roomHeightMeters) : 8;
-  const minimumReadableHeightPx = 460;
+function getVenueZoomBounds(isFocusMode) {
+  return {
+    min: 5,
+    max: isFocusMode ? 4000 : 2000
+  };
+}
 
-  return Math.max(440, Math.round((minimumReadableHeightPx * safeWidth) / safeHeight));
+function getVenueFitCanvasWidth(shellWidthPixels) {
+  const numeric = Number(shellWidthPixels);
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 860;
+  }
+
+  return Math.max(260, Math.round(numeric));
 }
 
 function mapResizeDeltaByRotation(rotation, deltaWidthMeters, deltaHeightMeters) {
@@ -162,6 +171,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   const [guestFilter, setGuestFilter] = useState("active");
   const [guestSearch, setGuestSearch] = useState("");
   const [zoomPercent, setZoomPercent] = useState(100);
+  const [shellViewportWidth, setShellViewportWidth] = useState(0);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [seatAdjustMode, setSeatAdjustMode] = useState(false);
   const [planDraft, setPlanDraft] = useState(() => normalizeVenuePlan(event.venuePlan));
@@ -202,7 +212,39 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   }, [isFocusMode]);
 
   useEffect(() => {
-    setZoomPercent((currentValue) => clampNumber(currentValue, 50, isFocusMode ? 240 : 180));
+    const zoomBounds = getVenueZoomBounds(isFocusMode);
+    setZoomPercent((currentValue) => clampNumber(currentValue, zoomBounds.min, zoomBounds.max));
+  }, [isFocusMode]);
+
+  useEffect(() => {
+    const shell = shellRef.current;
+
+    if (!shell) {
+      return undefined;
+    }
+
+    const updateViewportWidth = () => {
+      setShellViewportWidth(Math.max(0, Math.floor(shell.clientWidth)));
+    };
+
+    updateViewportWidth();
+
+    if (typeof ResizeObserver === "function") {
+      const observer = new ResizeObserver(() => {
+        updateViewportWidth();
+      });
+
+      observer.observe(shell);
+
+      return () => observer.disconnect();
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", updateViewportWidth);
+      return () => window.removeEventListener("resize", updateViewportWidth);
+    }
+
+    return undefined;
   }, [isFocusMode]);
 
   const venueState = useMemo(
@@ -635,9 +677,19 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   }
 
   function handleZoomStep(direction) {
-    setZoomPercent((currentValue) =>
-      clampNumber(currentValue + direction * 10, 50, isFocusMode ? 240 : 180)
-    );
+    const zoomBounds = getVenueZoomBounds(isFocusMode);
+
+    setZoomPercent((currentValue) => {
+      const multiplier = direction > 0 ? 1.2 : 1 / 1.2;
+      const nextValue = Math.round((currentValue * multiplier) / 5) * 5;
+      const fallbackValue = currentValue + direction * 5;
+
+      return clampNumber(
+        nextValue === currentValue ? fallbackValue : nextValue,
+        zoomBounds.min,
+        zoomBounds.max
+      );
+    });
   }
 
   function getSeatNameDirectionClass(seat) {
@@ -664,13 +716,13 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     "--venue-room-width": roomWidthMeters,
     "--venue-room-height": roomHeightMeters
   };
-  const baseCanvasWidth = getMinimumVenueCanvasWidth(roomWidthMeters, roomHeightMeters);
-  const scaledCanvasWidth = Math.max(320, Math.round(baseCanvasWidth * (zoomPercent / 100)));
+  const zoomBounds = getVenueZoomBounds(isFocusMode);
+  const baseCanvasWidth = getVenueFitCanvasWidth(shellViewportWidth);
+  const scaledCanvasWidth = Math.max(180, Math.round(baseCanvasWidth * (zoomPercent / 100)));
   const canvasScaleStyle = {
     width: `${scaledCanvasWidth}px`,
     minWidth: `${scaledCanvasWidth}px`
   };
-  const zoomMax = isFocusMode ? 240 : 180;
 
   return (
     <>
@@ -716,18 +768,50 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
                 -
               </button>
               <label className="field venue-zoom-field">
-                <span>Zoom</span>
+                <span>Zoom (100 % = tilpass)</span>
                 <input
-                  max={zoomMax}
-                  min="50"
+                  max={zoomBounds.max}
+                  min={zoomBounds.min}
                   onChange={(eventObject) =>
-                    setZoomPercent(clampNumber(Number(eventObject.currentTarget.value || 100), 50, zoomMax))
+                    setZoomPercent(
+                      clampNumber(
+                        Number(eventObject.currentTarget.value || 100),
+                        zoomBounds.min,
+                        zoomBounds.max
+                      )
+                    )
                   }
+                  step="5"
                   type="range"
                   value={zoomPercent}
                 />
               </label>
-              <span className="role-pill">{zoomPercent}%</span>
+              <label className="field venue-zoom-number-field">
+                <span>Prosent</span>
+                <input
+                  max={zoomBounds.max}
+                  min={zoomBounds.min}
+                  onChange={(eventObject) =>
+                    setZoomPercent(
+                      clampNumber(
+                        Number(eventObject.currentTarget.value || 100),
+                        zoomBounds.min,
+                        zoomBounds.max
+                      )
+                    )
+                  }
+                  step="5"
+                  type="number"
+                  value={zoomPercent}
+                />
+              </label>
+              <button
+                className="secondary-button compact-action-button"
+                type="button"
+                onClick={() => setZoomPercent(100)}
+              >
+                Tilpass
+              </button>
               <button className="secondary-button compact-action-button" type="button" onClick={() => handleZoomStep(1)}>
                 +
               </button>
