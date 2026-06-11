@@ -150,6 +150,13 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
   };
   const mapFitWidth = getGuestMapFitWidth(mapViewportWidth);
   const mapRenderWidth = Math.max(32, Math.round(mapFitWidth * (mapZoomPercent / 100)));
+  const mapRenderHeight = Math.max(
+    32,
+    Math.round(
+      mapRenderWidth *
+        (venueState.venuePlan.room.heightMeters / Math.max(venueState.venuePlan.room.widthMeters, 1))
+    )
+  );
   const mapSurfaceStyle = {
     ...roomStyle,
     width: `${mapRenderWidth}px`,
@@ -215,6 +222,44 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
 
     return undefined;
   }, [effectiveViewMode]);
+
+  useEffect(() => {
+    const viewport = mapViewportRef.current;
+
+    if (!viewport || !searchValue || searchMatches.length === 0) {
+      return;
+    }
+
+    const highlightedItem = visibleMapItems.find((item) => item.id === searchMatches[0]?.itemId);
+
+    if (!highlightedItem) {
+      return;
+    }
+
+    const itemWidthPixels = (mapRenderWidth * highlightedItem.widthPercent) / 100;
+    const itemHeightPercent = highlightedItem.shape === "circle"
+      ? highlightedItem.widthPercent
+      : highlightedItem.heightPercent;
+    const itemHeightPixels = (mapRenderHeight * itemHeightPercent) / 100;
+    const itemCenterLeft = (mapRenderWidth * highlightedItem.x) / 100 + itemWidthPixels / 2;
+    const itemCenterTop = (mapRenderHeight * highlightedItem.y) / 100 + itemHeightPixels / 2;
+    const nextScrollLeft = clampNumber(
+      Math.round(itemCenterLeft - viewport.clientWidth / 2),
+      0,
+      Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    );
+    const nextScrollTop = clampNumber(
+      Math.round(itemCenterTop - viewport.clientHeight / 2),
+      0,
+      Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+    );
+
+    viewport.scrollTo({
+      left: nextScrollLeft,
+      top: nextScrollTop,
+      behavior: "smooth"
+    });
+  }, [searchMatches, searchValue, visibleMapItems, mapRenderHeight, mapRenderWidth]);
 
   return (
     <section className="guest-seating-shell stack">
@@ -431,13 +476,7 @@ export function GuestSeatingPageView({ event, title = "Sitteplan" }) {
                     <ul className="guest-seating-guest-list">
                       {item.assignedSeats.map((seat) => (
                         <li key={seat.id}>
-                          <span>
-                            {guestNameDisplay === "full"
-                              ? seat.guest.name
-                              : guestNameDisplay === "initials"
-                                ? formatGuestInitials(seat.guest.name)
-                                : "Opptatt plass"}
-                          </span>
+                          <span title={seat.guest.name}>{seat.guest.name}</span>
                           <strong>{seat.label}</strong>
                         </li>
                       ))}
