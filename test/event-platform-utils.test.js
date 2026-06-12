@@ -641,7 +641,7 @@ test("buildTaskAgenda calculates start and end times from event start, duration 
   assert.equal(agenda.tasks[2].scheduledEndAt, "2026-06-20T17:50");
 });
 
-test("buildTaskAgenda warns when a task depends on a later task in the list", () => {
+test("buildTaskAgenda reorders tasks so dependencies are scheduled before dependents", () => {
   const event = ensureEventShape({
     id: "event-3",
     name: "Festival",
@@ -669,8 +669,56 @@ test("buildTaskAgenda warns when a task depends on a later task in the list", ()
 
   const agenda = buildTaskAgenda(event);
 
-  assert.equal(agenda.warningCount, 1);
-  assert.match(agenda.tasks[0].warnings[0], /ligger senere i agendaen/);
+  assert.equal(agenda.warningCount, 0);
+  assert.equal(agenda.tasks[0].title, "Lydsjekk");
+  assert.equal(agenda.tasks[0].scheduledStartAt, "2026-07-01T12:00");
+  assert.equal(agenda.tasks[0].scheduledEndAt, "2026-07-01T12:30");
+  assert.equal(agenda.tasks[1].title, "Sceneoppsett");
+  assert.equal(agenda.tasks[1].scheduledStartAt, "2026-07-01T12:30");
+  assert.equal(agenda.tasks[1].scheduledEndAt, "2026-07-01T13:30");
+});
+
+test("buildTaskAgenda reorders sibling underaktiviteter to respect later dependencies", () => {
+  const agenda = buildTaskAgenda({
+    id: "event-sibling-dependency-reorder",
+    name: "Bryllup",
+    overview: {
+      startsAt: "2026-06-20T18:00"
+    },
+    tasks: [
+      {
+        id: "task-parent",
+        title: "Middag",
+        durationMinutes: 0,
+        desiredStartAt: "2026-06-20T18:00",
+        isFixedTime: true,
+        orderIndex: 0
+      },
+      {
+        id: "task-a",
+        title: "Brudens tale",
+        parentTaskId: "task-parent",
+        durationMinutes: 5,
+        dependencyIds: ["task-b"],
+        orderIndex: 1
+      },
+      {
+        id: "task-b",
+        title: "Pause før Brudens tale",
+        parentTaskId: "task-parent",
+        durationMinutes: 10,
+        orderIndex: 2
+      }
+    ]
+  });
+
+  assert.equal(agenda.warningCount, 0);
+  assert.equal(agenda.tasks[1].title, "Pause før Brudens tale");
+  assert.equal(agenda.tasks[1].scheduledStartAt, "2026-06-20T18:00");
+  assert.equal(agenda.tasks[1].scheduledEndAt, "2026-06-20T18:10");
+  assert.equal(agenda.tasks[2].title, "Brudens tale");
+  assert.equal(agenda.tasks[2].scheduledStartAt, "2026-06-20T18:10");
+  assert.equal(agenda.tasks[2].scheduledEndAt, "2026-06-20T18:15");
 });
 
 test("buildTaskAgenda keeps fixed-time tasks at desired start without warning on unrelated overlap", () => {

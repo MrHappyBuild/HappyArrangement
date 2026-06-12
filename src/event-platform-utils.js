@@ -402,13 +402,36 @@ function orderTasksByHierarchy(tasks) {
   rootTasks.sort(compareTaskSequence);
 
   const orderedTasks = [];
+  const visited = new Set();
+  const visiting = new Set();
 
   function visit(task) {
+    if (!task || visited.has(task.id)) {
+      return;
+    }
+
+    if (visiting.has(task.id)) {
+      return;
+    }
+
+    visiting.add(task.id);
+
+    const dependencies = (Array.isArray(task.dependencyIds) ? task.dependencyIds : [])
+      .map((dependencyId) => taskMap.get(dependencyId))
+      .filter(Boolean)
+      .sort(compareTaskSequence);
+
+    dependencies.forEach((dependencyTask) => visit(dependencyTask));
+
     orderedTasks.push(task);
+    visited.add(task.id);
     (childMap.get(task.id) || []).forEach((childTask) => visit(childTask));
+    visiting.delete(task.id);
   }
 
   rootTasks.forEach((task) => visit(task));
+
+  taskList.forEach((task) => visit(task));
 
   return {
     orderedTasks,
