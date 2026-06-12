@@ -2155,22 +2155,26 @@ export function buildProjectHierarchy(event, options = {}) {
     const subtreeAssigneeNames = subtreeAssigneeIds
       .map((assigneeId) => peopleMap.get(assigneeId) || "")
       .filter(Boolean);
-    const subtreeStartCandidates = [
-      Number.isFinite(node.timelineStartMs)
-        ? node.timelineStartMs
-        : Number.isFinite(node.scheduledStartMs)
-          ? node.scheduledStartMs
-          : null,
-      ...children.map((childNode) => childNode.subtreeStartMs)
-    ].filter((value) => Number.isFinite(value));
-    const subtreeEndCandidates = [
-      Number.isFinite(node.timelineEndMs)
-        ? node.timelineEndMs
-        : Number.isFinite(node.scheduledEndMs)
-          ? node.scheduledEndMs
-          : null,
-      ...children.map((childNode) => childNode.subtreeEndMs)
-    ].filter((value) => Number.isFinite(value));
+    const ownStartCandidate = Number.isFinite(node.timelineStartMs)
+      ? node.timelineStartMs
+      : Number.isFinite(node.scheduledStartMs)
+        ? node.scheduledStartMs
+        : null;
+    const ownEndCandidate = Number.isFinite(node.timelineEndMs)
+      ? node.timelineEndMs
+      : Number.isFinite(node.scheduledEndMs)
+        ? node.scheduledEndMs
+        : null;
+    const subtreeStartCandidates = node.hasExplicitTimeAnchor
+      ? [ownStartCandidate].filter((value) => Number.isFinite(value))
+      : [ownStartCandidate, ...children.map((childNode) => childNode.subtreeStartMs)].filter((value) =>
+          Number.isFinite(value)
+        );
+    const subtreeEndCandidates = node.hasExplicitTimeAnchor
+      ? [ownEndCandidate].filter((value) => Number.isFinite(value))
+      : [ownEndCandidate, ...children.map((childNode) => childNode.subtreeEndMs)].filter((value) =>
+          Number.isFinite(value)
+        );
     const subtreeStartMs = subtreeStartCandidates.length ? Math.min(...subtreeStartCandidates) : null;
     const subtreeEndMs = subtreeEndCandidates.length ? Math.max(...subtreeEndCandidates) : null;
     const subtreeDurationMinutes =

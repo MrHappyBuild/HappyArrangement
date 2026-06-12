@@ -1178,6 +1178,55 @@ test("buildProjectHierarchy groups roots by subproject and aggregates subtree pr
   assert.equal(parentNode.subtreeAssigneeLabel, "Mor, Toastmaster");
 });
 
+test("buildProjectHierarchy keeps anchored parent timing instead of stretching it across children", () => {
+  const hierarchy = buildProjectHierarchy({
+    id: "event-project-hierarchy-fixed-parent",
+    name: "Bryllup",
+    overview: {
+      startsAt: "2026-07-20T14:15"
+    },
+    tasks: [
+      {
+        id: "task-1",
+        title: "Vielse",
+        durationMinutes: 45,
+        desiredStartAt: "2026-07-20T14:15",
+        isFixedTime: true,
+        orderIndex: 0
+      },
+      {
+        id: "task-2",
+        title: "Bilder av brudeparet",
+        durationMinutes: 90,
+        dependencyIds: ["task-1"],
+        orderIndex: 1
+      },
+      {
+        id: "task-parent",
+        title: "Velkomstdrinker",
+        durationMinutes: 5,
+        desiredStartAt: "2026-06-20T16:00",
+        isFixedTime: true,
+        orderIndex: 2
+      },
+      {
+        id: "task-child",
+        title: "Introdusere leker og velkomstdrinker",
+        parentTaskId: "task-parent",
+        durationMinutes: 15,
+        desiredStartAt: "2026-06-20T16:00",
+        orderIndex: 3
+      }
+    ]
+  });
+
+  const velkomstNode = hierarchy.groups[0].rootNodes.find((node) => node.id === "task-parent");
+
+  assert.equal(velkomstNode.subtreeStartAt, "2026-06-20T16:00");
+  assert.equal(velkomstNode.subtreeEndAt, "2026-06-20T16:05");
+  assert.equal(velkomstNode.subtreeDurationMinutes, 5);
+});
+
 test("buildProjectSummary includes extended planning health metrics", () => {
   const summary = buildProjectSummary(
     {
