@@ -385,3 +385,13 @@ export function parseGuestPageContent(content) {
       };
     });
 }
+
+export function collectGuestPageImageUrls(content) {
+  return [
+    ...new Set(
+      parseGuestPageContent(content)
+        .filter((block) => block.type === "image" && block.src)
+        .map((block) => block.src)
+    )
+  ];
+}

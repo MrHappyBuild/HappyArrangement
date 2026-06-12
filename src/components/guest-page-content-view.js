@@ -40,7 +40,11 @@ function renderGuestPageInlineParts(parts, keyPrefix) {
   });
 }
 
-export function GuestPageContentView({ content, showImageCaption = false }) {
+export function GuestPageContentView({
+  content,
+  showImageCaption = false,
+  imageLoading = "lazy"
+}) {
   let blocks;
 
   try {
@@ -81,7 +85,7 @@ export function GuestPageContentView({ content, showImageCaption = false }) {
                   <img
                     alt={block.alt}
                     className="guest-page-image"
-                    loading="lazy"
+                    loading={imageLoading}
                     src={block.src}
                     style={imageStyle}
                   />
@@ -90,7 +94,7 @@ export function GuestPageContentView({ content, showImageCaption = false }) {
                 <img
                   alt={block.alt}
                   className="guest-page-image"
-                  loading="lazy"
+                  loading={imageLoading}
                   src={block.src}
                 />
               )}

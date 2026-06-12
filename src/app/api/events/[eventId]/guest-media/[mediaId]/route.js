@@ -35,7 +35,7 @@ export async function GET(_request, context) {
     return new NextResponse(media.buffer, {
       headers: {
         "Content-Type": media.contentType || "image/png",
-        "Cache-Control": "no-store"
+        "Cache-Control": "public, max-age=31536000, immutable"
       }
     });
   } catch (error) {

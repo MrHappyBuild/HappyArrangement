@@ -3,9 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { GuestAgendaPageView } from "@/components/guest-agenda-page-view";
-import { GuestPageContentView } from "@/components/guest-page-content-view";
-import { GuestSeatingPageView } from "@/components/guest-seating-page-view";
+import { GuestSitePublicStage } from "@/components/guest-site-public-stage";
 import {
   buildGuestSiteBasePath,
   buildGuestSiteNavigationEntries,
@@ -119,6 +117,7 @@ export default async function GuestSitePage({ params }) {
   const guestSiteShellStyle =
     guestSiteBackgroundMode === "shell" ? guestSiteBackgroundStyles.shellStyle : undefined;
   const selectedMenuLabel = selectedPage.menuLabel || selectedPage.title;
+  const isLandingPage = selectedPage.id === pages[0]?.id;
 
   return (
     <main
@@ -198,25 +197,13 @@ export default async function GuestSitePage({ params }) {
         </aside>
 
         <div className="guest-site-stage stack">
-          <article className="guest-site-preview guest-site-public-preview">
-            <h2>{selectedPage.title}</h2>
-            {selectedPage.kind === "venue_seating" ? (
-              <GuestSeatingPageView event={normalizedEvent} title={selectedPage.title} />
-            ) : selectedPage.kind === "guest_agenda" ? (
-              <GuestAgendaPageView event={normalizedEvent} title={selectedPage.title} />
-            ) : (
-              <div
-                className={`guest-site-copy guest-page-font-${selectedPage.fontPreset || "clean"} guest-page-size-${
-                  selectedPage.textSize || "md"
-                } guest-page-weight-${selectedPage.textWeight || "regular"}`}
-              >
-                <GuestPageContentView
-                  content={selectedPage.content || ""}
-                  showImageCaption={Boolean(selectedPage.showImageCaption)}
-                />
-              </div>
-            )}
-          </article>
+          <GuestSitePublicStage
+            backgroundImageUrl={normalizedEvent.guestSite?.backgroundImageUrl || ""}
+            event={normalizedEvent}
+            isLandingPage={isLandingPage}
+            pages={pages}
+            selectedPage={selectedPage}
+          />
         </div>
       </section>
     </main>

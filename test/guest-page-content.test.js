@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildGuestPageImageMarkup,
+  collectGuestPageImageUrls,
   parseGuestPageContent,
   parseGuestPageImageMarkup,
   parseGuestPageInlineContent
@@ -133,4 +134,19 @@ test("parseGuestPageContent preserves leading spaces in paragraphs", () => {
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0].type, "paragraph");
   assert.equal(blocks[0].parts[0].text, "   Forskjovet tekst\n   med nytt innrykk");
+});
+
+test("collectGuestPageImageUrls returns unique uploaded image urls", () => {
+  const urls = collectGuestPageImageUrls(`
+![Kart](/api/events/event-1/guest-media/media-1)
+
+![Kart igjen](/api/events/event-1/guest-media/media-1)
+
+![Program](/api/events/event-1/guest-media/media-2)
+`);
+
+  assert.deepEqual(urls, [
+    "/api/events/event-1/guest-media/media-1",
+    "/api/events/event-1/guest-media/media-2"
+  ]);
 });
