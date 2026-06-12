@@ -1042,7 +1042,8 @@ function GuestTab({
   }
 
   async function handleGuestPageMediaUpload(eventObject) {
-    const file = eventObject.currentTarget.files?.[0];
+    const input = eventObject.currentTarget;
+    const file = input.files?.[0];
 
     if (!file || !editablePage || !viewerAccess.canManageGuest) {
       return;
@@ -1080,7 +1081,9 @@ function GuestTab({
     } catch (error) {
       setMediaStatus(error instanceof Error ? error.message : "Kunne ikke laste opp bildet.");
     } finally {
-      eventObject.currentTarget.value = "";
+      if (input) {
+        input.value = "";
+      }
       setIsUploadingMedia(false);
     }
   }
@@ -1136,7 +1139,8 @@ function GuestTab({
   }
 
   async function handleGuestSiteBackgroundUpload(eventObject) {
-    const file = eventObject.currentTarget.files?.[0];
+    const input = eventObject.currentTarget;
+    const file = input.files?.[0];
 
     if (!file || !viewerAccess.canManageGuest) {
       return;
@@ -1188,7 +1192,9 @@ function GuestTab({
         error instanceof Error ? error.message : "Kunne ikke laste opp bakgrunnsbildet."
       );
     } finally {
-      eventObject.currentTarget.value = "";
+      if (input) {
+        input.value = "";
+      }
       setIsUploadingGuestSiteBackground(false);
     }
   }
