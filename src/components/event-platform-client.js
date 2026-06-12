@@ -168,6 +168,18 @@ function formatDurationMinutes(value) {
   return `${remainder} min`;
 }
 
+function parseTaskDurationInput(value, fallback = 60) {
+  const rawValue =
+    typeof value === "string" || typeof value === "number" ? String(value) : "";
+  const parsed = Number.parseInt(rawValue, 10);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
 function buildGuestInlineStyleMarkup(text, styles) {
   const source = typeof text === "string" ? text : "";
   const attributes = [];
@@ -4148,7 +4160,7 @@ function ProjectTab({
           </label>
           <label className="field agenda-inline-field">
             <span>Varighet (min)</span>
-            <input defaultValue="30" min="5" name="durationMinutes" step="5" type="number" />
+            <input defaultValue="30" min="0" name="durationMinutes" step="5" type="number" />
           </label>
           <label className="field agenda-inline-field">
             <span>Ansvarlig (valgfritt)</span>
@@ -4891,7 +4903,7 @@ function ProjectTab({
               </label>
               <label className="field agenda-inline-field">
                 <span>Varighet (min)</span>
-                <input defaultValue="60" min="5" name="durationMinutes" step="5" type="number" />
+                <input defaultValue="60" min="0" name="durationMinutes" step="5" type="number" />
               </label>
               <label className="field agenda-inline-field">
                 <span>Onsket start</span>
@@ -5841,7 +5853,7 @@ function ProjectTab({
                                     <input
                                       defaultValue={task.durationMinutes}
                                       disabled={!viewerAccess.canManageProject}
-                                      min="5"
+                                      min="0"
                                       name="durationMinutes"
                                       step="5"
                                       type="number"
@@ -7153,7 +7165,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
         isFixedTime: formData.get("isFixedTime") === "on",
         showOnAgenda: formData.get("showOnAgenda") === "on",
         agendaComment: String(formData.get("agendaComment") || "").trim(),
-        durationMinutes: Number(formData.get("durationMinutes") || 60),
+        durationMinutes: parseTaskDurationInput(formData.get("durationMinutes"), 60),
         status: String(formData.get("status") || "todo"),
         subprojectId: formData.has("subprojectId")
           ? String(formData.get("subprojectId") || "").trim()
@@ -7212,7 +7224,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
           ? formData.get("showOnAgenda") === "on"
           : Boolean(task.showOnAgenda),
         durationMinutes: viewerAccess.canManageProject
-          ? Number(formData.get("durationMinutes") || task.durationMinutes || 60)
+          ? parseTaskDurationInput(formData.get("durationMinutes"), task.durationMinutes ?? 60)
           : task.durationMinutes,
         subprojectId: viewerAccess.canManageProject
           ? formData.has("subprojectId")

@@ -744,6 +744,30 @@ test("buildTaskAgenda keeps desired start for independent tasks even when anothe
   assert.equal(agenda.tasks[1].warnings.length, 0);
 });
 
+test("buildTaskAgenda allows zero-duration tasks for anchored overview activities", () => {
+  const agenda = buildTaskAgenda({
+    id: "event-zero-duration-task",
+    name: "Bryllup",
+    overview: {
+      startsAt: "2026-06-10T10:00"
+    },
+    tasks: [
+      {
+        id: "task-1",
+        title: "Taler",
+        durationMinutes: 0,
+        desiredStartAt: "2026-06-10T12:00",
+        orderIndex: 0
+      }
+    ]
+  });
+
+  assert.equal(agenda.tasks[0].scheduledStartAt, "2026-06-10T12:00");
+  assert.equal(agenda.tasks[0].scheduledEndAt, "2026-06-10T12:00");
+  assert.equal(agenda.tasks[0].durationMinutes, 0);
+  assert.equal(agenda.tasks[0].warnings.length, 0);
+});
+
 test("buildTaskAgenda warns when a fixed-time task is blocked by an actual dependency", () => {
   const agenda = buildTaskAgenda({
     id: "event-fixed-dependency-collision",

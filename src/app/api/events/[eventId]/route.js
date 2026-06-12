@@ -161,7 +161,7 @@ function normalizeBooleanInput(value) {
 function normalizeDuration(value, fallback = 60) {
   const numeric = typeof value === "number" ? value : Number.parseInt(String(value || ""), 10);
 
-  if (!Number.isFinite(numeric) || numeric <= 0) {
+  if (!Number.isFinite(numeric) || numeric < 0) {
     return fallback;
   }
 
@@ -879,7 +879,7 @@ export async function PATCH(request, context) {
                 ...directChanges,
                 durationMinutes:
                   Object.prototype.hasOwnProperty.call(rawChanges, "durationMinutes")
-                    ? normalizeDuration(rawChanges.durationMinutes, task.durationMinutes || 60)
+                    ? normalizeDuration(rawChanges.durationMinutes, task.durationMinutes ?? 60)
                     : task.durationMinutes,
                 isFixedTime:
                   Object.prototype.hasOwnProperty.call(rawChanges, "isFixedTime")

@@ -281,7 +281,7 @@ function parseInteger(value, fallback) {
 
 function normalizeTaskDuration(value) {
   const duration = parseInteger(value, DEFAULT_TASK_DURATION_MINUTES);
-  return duration > 0 ? duration : DEFAULT_TASK_DURATION_MINUTES;
+  return duration >= 0 ? duration : DEFAULT_TASK_DURATION_MINUTES;
 }
 
 function normalizeBooleanFlag(value) {
@@ -1702,9 +1702,12 @@ export function buildTaskSwimlanes(event) {
     }
 
     let startColumn = fallbackColumn;
+    const fallbackDurationMinutes = Number.isFinite(Number(task.durationMinutes))
+      ? Number(task.durationMinutes)
+      : DEFAULT_TASK_DURATION_MINUTES;
     let spanColumns = Math.max(
       1,
-      Math.ceil((Number(task.durationMinutes) || DEFAULT_TASK_DURATION_MINUTES) / slotMinutes)
+      Math.ceil(fallbackDurationMinutes / slotMinutes)
     );
 
     if (
