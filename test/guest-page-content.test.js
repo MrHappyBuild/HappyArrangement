@@ -126,3 +126,11 @@ test("parseGuestPageContent converts image html and decodes entities", () => {
   assert.equal(blocks[1].src, "/api/events/event-1/guest-media/media-2");
   assert.equal(blocks[1].alt, "Kart & parkering");
 });
+
+test("parseGuestPageContent preserves leading spaces in paragraphs", () => {
+  const blocks = parseGuestPageContent("   Forskjovet tekst\n   med nytt innrykk");
+
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].type, "paragraph");
+  assert.equal(blocks[0].parts[0].text, "   Forskjovet tekst\n   med nytt innrykk");
+});

@@ -334,52 +334,54 @@ export function parseGuestPageInlineContent(text) {
 export function parseGuestPageContent(content) {
   const normalizedContent =
     typeof content === "string"
-      ? convertHtmlToGuestMarkup(content).replace(/\r/g, "").trim()
+      ? convertHtmlToGuestMarkup(content).replace(/\r/g, "")
       : "";
 
-  if (!normalizedContent) {
+  if (!normalizedContent.trim()) {
     return [];
   }
 
   return normalizedContent
     .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block) => {
-      const imageBlock = parseGuestPageImageMarkup(block);
+    .filter((block) => block.trim().length > 0)
+    .map((rawBlock) => {
+      const trimmedBlock = rawBlock.trim();
+      const imageBlock = parseGuestPageImageMarkup(trimmedBlock);
 
       if (imageBlock) {
         return imageBlock;
       }
 
-      if (block.startsWith("## ")) {
+      if (trimmedBlock.startsWith("## ")) {
         return {
           type: "heading",
           level: 2,
-          parts: parseGuestPageInlineContent(block.slice(3).trim())
+          parts: parseGuestPageInlineContent(trimmedBlock.slice(3).trim())
         };
       }
 
-      if (block.startsWith("# ")) {
+      if (trimmedBlock.startsWith("# ")) {
         return {
           type: "heading",
           level: 1,
-          parts: parseGuestPageInlineContent(block.slice(2).trim())
+          parts: parseGuestPageInlineContent(trimmedBlock.slice(2).trim())
         };
       }
 
-      const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+      const lines = rawBlock.split("\n").filter((line) => line.trim().length > 0);
 
-      if (lines.length > 0 && lines.every((line) => line.startsWith("- "))) {
+      if (lines.length > 0 && lines.every((line) => /^\s*-\s+/.test(line))) {
         return {
           type: "list",
-          items: lines.map((line) => parseGuestPageInlineContent(line.slice(2).trim()))
+          items: lines.map((line) =>
+            parseGuestPageInlineContent(line.replace(/^\s*-\s+/, "").trim())
+          )
         };
       }
 
       return {
         type: "paragraph",
-        parts: parseGuestPageInlineContent(lines.join(" "))
+        parts: parseGuestPageInlineContent(rawBlock)
       };
     });
 }

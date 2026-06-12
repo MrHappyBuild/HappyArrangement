@@ -3247,6 +3247,10 @@ p {
   margin: 0;
 }
 
+.guest-page-paragraph {
+  white-space: pre-wrap;
+}
+
 .guest-page-list {
   display: grid;
   gap: 8px;
