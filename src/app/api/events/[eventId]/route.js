@@ -22,7 +22,8 @@ import {
 import { normalizeVenuePlan } from "@/venue-layout-utils";
 import {
   applyTaskRelationshipUpdates,
-  deriveFollowingTaskIds
+  deriveFollowingTaskIds,
+  hasTaskDependencyCycle
 } from "@/task-dependency-utils";
 import { applyTaskHierarchyUpdates, moveTaskSubtree } from "@/task-hierarchy-utils";
 
@@ -42,6 +43,34 @@ function cleanIdList(values) {
   return Array.from(
     new Set(values.map((value) => cleanString(value)).filter(Boolean))
   );
+}
+
+function normalizeLookupKey(value) {
+  return cleanString(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function buildTaskReferenceCode(title, usedCodes) {
+  const baseCode =
+    cleanString(title)
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 24) || "TASK";
+  let nextCode = baseCode;
+  let counter = 2;
+
+  while (usedCodes.has(normalizeLookupKey(nextCode))) {
+    nextCode = `${baseCode}-${counter}`;
+    counter += 1;
+  }
+
+  usedCodes.add(normalizeLookupKey(nextCode));
+  return nextCode;
 }
 
 function findMatchingPersonIndex(people, incomingPerson) {
@@ -720,6 +749,15 @@ export async function PATCH(request, context) {
         const dependencyIds = cleanIdList(payload?.task?.dependencyIds);
         const followingTaskIds = cleanIdList(payload?.task?.followingTaskIds);
         const subprojectIds = (current.subprojects || []).map((subproject) => subproject.id);
+        const usedReferenceCodes = new Set(
+          baseTasks
+            .map((task) => normalizeLookupKey(task?.referenceCode || task?.id))
+            .filter(Boolean)
+        );
+        const requestedReferenceCode = cleanString(payload?.task?.referenceCode);
+        const referenceCode = requestedReferenceCode
+          ? buildTaskReferenceCode(requestedReferenceCode, usedReferenceCodes)
+          : buildTaskReferenceCode(title, usedReferenceCodes);
 
         if (!title) {
           throw new Error("Skriv inn en oppgave.");
@@ -727,6 +765,7 @@ export async function PATCH(request, context) {
 
         baseTasks.push({
           id: taskId,
+          referenceCode,
           title,
           description: cleanString(payload?.task?.description),
           agendaComment: cleanString(payload?.task?.agendaComment),
@@ -877,6 +916,10 @@ export async function PATCH(request, context) {
             ? {
                 ...task,
                 ...directChanges,
+                referenceCode:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "referenceCode")
+                    ? cleanString(rawChanges.referenceCode)
+                    : task.referenceCode,
                 durationMinutes:
                   Object.prototype.hasOwnProperty.call(rawChanges, "durationMinutes")
                     ? normalizeDuration(rawChanges.durationMinutes, task.durationMinutes ?? 60)
@@ -921,6 +964,194 @@ export async function PATCH(request, context) {
             nextDependencyIds,
             nextFollowingTaskIds
           )
+        };
+      }
+
+      if (action === "bulk_upsert_tasks") {
+        const incomingTasks = Array.isArray(payload?.tasks) ? payload.tasks : [];
+
+        if (incomingTasks.length === 0) {
+          throw new Error("Ingen oppgaver aa importere.");
+        }
+
+        const currentTasks = Array.isArray(current.tasks) ? current.tasks.map((task) => ({ ...task })) : [];
+        const tasksById = new Map(currentTasks.map((task, index) => [task.id, { task, index }]));
+        const tasksByReference = new Map(
+          currentTasks
+            .map((task) => [
+              normalizeLookupKey(task?.referenceCode || task?.id),
+              task
+            ])
+            .filter(([lookupKey]) => Boolean(lookupKey))
+        );
+        const tasksByTitle = new Map();
+        currentTasks.forEach((task) => {
+          const titleKey = normalizeLookupKey(task?.title);
+
+          if (!titleKey) {
+            return;
+          }
+
+          const bucket = tasksByTitle.get(titleKey) || [];
+          bucket.push(task);
+          tasksByTitle.set(titleKey, bucket);
+        });
+
+        const usedReferenceCodes = new Set(
+          currentTasks
+            .map((task) => normalizeLookupKey(task?.referenceCode || task?.id))
+            .filter(Boolean)
+        );
+        const importTargets = [];
+
+        incomingTasks.forEach((incomingTask, rowIndex) => {
+          const title = cleanString(incomingTask?.title);
+
+          if (!title) {
+            return;
+          }
+
+          const requestedReferenceCode = cleanString(incomingTask?.referenceCode);
+          const referenceLookupKey = normalizeLookupKey(requestedReferenceCode);
+          let matchedTask =
+            referenceLookupKey && tasksByReference.has(referenceLookupKey)
+              ? tasksByReference.get(referenceLookupKey)
+              : null;
+
+          if (!matchedTask) {
+            const titleMatches = tasksByTitle.get(normalizeLookupKey(title)) || [];
+
+            if (titleMatches.length === 1) {
+              matchedTask = titleMatches[0];
+            }
+          }
+
+          let taskId = matchedTask?.id || "";
+          let referenceCode = matchedTask?.referenceCode || "";
+
+          if (!taskId) {
+            taskId = crypto.randomUUID();
+            referenceCode = requestedReferenceCode
+              ? buildTaskReferenceCode(requestedReferenceCode, usedReferenceCodes)
+              : buildTaskReferenceCode(title, usedReferenceCodes);
+            const createdTask = {
+              id: taskId,
+              referenceCode,
+              title,
+              description: "",
+              status: "todo",
+              dueDate: "",
+              desiredStartAt: "",
+              isFixedTime: false,
+              showOnAgenda: false,
+              agendaComment: "",
+              durationMinutes: 60,
+              orderIndex: currentTasks.length + importTargets.length,
+              dependencyIds: [],
+              subprojectId: "",
+              parentTaskId: "",
+              assigneeIds: [],
+              created_at: new Date().toISOString()
+            };
+            tasksById.set(taskId, { task: createdTask, index: currentTasks.length + importTargets.length });
+            currentTasks.push(createdTask);
+            matchedTask = createdTask;
+          } else if (requestedReferenceCode && requestedReferenceCode !== referenceCode) {
+            referenceCode = requestedReferenceCode;
+          }
+
+          matchedTask.referenceCode = referenceCode || buildTaskReferenceCode(title, usedReferenceCodes);
+          matchedTask.title = title;
+          matchedTask.description = cleanString(incomingTask?.description);
+          matchedTask.status = cleanString(incomingTask?.status) || matchedTask.status || "todo";
+          matchedTask.dueDate = cleanString(incomingTask?.dueDate);
+          matchedTask.desiredStartAt = cleanString(incomingTask?.desiredStartAt);
+          matchedTask.isFixedTime = normalizeBooleanInput(incomingTask?.isFixedTime);
+          matchedTask.showOnAgenda = normalizeBooleanInput(incomingTask?.showOnAgenda);
+          matchedTask.agendaComment = cleanString(incomingTask?.agendaComment);
+          matchedTask.durationMinutes = normalizeDuration(
+            incomingTask?.durationMinutes,
+            matchedTask.durationMinutes ?? 60
+          );
+          matchedTask.assigneeIds = cleanIdList(incomingTask?.assigneeIds);
+
+          importTargets.push({
+            rowIndex,
+            taskId,
+            title,
+            referenceCode: matchedTask.referenceCode,
+            parentReference: cleanString(incomingTask?.parentReference),
+            dependencyReferences: cleanIdList(incomingTask?.dependencyReferences)
+          });
+        });
+
+        const importLookupByReference = new Map(
+          importTargets
+            .map((target) => [normalizeLookupKey(target.referenceCode), target.taskId])
+            .filter(([lookupKey]) => Boolean(lookupKey))
+        );
+        const importLookupByTitle = new Map();
+        importTargets.forEach((target) => {
+          const titleKey = normalizeLookupKey(target.title);
+
+          if (!titleKey || importLookupByTitle.has(titleKey)) {
+            return;
+          }
+
+          importLookupByTitle.set(titleKey, target.taskId);
+        });
+
+        function resolveImportedTaskId(referenceValue) {
+          const cleanedReference = cleanString(referenceValue);
+          const normalizedReference = normalizeLookupKey(cleanedReference);
+
+          if (!normalizedReference) {
+            return "";
+          }
+
+          if (importLookupByReference.has(normalizedReference)) {
+            return importLookupByReference.get(normalizedReference);
+          }
+
+          if (tasksByReference.has(normalizedReference)) {
+            return tasksByReference.get(normalizedReference)?.id || "";
+          }
+
+          if (importLookupByTitle.has(normalizedReference)) {
+            return importLookupByTitle.get(normalizedReference);
+          }
+
+          const titleMatches = tasksByTitle.get(normalizedReference) || [];
+          return titleMatches.length === 1 ? titleMatches[0].id : "";
+        }
+
+        importTargets.forEach((target) => {
+          const taskEntry = tasksById.get(target.taskId);
+
+          if (!taskEntry?.task) {
+            return;
+          }
+
+          const resolvedParentTaskId = resolveImportedTaskId(target.parentReference);
+          taskEntry.task.parentTaskId =
+            resolvedParentTaskId && resolvedParentTaskId !== target.taskId ? resolvedParentTaskId : "";
+          taskEntry.task.dependencyIds = cleanIdList(
+            target.dependencyReferences.map((referenceValue) => resolveImportedTaskId(referenceValue))
+          ).filter((dependencyId) => dependencyId !== target.taskId);
+          if (taskEntry.task.parentTaskId) {
+            taskEntry.task.subprojectId = "";
+          }
+        });
+
+        if (hasTaskDependencyCycle(currentTasks)) {
+          throw new Error(
+            "Importen lager en sirkel i avhengighetene. Sjekk overkoder og 'Avhenger av'."
+          );
+        }
+
+        return {
+          ...current,
+          tasks: currentTasks
         };
       }
 

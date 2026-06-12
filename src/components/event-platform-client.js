@@ -27,6 +27,20 @@ import {
   parseGuestImportText
 } from "@/guest-list-utils";
 import {
+  DEFAULT_PROJECT_TASK_EXPORT_FIELDS,
+  PROJECT_TASK_FIELD_OPTIONS,
+  buildProjectTaskExportCsv,
+  buildProjectTaskExportFilename,
+  buildProjectTaskExportPdfLines,
+  buildProjectTaskExportTable,
+  buildProjectTaskImportTemplateCsv,
+  buildProjectTaskImportTemplateTable,
+  buildProjectTaskTemplateFilename,
+  matchImportedProjectTask,
+  parseProjectTaskImportRows,
+  parseProjectTaskImportText
+} from "@/project-task-utils";
+import {
   VENUE_GUEST_NAME_DISPLAY_OPTIONS,
   VENUE_ITEM_LIBRARY
 } from "@/venue-layout-utils";
@@ -62,6 +76,8 @@ import {
 } from "@/event-platform-utils";
 import {
   buildTaskDependencyDragPayload,
+  buildTaskDependencyForest,
+  buildTaskDependencySummary,
   deriveFollowingTaskIds
 } from "@/task-dependency-utils";
 
@@ -3117,26 +3133,104 @@ function GuestTab({
   );
 }
 
-function DependencyChecklist({ options, selectedIds, disabled, inputName }) {
+function TaskLinkSelector({
+  options,
+  selectedIds,
+  disabled,
+  inputName,
+  emptyLabel = "Ingen andre aktiviteter aa koble til enda.",
+  emptySelectionLabel = "Velg aktiviteter"
+}) {
+  const [checkedIds, setCheckedIds] = useState(selectedIds);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    setCheckedIds(selectedIds);
+  }, [selectedIds]);
+
   if (options.length === 0) {
-    return <p className="muted">Ingen andre aktiviteter aa koble til enda.</p>;
+    return <p className="muted">{emptyLabel}</p>;
   }
 
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleOptions = options.filter((option) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const searchableText = [option.title, option.meta, option.badge]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return searchableText.includes(normalizedQuery);
+  });
+  const selectedOptions = options.filter((option) => checkedIds.includes(option.id));
+  const summaryLabel =
+    selectedOptions.length === 0
+      ? emptySelectionLabel
+      : selectedOptions.length <= 2
+        ? selectedOptions.map((option) => option.title).join(", ")
+        : `${selectedOptions.length} aktiviteter valgt`;
+
   return (
-    <div className="dependency-chip-grid">
-      {options.map((option) => (
-        <label className="dependency-chip" key={option.id}>
+    <details className={`assignee-dropdown task-link-selector ${disabled ? "is-disabled" : ""}`}>
+      <summary className="assignee-dropdown-summary">
+        <span className="assignee-dropdown-label">{summaryLabel}</span>
+        <span className="assignee-dropdown-meta">
+          {selectedOptions.length ? `${selectedOptions.length} valgt` : "Ingen valgt"}
+        </span>
+      </summary>
+      <div className="assignee-dropdown-panel task-link-selector-panel">
+        <label className="field task-link-search-field">
+          <span>Sok blant aktiviteter</span>
           <input
-            defaultChecked={selectedIds.includes(option.id)}
             disabled={disabled}
-            name={inputName}
-            type="checkbox"
-            value={option.id}
+            placeholder="Sok paa navn, hierarki eller klokkeslett"
+            type="search"
+            value={query}
+            onChange={(eventObject) => setQuery(eventObject.currentTarget.value)}
           />
-          <span>{option.title || "Uten tittel"}</span>
         </label>
-      ))}
-    </div>
+        {selectedOptions.length ? (
+          <div className="task-link-selected-list">
+            {selectedOptions.map((option) => (
+              <span className="data-tag" key={`${inputName}-${option.id}`}>
+                {option.title}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {visibleOptions.length === 0 ? (
+          <p className="muted">Ingen aktiviteter matcher soket ditt.</p>
+        ) : (
+          visibleOptions.map((option) => (
+            <label className="assignee-dropdown-option task-link-option" key={option.id}>
+              <input
+                checked={checkedIds.includes(option.id)}
+                disabled={disabled}
+                name={inputName}
+                onChange={(eventObject) => {
+                  const nextChecked = eventObject.currentTarget.checked;
+
+                  setCheckedIds((currentIds) =>
+                    nextChecked
+                      ? [...currentIds, option.id]
+                      : currentIds.filter((currentId) => currentId !== option.id)
+                  );
+                }}
+                type="checkbox"
+                value={option.id}
+              />
+              <div className="task-link-option-content">
+                <strong>{option.title || "Uten tittel"}</strong>
+                {option.meta ? <span>{option.meta}</span> : null}
+              </div>
+              {option.badge ? <span className="data-tag">{option.badge}</span> : null}
+            </label>
+          ))
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -3301,6 +3395,33 @@ function formatTaskOptionLabel(task) {
   return hierarchyLabel;
 }
 
+function buildTaskLinkOptions(tasks, excludedTaskId = "") {
+  return (Array.isArray(tasks) ? tasks : [])
+    .filter((task) => task?.id && task.id !== excludedTaskId)
+    .map((task) => {
+      const metaParts = [];
+
+      if (task.parentTaskTitle) {
+        metaParts.push(`Under ${task.parentTaskTitle}`);
+      } else if (Array.isArray(task.hierarchyPathTitles) && task.hierarchyPathTitles.length > 1) {
+        metaParts.push(task.hierarchyPathTitles.slice(0, -1).join(" / "));
+      }
+
+      if (task.displayStartAt) {
+        metaParts.push(formatDateTime(task.displayStartAt));
+      } else if (task.desiredStartAt) {
+        metaParts.push(`Onsket ${formatDateTime(task.desiredStartAt)}`);
+      }
+
+      return {
+        id: task.id,
+        title: task.title || "Uten tittel",
+        meta: metaParts.join(" · "),
+        badge: task.isFixedTime ? "Fast tid" : task.showOnAgenda ? "Agenda" : ""
+      };
+    });
+}
+
 const PROJECT_VIEW_OPTIONS = [
   {
     id: "overview",
@@ -3319,6 +3440,12 @@ const PROJECT_VIEW_OPTIONS = [
     label: "Liste",
     description:
       "Best for detaljredigering av rekkefolge, frister, varighet, avhengigheter og ansvarlige."
+  },
+  {
+    id: "dependencies",
+    label: "Avhengigheter",
+    description:
+      "Viser startaktiviteter, forgreninger og etterfolgere i ett eget flytbilde, inspirert av predecessor/successor-tankegangen i klassiske prosjektverktoy."
   },
   {
     id: "board",
@@ -3370,6 +3497,12 @@ const TASK_LIST_PRESENTATION_OPTIONS = [
     id: "simple",
     label: "Enkel liste"
   }
+];
+
+const PROJECT_TASK_EXPORT_FORMAT_OPTIONS = [
+  { value: "xlsx", label: "Excel (.xlsx)" },
+  { value: "pdf", label: "PDF" },
+  { value: "csv", label: "CSV" }
 ];
 
 function sortProjectTasksByAttention(tasks) {
@@ -3636,6 +3769,7 @@ function ProjectTab({
   viewerAccess,
   viewerPerson,
   onAddTask,
+  onBulkUpsertTasks,
   onLinkTasksInList,
   onScaleTasksFromAgenda,
   onAssignTaskAssignees,
@@ -3656,6 +3790,12 @@ function ProjectTab({
   const [taskListPresentation, setTaskListPresentation] = useState(
     TASK_LIST_PRESENTATION_OPTIONS[0].id
   );
+  const [activeTaskModalId, setActiveTaskModalId] = useState("");
+  const [projectToolsOpen, setProjectToolsOpen] = useState(false);
+  const [projectToolStatus, setProjectToolStatus] = useState("");
+  const [taskImportPreview, setTaskImportPreview] = useState(null);
+  const [taskExportFormat, setTaskExportFormat] = useState("xlsx");
+  const [taskExportFieldKeys, setTaskExportFieldKeys] = useState(DEFAULT_PROJECT_TASK_EXPORT_FIELDS);
   const [selectedTaskFilter, setSelectedTaskFilter] = useState("all");
   const [taskListDragMode, setTaskListDragMode] = useState(TASK_LIST_DRAG_OPTIONS[0].id);
   const taskFilterOptions = useMemo(() => {
@@ -3774,6 +3914,18 @@ function ProjectTab({
     () => buildTaskAssignmentRows(filteredAgendaTasks, event.people),
     [event.people, filteredAgendaTasks]
   );
+  const dependencySummary = useMemo(
+    () => buildTaskDependencySummary(filteredAgendaTasks),
+    [filteredAgendaTasks]
+  );
+  const dependencyForest = useMemo(
+    () => buildTaskDependencyForest(filteredAgendaTasks),
+    [filteredAgendaTasks]
+  );
+  const dependencyTaskMap = useMemo(
+    () => new Map(dependencySummary.tasks.map((task) => [task.id, task])),
+    [dependencySummary.tasks]
+  );
   const sharedAssignmentCount = useMemo(
     () => assignmentRows.find((row) => row.kind === "shared")?.taskCount || 0,
     [assignmentRows]
@@ -3791,6 +3943,10 @@ function ProjectTab({
     filteredParentTaskIds.every((taskId) => collapsedHierarchyIds.includes(taskId));
   const activeTaskListDragMode =
     TASK_LIST_DRAG_OPTIONS.find((option) => option.id === taskListDragMode) || TASK_LIST_DRAG_OPTIONS[0];
+  const activeTaskModalTask = useMemo(
+    () => projectDashboard.tasks.find((task) => task.id === activeTaskModalId) || null,
+    [activeTaskModalId, projectDashboard.tasks]
+  );
   const filteredSwimlanes = useMemo(() => {
     const visibleTaskIds = new Set(filteredAgendaTasks.map((task) => task.id));
 
@@ -3823,6 +3979,15 @@ function ProjectTab({
       setSubtaskComposerParentId("");
     }
   }, [projectDashboard.tasks, subtaskComposerParentId]);
+
+  useEffect(() => {
+    if (
+      activeTaskModalId &&
+      !projectDashboard.tasks.some((task) => task.id === activeTaskModalId)
+    ) {
+      setActiveTaskModalId("");
+    }
+  }, [activeTaskModalId, projectDashboard.tasks]);
 
   const swimlaneLayout = useMemo(() => {
     const labelWidth = 180;
@@ -3923,6 +4088,209 @@ function ProjectTab({
     setExpandedTaskIds((currentIds) =>
       currentIds.includes(taskId) ? currentIds : [...currentIds, taskId]
     );
+  }
+
+  function openTaskInModal(taskId) {
+    setProjectView("list");
+    setActiveTaskModalId(taskId);
+  }
+
+  function closeTaskModal() {
+    setActiveTaskModalId("");
+  }
+
+  function openProjectToolsModal() {
+    setProjectToolStatus("");
+    setTaskImportPreview(null);
+    setProjectToolsOpen(true);
+  }
+
+  function closeProjectToolsModal() {
+    setProjectToolStatus("");
+    setTaskImportPreview(null);
+    setProjectToolsOpen(false);
+  }
+
+  async function handleDownloadTaskTemplate(format = "xlsx") {
+    try {
+      if (format === "xlsx") {
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.aoa_to_sheet(buildProjectTaskImportTemplateTable());
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Prosjektoppgaver-mal");
+        const workbookBytes = XLSX.write(workbook, {
+          bookType: "xlsx",
+          type: "array"
+        });
+        downloadBlobFile(
+          buildProjectTaskTemplateFilename("xlsx"),
+          workbookBytes,
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        setProjectToolStatus("Prosjektmalen er lastet ned som Excel.");
+        return;
+      }
+
+      downloadTextFile(
+        buildProjectTaskTemplateFilename("csv"),
+        buildProjectTaskImportTemplateCsv()
+      );
+      setProjectToolStatus("Prosjektmalen er lastet ned som CSV.");
+    } catch (error) {
+      setProjectToolStatus(error instanceof Error ? error.message : "Kunne ikke lage prosjektmalen.");
+    }
+  }
+
+  function handleToggleTaskExportField(fieldKey) {
+    setTaskExportFieldKeys((currentKeys) =>
+      currentKeys.includes(fieldKey)
+        ? currentKeys.filter((key) => key !== fieldKey)
+        : [...currentKeys, fieldKey]
+    );
+  }
+
+  async function handleDownloadTaskExport() {
+    const safeFieldKeys = taskExportFieldKeys.length
+      ? taskExportFieldKeys
+      : DEFAULT_PROJECT_TASK_EXPORT_FIELDS;
+
+    try {
+      if (taskExportFormat === "xlsx") {
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.aoa_to_sheet(
+          buildProjectTaskExportTable(filteredAgendaTasks, event.people, safeFieldKeys)
+        );
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Prosjektoppgaver");
+        const workbookBytes = XLSX.write(workbook, {
+          bookType: "xlsx",
+          type: "array"
+        });
+        downloadBlobFile(
+          buildProjectTaskExportFilename("xlsx"),
+          workbookBytes,
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        setProjectToolStatus("Prosjektoppgavene er eksportert som Excel.");
+        return;
+      }
+
+      if (taskExportFormat === "pdf") {
+        const { PDFDocument, StandardFonts } = await import("pdf-lib");
+        const pdfDocument = await PDFDocument.create();
+        const regularFont = await pdfDocument.embedFont(StandardFonts.Helvetica);
+        const boldFont = await pdfDocument.embedFont(StandardFonts.HelveticaBold);
+        const lines = buildProjectTaskExportPdfLines(filteredAgendaTasks, event.people, safeFieldKeys);
+        const pageMargin = 48;
+        const fontSize = 11;
+        const lineHeight = 16;
+        let page = pdfDocument.addPage([595.28, 841.89]);
+        let currentY = page.getHeight() - pageMargin;
+        const maxWidth = page.getWidth() - pageMargin * 2;
+
+        lines.forEach((line, index) => {
+          const isTitle = index === 0;
+          const activeFont = isTitle ? boldFont : regularFont;
+          const activeSize = isTitle ? 15 : fontSize;
+          const wrappedLines = wrapPdfLine(line, activeFont, activeSize, maxWidth);
+
+          wrappedLines.forEach((wrappedLine) => {
+            if (currentY < pageMargin) {
+              page = pdfDocument.addPage([595.28, 841.89]);
+              currentY = page.getHeight() - pageMargin;
+            }
+
+            page.drawText(wrappedLine, {
+              x: pageMargin,
+              y: currentY,
+              size: activeSize,
+              font: activeFont
+            });
+            currentY -= lineHeight;
+          });
+        });
+
+        const pdfBytes = await pdfDocument.save();
+        downloadBlobFile(buildProjectTaskExportFilename("pdf"), pdfBytes, "application/pdf");
+        setProjectToolStatus("Prosjektoppgavene er eksportert som PDF.");
+        return;
+      }
+
+      downloadTextFile(
+        buildProjectTaskExportFilename("csv"),
+        buildProjectTaskExportCsv(filteredAgendaTasks, event.people, safeFieldKeys)
+      );
+      setProjectToolStatus("Prosjektoppgavene er eksportert som CSV.");
+    } catch (error) {
+      setProjectToolStatus(
+        error instanceof Error ? error.message : "Kunne ikke eksportere prosjektoppgavene."
+      );
+    }
+  }
+
+  async function handleTaskImportFileChange(eventObject) {
+    const file = eventObject.currentTarget.files?.[0];
+
+    if (!file) {
+      setTaskImportPreview(null);
+      return;
+    }
+
+    try {
+      const lowerName = String(file.name || "").toLowerCase();
+      let parsed;
+
+      if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
+        const XLSX = await import("xlsx");
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        const firstSheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
+        const rows = firstSheet
+          ? XLSX.utils.sheet_to_json(firstSheet, {
+              header: 1,
+              raw: false,
+              defval: ""
+            })
+          : [];
+        parsed = parseProjectTaskImportRows(rows, event.people, event.tasks);
+      } else {
+        const text = await file.text();
+        parsed = parseProjectTaskImportText(text, event.people, event.tasks);
+      }
+
+      setTaskImportPreview({
+        ...parsed,
+        fileName: file.name
+      });
+      setProjectToolStatus(
+        parsed.errors.length
+          ? "Importen har noen varsler. Sjekk forhandsvisningen for du fortsetter."
+          : "Importfilen er lest inn."
+      );
+    } catch (error) {
+      setTaskImportPreview(null);
+      setProjectToolStatus(error instanceof Error ? error.message : "Kunne ikke lese prosjektfilen.");
+    }
+  }
+
+  async function handleRunTaskImport() {
+    if (!viewerAccess.canManageProject || typeof onBulkUpsertTasks !== "function" || !taskImportPreview) {
+      return;
+    }
+
+    if (taskImportPreview.rows.length === 0) {
+      setProjectToolStatus("Ingen gyldige oppgaver aa importere.");
+      return;
+    }
+
+    const nextEvent = await onBulkUpsertTasks(taskImportPreview.rows);
+
+    if (nextEvent) {
+      setTaskImportPreview(null);
+      setProjectToolStatus("");
+      setProjectToolsOpen(false);
+    }
   }
 
   function toggleSubtaskComposer(taskId) {
@@ -4301,6 +4669,324 @@ function ProjectTab({
     });
   }
 
+  function getTaskDependencyState(task) {
+    return (
+      dependencyTaskMap.get(task?.id) || {
+        predecessorIds: Array.isArray(task?.dependencyIds) ? task.dependencyIds : [],
+        predecessorCount: Array.isArray(task?.dependencyIds) ? task.dependencyIds.length : 0,
+        successorIds: [],
+        successorCount: 0,
+        isStartTask: !Array.isArray(task?.dependencyIds) || task.dependencyIds.length === 0,
+        isIndependent: !Array.isArray(task?.dependencyIds) || task.dependencyIds.length === 0,
+        hasCrossDependencies: false
+      }
+    );
+  }
+
+  function renderTaskDependencyTags(task) {
+    const dependencyState = getTaskDependencyState(task);
+
+    return (
+      <>
+        {dependencyState.isIndependent ? (
+          <span className="data-tag">Uavhengig</span>
+        ) : dependencyState.isStartTask ? (
+          <span className="data-tag success-tag">Startaktivitet</span>
+        ) : (
+          <span className="data-tag">Etter {dependencyState.predecessorCount}</span>
+        )}
+        {dependencyState.successorCount ? (
+          <span className="data-tag">Forer videre til {dependencyState.successorCount}</span>
+        ) : null}
+        {dependencyState.hasCrossDependencies ? (
+          <span className="data-tag warning-tag">Flere innganger</span>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderTaskModalContent(task) {
+    if (!task) {
+      return null;
+    }
+
+    const dependencyOptions = buildTaskLinkOptions(agenda.tasks, task.id);
+    const followingTaskIds = deriveFollowingTaskIds(agenda.tasks, task.id);
+    const parentTaskOptions = projectDashboard.tasks
+      .filter(
+        (candidate) =>
+          candidate.id !== task.id &&
+          !(Array.isArray(candidate.hierarchyPathIds) && candidate.hierarchyPathIds.includes(task.id))
+      )
+      .map((candidate) => ({
+        id: candidate.id,
+        label: formatTaskOptionLabel(candidate)
+      }));
+    const canEditTask =
+      viewerAccess.canManageProject ||
+      (viewerAccess.canUpdateAssignedTasks &&
+        viewerPerson &&
+        task.assigneeIds.includes(viewerPerson.id));
+
+    return (
+      <form className="stack" onSubmit={(eventObject) => void handleUpdateTask(eventObject, task)}>
+        <input name="taskId" type="hidden" value={task.id} />
+        <div className="stack compact-stack">
+          <div className="agenda-card-title">
+            <strong>{task.title}</strong>
+            <span className="role-pill">#{task.agendaPosition}</span>
+            {task.isFixedTime ? <span className="data-tag">Fast tidspunkt</span> : null}
+            {task.showOnAgenda ? <span className="data-tag">Agenda</span> : null}
+            {renderTaskDependencyTags(task)}
+          </div>
+          <div className="agenda-meta">
+            <span>
+              <strong>Planlagt:</strong>{" "}
+              {task.displayStartAt && task.displayEndAt
+                ? `${formatDateTime(task.displayStartAt)} - ${formatDateTime(task.displayEndAt)}`
+                : "Mangler start/slutt"}
+            </span>
+            <span>
+              <strong>Varighet:</strong> {formatDurationMinutes(task.displayDurationMinutes)}
+            </span>
+            <span>
+              <strong>Ansvar:</strong> {task.assigneeLabel}
+            </span>
+          </div>
+          {task.warnings.length ? (
+            <div className="stack compact-stack">
+              {task.warnings.map((warning, index) => (
+                <p className="notice warning" key={`${task.id}-modal-warning-${index}`}>
+                  {warning}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <div className="compact-grid">
+          <label className="field field-span-full">
+            <span>Tittel</span>
+            <input defaultValue={task.title} disabled={!viewerAccess.canManageProject} name="title" />
+          </label>
+          <div className="agenda-field-grid field-span-full">
+            <label className="field agenda-inline-field">
+              <span>Legg under aktivitet</span>
+              <select
+                defaultValue={task.parentTaskId || ""}
+                disabled={!viewerAccess.canManageProject}
+                name="parentTaskId"
+              >
+                <option value="">Ingen overaktivitet</option>
+                {parentTaskOptions.map((taskOption) => (
+                  <option key={taskOption.id} value={taskOption.id}>
+                    {taskOption.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="agenda-field-grid field-span-full">
+            <label className="field agenda-inline-field">
+              <span>Status</span>
+              <select defaultValue={task.status} disabled={!canEditTask} name="status">
+                {TASK_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field agenda-inline-field">
+              <span>Varighet (min)</span>
+              <input
+                defaultValue={task.durationMinutes}
+                disabled={!viewerAccess.canManageProject}
+                min="0"
+                name="durationMinutes"
+                step="5"
+                type="number"
+              />
+            </label>
+            <label className="field agenda-inline-field">
+              <span>Onsket start</span>
+              <input
+                defaultValue={task.desiredStartAt}
+                disabled={!viewerAccess.canManageProject}
+                name="desiredStartAt"
+                type="datetime-local"
+              />
+            </label>
+            <label className="field agenda-inline-field checkbox-field">
+              <span>Fast tidspunkt</span>
+              <span className="checkbox-inline">
+                <input
+                  defaultChecked={Boolean(task.isFixedTime)}
+                  disabled={!viewerAccess.canManageProject}
+                  name="isFixedTime"
+                  type="checkbox"
+                />
+                <span>Kan ikke forskyves</span>
+              </span>
+            </label>
+            <label className="field agenda-inline-field checkbox-field">
+              <span>Agenda</span>
+              <span className="checkbox-inline">
+                <input
+                  defaultChecked={Boolean(task.showOnAgenda)}
+                  disabled={!viewerAccess.canManageProject}
+                  name="showOnAgenda"
+                  type="checkbox"
+                />
+                <span>Vises pa agenda</span>
+              </span>
+            </label>
+            <label className="field agenda-inline-field">
+              <span>Frist</span>
+              <input
+                defaultValue={task.dueDate}
+                disabled={!viewerAccess.canManageProject}
+                name="dueDate"
+                type="datetime-local"
+              />
+            </label>
+          </div>
+          <label className="field field-span-full">
+            <span>Synlig kommentar i agenda</span>
+            <input
+              defaultValue={task.agendaComment || ""}
+              disabled={!viewerAccess.canManageProject}
+              name="agendaComment"
+              placeholder="F.eks. Velkomst og mingling i hagen"
+            />
+          </label>
+        </div>
+        <label className="field">
+          <span>Beskrivelse</span>
+          <textarea
+            defaultValue={task.description}
+            disabled={!viewerAccess.canManageProject}
+            name="description"
+            rows={4}
+          />
+        </label>
+        <div className="field">
+          <span>Ansvarlige</span>
+          <AssigneeChecklist
+            disabled={!viewerAccess.canManageProject}
+            people={event.people}
+            selectedIds={task.assigneeIds}
+          />
+        </div>
+        <div className="field">
+          <span>Koble etter andre aktiviteter</span>
+          <TaskLinkSelector
+            disabled={!viewerAccess.canManageProject}
+            inputName="dependencyIds"
+            options={dependencyOptions}
+            selectedIds={task.dependencyIds}
+            emptySelectionLabel="Velg forgjengere"
+          />
+        </div>
+        <div className="field">
+          <span>Aktiviteter som kommer etter denne</span>
+          <TaskLinkSelector
+            disabled={!viewerAccess.canManageProject}
+            inputName="followingTaskIds"
+            options={dependencyOptions}
+            selectedIds={followingTaskIds}
+            emptySelectionLabel="Velg etterfolgere"
+          />
+        </div>
+        <div className="task-modal-actions">
+          {canEditTask ? (
+            <button className="primary-button" type="submit">
+              {viewerAccess.canManageProject ? "Lagre aktivitet" : "Oppdater status"}
+            </button>
+          ) : (
+            <p className="muted">Du kan se oppgaven her, men ikke endre den.</p>
+          )}
+          <button className="secondary-button" type="button" onClick={closeTaskModal}>
+            Lukk
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  function renderDependencyTree(nodes, depth = 0) {
+    return (Array.isArray(nodes) ? nodes : []).map((node) => {
+      const task = node.task;
+      const predecessorNames = node.predecessorIds
+        .map((dependencyId) => dependencyTaskMap.get(dependencyId)?.title || "")
+        .filter(Boolean);
+      const successorNames = node.successorIds
+        .map((successorId) => dependencyTaskMap.get(successorId)?.title || "")
+        .filter(Boolean);
+
+      return (
+        <Fragment key={`dependency-node-${task.id}-${depth}`}>
+          <div
+            className={`project-dependency-row ${depth > 0 ? "is-nested" : ""}`}
+            style={{ "--task-depth": String(Math.min(depth, 5)) }}
+          >
+            <div className="project-dependency-main">
+              <div className="project-dependency-title-row">
+                <strong>{task.title}</strong>
+                <span className="role-pill">#{task.agendaPosition}</span>
+                {renderTaskDependencyTags(task)}
+                {node.upstreamRootIds.length > 1 ? (
+                  <span className="data-tag warning-tag">
+                    Knyttet til {node.upstreamRootIds.length} startspor
+                  </span>
+                ) : null}
+              </div>
+              <div className="project-dependency-meta">
+                <span>
+                  {task.displayStartAt && task.displayEndAt
+                    ? `${formatDateTime(task.displayStartAt)} - ${formatDateTime(task.displayEndAt)}`
+                    : "Tid ikke satt"}
+                </span>
+                <span>{task.assigneeLabel}</span>
+                <span>{formatDurationMinutes(task.displayDurationMinutes)}</span>
+              </div>
+              {predecessorNames.length ? (
+                <div className="task-structure-row">
+                  {predecessorNames.map((name) => (
+                    <span className="data-tag" key={`${task.id}-predecessor-${name}`}>
+                      Etter {name}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {successorNames.length ? (
+                <div className="task-structure-row">
+                  {successorNames.slice(0, 4).map((name) => (
+                    <span className="data-tag" key={`${task.id}-successor-${name}`}>
+                      Folges av {name}
+                    </span>
+                  ))}
+                  {successorNames.length > 4 ? (
+                    <span className="data-tag">+{successorNames.length - 4} til</span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="project-dependency-actions">
+              <button
+                className="secondary-button task-inline-button"
+                type="button"
+                onClick={() => openTaskInModal(task.id)}
+              >
+                Aapne kort
+              </button>
+            </div>
+          </div>
+          {node.children?.length ? renderDependencyTree(node.children, depth + 1) : null}
+        </Fragment>
+      );
+    });
+  }
+
   return (
     <div className="stack">
       <section className="panel stack">
@@ -4326,6 +5012,11 @@ function ProjectTab({
                 ))}
               </select>
             </label>
+            {viewerAccess.canManageProject ? (
+              <button className="secondary-button" type="button" onClick={openProjectToolsModal}>
+                Prosjektverktoy
+              </button>
+            ) : null}
             <span className="role-pill">
               Viser {filteredAgendaTasks.length} av {agenda.tasks.length}
             </span>
@@ -4611,6 +5302,134 @@ function ProjectTab({
                   </div>
                 </div>
               </article>
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {projectView === "dependencies" ? (
+        <section className="panel stack">
+          <div className="panel-header-inline">
+            <div>
+              <h3>Avhengighetsflyt</h3>
+              <p className="muted">
+                Her ser du alle startaktiviteter for seg, og hvilke oppgaver som bygger videre derfra. Oppgaver med flere forgjengere viser alle innganger samlet.
+              </p>
+            </div>
+          </div>
+          <div className="overview-grid">
+            <InfoCard label="Startaktiviteter" value={dependencySummary.summary.startTasks} />
+            <InfoCard label="Har forgjenger" value={dependencySummary.summary.dependentTasks} />
+            <InfoCard label="Forer videre" value={dependencySummary.summary.influencingTasks} />
+            <InfoCard label="Uavhengige" value={dependencySummary.summary.independentTasks} />
+            <InfoCard
+              label="Flere innganger"
+              tone={dependencySummary.summary.crossLinkedTasks ? "warning" : "success"}
+              value={dependencySummary.summary.crossLinkedTasks}
+            />
+          </div>
+          {filteredAgendaTasks.length === 0 ? (
+            <EmptyState
+              title="Ingen oppgaver i dette utsnittet"
+              body="Bytt ansvarligfilteret eller legg til flere aktiviteter for aa se avhengighetsflyten."
+            />
+          ) : (
+            <div className="stack">
+              {dependencyForest.roots.length ? (
+                <section className="project-dependency-panel stack">
+                  <div className="project-dependency-panel-head">
+                    <div>
+                      <h4>Startaktiviteter</h4>
+                      <p className="muted">
+                        Dette tilsvarer oppgaver uten forgjengere. Hver grein viser hva som kan starte herfra.
+                      </p>
+                    </div>
+                    <span className="role-pill">{dependencyForest.roots.length}</span>
+                  </div>
+                  <div className="stack compact-stack">
+                    {dependencyForest.roots.map((rootNode) => (
+                      <article className="project-dependency-root" key={`dependency-root-${rootNode.id}`}>
+                        <div className="project-dependency-root-head">
+                          <div className="stack compact-stack">
+                            <strong>{rootNode.task.title}</strong>
+                            <span className="muted">
+                              {rootNode.task.displayStartAt
+                                ? formatDateTime(rootNode.task.displayStartAt)
+                                : "Starter uten satt klokkeslett"}
+                            </span>
+                          </div>
+                          <button
+                            className="secondary-button task-inline-button"
+                            type="button"
+                            onClick={() => openTaskInModal(rootNode.task.id)}
+                          >
+                            Aapne kort
+                          </button>
+                        </div>
+                        <div className="project-dependency-branch">
+                          {renderDependencyTree([rootNode])}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {dependencyForest.summary.independentTasks ? (
+                <section className="project-dependency-panel stack">
+                  <div className="project-dependency-panel-head">
+                    <div>
+                      <h4>Helt uavhengige aktiviteter</h4>
+                      <p className="muted">
+                        Oppgaver som verken venter paa andre eller forer videre til noe nytt.
+                      </p>
+                    </div>
+                    <span className="role-pill">{dependencyForest.summary.independentTasks}</span>
+                  </div>
+                  <div className="tag-list">
+                    {dependencySummary.tasks
+                      .filter((task) => task.isIndependent)
+                      .map((task) => (
+                        <button
+                          className="compact-action-button"
+                          key={`independent-${task.id}`}
+                          type="button"
+                          onClick={() => openTaskInModal(task.id)}
+                        >
+                          {task.title}
+                        </button>
+                      ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {dependencyForest.disconnected.length ? (
+                <section className="project-dependency-panel stack">
+                  <div className="project-dependency-panel-head">
+                    <div>
+                      <h4>Oppgaver som mangler gyldig inngang</h4>
+                      <p className="muted">
+                        Disse har koblinger som ikke leder tilbake til en tydelig startaktivitet i utsnittet.
+                      </p>
+                    </div>
+                    <span className="role-pill">{dependencyForest.disconnected.length}</span>
+                  </div>
+                  <div className="stack compact-stack">
+                    {renderDependencyTree(
+                      dependencyForest.disconnected.map((task) => ({
+                        id: task.id,
+                        task,
+                        predecessorIds: task.predecessorIds,
+                        predecessorCount: task.predecessorCount,
+                        successorIds: task.successorIds,
+                        successorCount: task.successorCount,
+                        upstreamRootIds: [],
+                        children: []
+                      }))
+                    )}
+                  </div>
+                </section>
+              ) : null}
             </div>
           )}
         </section>
@@ -4945,26 +5764,22 @@ function ProjectTab({
             </div>
             <div className="field field-span-full">
               <span>Koble etter andre aktiviteter</span>
-              <DependencyChecklist
+              <TaskLinkSelector
                 disabled={false}
                 inputName="dependencyIds"
-                options={agenda.tasks.map((task) => ({
-                  id: task.id,
-                  title: task.title
-                }))}
+                options={buildTaskLinkOptions(agenda.tasks)}
                 selectedIds={[]}
+                emptySelectionLabel="Velg forgjengere"
               />
             </div>
             <div className="field field-span-full">
               <span>Aktiviteter som skal komme etter denne</span>
-              <DependencyChecklist
+              <TaskLinkSelector
                 disabled={false}
                 inputName="followingTaskIds"
-                options={agenda.tasks.map((task) => ({
-                  id: task.id,
-                  title: task.title
-                }))}
+                options={buildTaskLinkOptions(agenda.tasks)}
                 selectedIds={[]}
+                emptySelectionLabel="Velg etterfolgere"
               />
             </div>
             <button className="primary-button" type="submit">
@@ -5257,6 +6072,24 @@ function ProjectTab({
                 value={displayTaskSummary.warningTasks}
               />
             </div>
+            <div className="project-dependency-summary-grid">
+              <div className="agenda-summary-item">
+                <span>Startaktiviteter</span>
+                <strong>{dependencySummary.summary.startTasks}</strong>
+              </div>
+              <div className="agenda-summary-item">
+                <span>Har forgjenger</span>
+                <strong>{dependencySummary.summary.dependentTasks}</strong>
+              </div>
+              <div className="agenda-summary-item">
+                <span>Forer videre</span>
+                <strong>{dependencySummary.summary.influencingTasks}</strong>
+              </div>
+              <div className="agenda-summary-item">
+                <span>Flere innganger</span>
+                <strong>{dependencySummary.summary.crossLinkedTasks}</strong>
+              </div>
+            </div>
             {!agenda.hasEventStart ? (
               <p className="notice warning">
                 Sett `Starter` under planlegging, eller legg inn onsket starttid pa forste aktivitet, for
@@ -5477,6 +6310,7 @@ function ProjectTab({
                                 <span className="role-pill">#{task.agendaPosition}</span>
                                 {task.isFixedTime ? <span className="data-tag">Fast</span> : null}
                                 {task.showOnAgenda ? <span className="data-tag">Agenda</span> : null}
+                                {renderTaskDependencyTags(task)}
                                 {task.hasChildren ? (
                                   <span className="data-tag">
                                     {isCollapsed
@@ -5517,8 +6351,7 @@ function ProjectTab({
                                 className="secondary-button task-inline-button"
                                 type="button"
                                 onClick={() => {
-                                  openTaskInList(task.id);
-                                  setTaskListPresentation("cards");
+                                  openTaskInModal(task.id);
                                 }}
                               >
                                 Aapne kort
@@ -5562,12 +6395,7 @@ function ProjectTab({
                   const assignees = event.people
                     .filter((person) => task.assigneeIds.includes(person.id))
                     .map((person) => person.name);
-                  const dependencyOptions = agenda.tasks
-                    .filter((candidate) => candidate.id !== task.id)
-                    .map((candidate) => ({
-                      id: candidate.id,
-                      title: candidate.title
-                    }));
+                  const dependencyOptions = buildTaskLinkOptions(agenda.tasks, task.id);
                   const followingTaskIds = deriveFollowingTaskIds(agenda.tasks, task.id);
                   const followingTaskNames = agenda.tasks
                     .filter((candidate) => followingTaskIds.includes(candidate.id))
@@ -5661,6 +6489,7 @@ function ProjectTab({
                                 <span className="role-pill">#{task.agendaPosition}</span>
                                 {task.isFixedTime ? <span className="data-tag">Fast tidspunkt</span> : null}
                                 {task.showOnAgenda ? <span className="data-tag">Agenda</span> : null}
+                                {renderTaskDependencyTags(task)}
                                 {dropTaskId === `${task.id}:under` ? (
                                   <span className="data-tag warning-tag">Blir underoppgave</span>
                                 ) : null}
@@ -5931,20 +6760,22 @@ function ProjectTab({
                               </div>
                               <div className="field">
                                 <span>Koble etter andre aktiviteter</span>
-                                <DependencyChecklist
+                                <TaskLinkSelector
                                   disabled={!viewerAccess.canManageProject}
                                   inputName="dependencyIds"
                                   options={dependencyOptions}
                                   selectedIds={task.dependencyIds}
+                                  emptySelectionLabel="Velg forgjengere"
                                 />
                               </div>
                               <div className="field">
                                 <span>Aktiviteter som kommer etter denne</span>
-                                <DependencyChecklist
+                                <TaskLinkSelector
                                   disabled={!viewerAccess.canManageProject}
                                   inputName="followingTaskIds"
                                   options={dependencyOptions}
                                   selectedIds={followingTaskIds}
+                                  emptySelectionLabel="Velg etterfolgere"
                                 />
                               </div>
                               {canEditTask ? (
@@ -5984,6 +6815,128 @@ function ProjectTab({
             )}
           </section>
         </>
+      ) : null}
+
+      {projectToolsOpen ? (
+        <ModalShell
+          title="Prosjektverktoy"
+          body="Importer oppgaver fra Excel, last ned mal, og eksporter prosjektet til Excel, PDF eller CSV."
+          onClose={closeProjectToolsModal}
+        >
+          <div className="stack">
+            <section className="panel stack">
+              <div className="panel-header-inline">
+                <div>
+                  <h4>Import</h4>
+                  <p className="muted">
+                    Bruk aktivitetskoder i malen hvis du vil koble oppgaver til overoppgaver eller avhengigheter paa en trygg maate.
+                  </p>
+                </div>
+              </div>
+              <div className="button-row">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void handleDownloadTaskTemplate("xlsx")}
+                >
+                  Last ned Excel-mal
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void handleDownloadTaskTemplate("csv")}
+                >
+                  Last ned CSV-mal
+                </button>
+              </div>
+              <label className="field">
+                <span>Velg fil</span>
+                <input
+                  accept=".csv,text/csv,.txt,.xlsx,.xls"
+                  type="file"
+                  onChange={(eventObject) => void handleTaskImportFileChange(eventObject)}
+                />
+              </label>
+              {taskImportPreview ? (
+                <div className="stack compact-stack">
+                  <div className="overview-grid">
+                    <InfoCard label="Rader" value={taskImportPreview.rows.length} />
+                    <InfoCard label="Nye" value={taskImportPreview.newCount} />
+                    <InfoCard label="Oppdateres" value={taskImportPreview.matchedExistingCount} />
+                    <InfoCard
+                      label="Varsler"
+                      tone={taskImportPreview.errors.length ? "warning" : "success"}
+                      value={taskImportPreview.errors.length}
+                    />
+                  </div>
+                  {taskImportPreview.errors.length ? (
+                    <div className="stack compact-stack">
+                      {taskImportPreview.errors.map((errorMessage, index) => (
+                        <p className="notice warning" key={`task-import-warning-${index}`}>
+                          {errorMessage}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <button className="primary-button" type="button" onClick={() => void handleRunTaskImport()}>
+                    Importer oppgaver
+                  </button>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="panel stack">
+              <div className="panel-header-inline">
+                <div>
+                  <h4>Eksport</h4>
+                  <p className="muted">
+                    Velg format og hvilke felter som skal med i utskriften eller regnearket.
+                  </p>
+                </div>
+              </div>
+              <label className="field">
+                <span>Format</span>
+                <select
+                  value={taskExportFormat}
+                  onChange={(eventObject) => setTaskExportFormat(eventObject.currentTarget.value)}
+                >
+                  {PROJECT_TASK_EXPORT_FORMAT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="tag-list">
+                {PROJECT_TASK_FIELD_OPTIONS.map((field) => (
+                  <label className="dependency-chip" key={`task-export-field-${field.key}`}>
+                    <input
+                      checked={taskExportFieldKeys.includes(field.key)}
+                      type="checkbox"
+                      onChange={() => handleToggleTaskExportField(field.key)}
+                    />
+                    <span>{field.label}</span>
+                  </label>
+                ))}
+              </div>
+              <button className="primary-button" type="button" onClick={() => void handleDownloadTaskExport()}>
+                Eksporter prosjektoppgaver
+              </button>
+            </section>
+
+            {projectToolStatus ? <p className="notice success">{projectToolStatus}</p> : null}
+          </div>
+        </ModalShell>
+      ) : null}
+
+      {activeTaskModalTask ? (
+        <ModalShell
+          title={activeTaskModalTask.title || "Aktivitet"}
+          body="Se og rediger oppgaven i et eget kort uten aa forlate listevisningen."
+          onClose={closeTaskModal}
+        >
+          {renderTaskModalContent(activeTaskModalTask)}
+        </ModalShell>
       ) : null}
     </div>
   );
@@ -7251,6 +8204,24 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     if (nextEvent) {
       setStatusMessage(`Oppdaterte oppgaven "${task.title}".`);
     }
+
+    return nextEvent;
+  }
+
+  async function handleBulkUpsertTasks(tasks) {
+    if (!viewerAccess.canManageProject || !selectedEvent) {
+      return null;
+    }
+
+    const nextEvent = await patchEvent("bulk_upsert_tasks", {
+      tasks: Array.isArray(tasks) ? tasks : []
+    });
+
+    if (nextEvent) {
+      setStatusMessage("Prosjektoppgavene er importert.");
+    }
+
+    return nextEvent;
   }
 
   async function handleAssignTaskAssignees(taskId, assigneeIds = []) {
@@ -7745,6 +8716,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                   composerVersion={projectComposerVersion}
                   event={selectedEvent}
                   onAddTask={handleAddTask}
+                  onBulkUpsertTasks={handleBulkUpsertTasks}
                   onAssignTaskAssignees={handleAssignTaskAssignees}
                   onLinkTasksInList={handleLinkTasksInList}
                   onReorderTasks={handleReorderTasks}

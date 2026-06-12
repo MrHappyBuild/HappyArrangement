@@ -37,7 +37,49 @@ function buildDependencyGraph(tasks) {
   return graph;
 }
 
-function hasDependencyCycle(tasks) {
+function parseDateTimeValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function compareDependencyDisplay(leftTask, rightTask) {
+  const leftTime =
+    parseDateTimeValue(leftTask?.displayStartAt || leftTask?.scheduledStartAt || leftTask?.desiredStartAt) ??
+    Number.MAX_SAFE_INTEGER;
+  const rightTime =
+    parseDateTimeValue(rightTask?.displayStartAt || rightTask?.scheduledStartAt || rightTask?.desiredStartAt) ??
+    Number.MAX_SAFE_INTEGER;
+
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+
+  const leftAgendaPosition = Number.isFinite(leftTask?.agendaPosition)
+    ? leftTask.agendaPosition
+    : Number.MAX_SAFE_INTEGER;
+  const rightAgendaPosition = Number.isFinite(rightTask?.agendaPosition)
+    ? rightTask.agendaPosition
+    : Number.MAX_SAFE_INTEGER;
+
+  if (leftAgendaPosition !== rightAgendaPosition) {
+    return leftAgendaPosition - rightAgendaPosition;
+  }
+
+  const leftOrder = Number.isFinite(leftTask?.orderIndex) ? leftTask.orderIndex : Number.MAX_SAFE_INTEGER;
+  const rightOrder = Number.isFinite(rightTask?.orderIndex) ? rightTask.orderIndex : Number.MAX_SAFE_INTEGER;
+
+  if (leftOrder !== rightOrder) {
+    return leftOrder - rightOrder;
+  }
+
+  return String(leftTask?.title || "").localeCompare(String(rightTask?.title || ""), "nb");
+}
+
+export function hasTaskDependencyCycle(tasks) {
   const graph = buildDependencyGraph(tasks);
   const visiting = new Set();
   const visited = new Set();
@@ -71,6 +113,138 @@ function hasDependencyCycle(tasks) {
   }
 
   return false;
+}
+
+function buildDependencyOverviewItems(tasks) {
+  const taskList = Array.isArray(tasks) ? tasks : [];
+  const taskMap = new Map(
+    taskList
+      .filter((task) => task && typeof task === "object" && typeof task.id === "string")
+      .map((task) => [task.id, task])
+  );
+  const successorMap = buildDependencyGraph(taskList);
+
+  return taskList
+    .filter((task) => task && typeof task === "object" && typeof task.id === "string")
+    .map((task) => {
+      const predecessorIds = normalizeTaskIds(task.dependencyIds, task.id).filter((dependencyId) =>
+        taskMap.has(dependencyId)
+      );
+      const successorIds = normalizeTaskIds(successorMap.get(task.id) || [], task.id).filter(
+        (successorId) => taskMap.has(successorId)
+      );
+
+      return {
+        ...task,
+        predecessorIds,
+        predecessorCount: predecessorIds.length,
+        successorIds,
+        successorCount: successorIds.length,
+        isStartTask: predecessorIds.length === 0,
+        isIndependent: predecessorIds.length === 0 && successorIds.length === 0,
+        hasCrossDependencies: predecessorIds.length > 1
+      };
+    })
+    .sort(compareDependencyDisplay);
+}
+
+export function buildTaskDependencySummary(tasks) {
+  const items = buildDependencyOverviewItems(tasks);
+  const taskMap = new Map(items.map((task) => [task.id, task]));
+
+  return {
+    summary: {
+      total: items.length,
+      startTasks: items.filter((task) => task.isStartTask).length,
+      dependentTasks: items.filter((task) => task.predecessorCount > 0).length,
+      influencingTasks: items.filter((task) => task.successorCount > 0).length,
+      independentTasks: items.filter((task) => task.isIndependent).length,
+      crossLinkedTasks: items.filter((task) => task.hasCrossDependencies).length
+    },
+    tasks: items,
+    taskMap
+  };
+}
+
+export function buildTaskDependencyForest(tasks) {
+  const overview = buildTaskDependencySummary(tasks);
+  const safeTasks = overview.tasks;
+  const taskMap = overview.taskMap;
+  const successorMap = new Map(
+    safeTasks.map((task) => [
+      task.id,
+      [...task.successorIds].sort((leftId, rightId) =>
+        compareDependencyDisplay(taskMap.get(leftId), taskMap.get(rightId))
+      )
+    ])
+  );
+  const rootIds = safeTasks.filter((task) => task.isStartTask).map((task) => task.id);
+  const upstreamRootMap = new Map(safeTasks.map((task) => [task.id, new Set()]));
+
+  function markUpstreamRoots(taskId, rootId, ancestry = new Set()) {
+    if (!taskMap.has(taskId) || ancestry.has(taskId)) {
+      return;
+    }
+
+    upstreamRootMap.get(taskId)?.add(rootId);
+    const nextAncestry = new Set(ancestry);
+    nextAncestry.add(taskId);
+
+    (successorMap.get(taskId) || []).forEach((successorId) => {
+      markUpstreamRoots(successorId, rootId, nextAncestry);
+    });
+  }
+
+  rootIds.forEach((rootId) => {
+    markUpstreamRoots(rootId, rootId);
+  });
+
+  function buildNode(taskId, ancestry = []) {
+    const task = taskMap.get(taskId);
+
+    if (!task || ancestry.includes(taskId)) {
+      return null;
+    }
+
+    const nextAncestry = [...ancestry, taskId];
+    const children = (successorMap.get(taskId) || [])
+      .map((successorId) => buildNode(successorId, nextAncestry))
+      .filter(Boolean);
+
+    return {
+      id: task.id,
+      task,
+      predecessorIds: task.predecessorIds,
+      predecessorCount: task.predecessorCount,
+      successorIds: task.successorIds,
+      successorCount: task.successorCount,
+      upstreamRootIds: [...(upstreamRootMap.get(task.id) || [])].sort(),
+      children
+    };
+  }
+
+  const roots = rootIds
+    .sort((leftId, rightId) => compareDependencyDisplay(taskMap.get(leftId), taskMap.get(rightId)))
+    .map((rootId) => buildNode(rootId))
+    .filter(Boolean);
+  const coveredTaskIds = new Set();
+
+  function collectNodeIds(node) {
+    if (!node || coveredTaskIds.has(node.id)) {
+      return;
+    }
+
+    coveredTaskIds.add(node.id);
+    (node.children || []).forEach(collectNodeIds);
+  }
+
+  roots.forEach(collectNodeIds);
+
+  return {
+    ...overview,
+    roots,
+    disconnected: safeTasks.filter((task) => !coveredTaskIds.has(task.id))
+  };
 }
 
 export function deriveFollowingTaskIds(tasks, taskId) {
@@ -168,7 +342,7 @@ export function buildTaskDependencyDragPayload(tasks, sourceTaskId, targetTaskId
     nextFollowingTaskIds
   );
 
-  if (!hasDependencyCycle(taskList) && hasDependencyCycle(previewTasks)) {
+  if (!hasTaskDependencyCycle(taskList) && hasTaskDependencyCycle(previewTasks)) {
     throw new Error("Denne koblingen lager en sirkel i avhengighetene.");
   }
 

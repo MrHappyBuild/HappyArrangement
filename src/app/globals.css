@@ -1359,6 +1359,11 @@ p {
   color: #92400e;
 }
 
+.data-tag.success-tag {
+  background: rgba(36, 95, 82, 0.14);
+  color: #1f6a54;
+}
+
 .data-tag.danger-tag {
   background: rgba(185, 28, 28, 0.14);
   color: #991b1b;
@@ -1849,6 +1854,41 @@ p {
   margin: 0;
 }
 
+.task-link-selector-panel {
+  gap: 12px;
+}
+
+.task-link-search-field {
+  margin: 0;
+}
+
+.task-link-selected-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-link-option {
+  align-items: start;
+  justify-content: space-between;
+}
+
+.task-link-option-content {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.task-link-option-content strong {
+  font-size: 0.92rem;
+}
+
+.task-link-option-content span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .assignee-dropdown {
   border-radius: 18px;
   border: 1px solid rgba(91, 59, 18, 0.12);
@@ -1931,6 +1971,12 @@ p {
 
 .task-drag-note {
   margin: 0;
+}
+
+.project-dependency-summary-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .project-simple-list {
@@ -2366,6 +2412,89 @@ p {
 .agenda-expanded-body {
   padding-top: 8px;
   border-top: 1px solid rgba(91, 59, 18, 0.08);
+}
+
+.task-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.project-dependency-panel {
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 252, 247, 0.8);
+}
+
+.project-dependency-panel-head,
+.project-dependency-root-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px 16px;
+  align-items: start;
+}
+
+.project-dependency-root {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(91, 59, 18, 0.08);
+  background: rgba(255, 249, 242, 0.72);
+}
+
+.project-dependency-branch {
+  display: grid;
+  gap: 10px;
+}
+
+.project-dependency-row {
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  align-items: start;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(91, 59, 18, 0.08);
+  background: rgba(255, 252, 247, 0.88);
+}
+
+.project-dependency-row.is-nested {
+  margin-left: calc(var(--task-depth, 0) * 30px);
+  border-left: 4px solid rgba(36, 95, 82, 0.18);
+  background:
+    linear-gradient(90deg, rgba(36, 95, 82, 0.07), rgba(255, 252, 247, 0) 140px),
+    rgba(255, 252, 247, 0.88);
+}
+
+.project-dependency-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.project-dependency-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.project-dependency-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.project-dependency-actions {
+  flex: 0 0 auto;
 }
 
 .inline-subtask-composer {

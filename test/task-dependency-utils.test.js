@@ -3,8 +3,11 @@ import test from "node:test";
 
 import {
   applyTaskRelationshipUpdates,
+  buildTaskDependencyForest,
+  buildTaskDependencySummary,
   buildTaskDependencyDragPayload,
-  deriveFollowingTaskIds
+  deriveFollowingTaskIds,
+  hasTaskDependencyCycle
 } from "../src/task-dependency-utils.js";
 
 test("deriveFollowingTaskIds finds tasks that come after the current task", () => {
@@ -100,4 +103,52 @@ test("buildTaskDependencyDragPayload rejects a new cycle", () => {
       ),
     /sirkel i avhengighetene/
   );
+});
+
+test("hasTaskDependencyCycle reports a circular graph", () => {
+  assert.equal(
+    hasTaskDependencyCycle([
+      { id: "a", dependencyIds: ["c"] },
+      { id: "b", dependencyIds: ["a"] },
+      { id: "c", dependencyIds: ["b"] }
+    ]),
+    true
+  );
+});
+
+test("buildTaskDependencySummary counts start, dependent and cross-linked tasks", () => {
+  const summary = buildTaskDependencySummary([
+    { id: "a", title: "A", dependencyIds: [] },
+    { id: "b", title: "B", dependencyIds: ["a"] },
+    { id: "c", title: "C", dependencyIds: ["a", "b"] },
+    { id: "d", title: "D", dependencyIds: [] }
+  ]);
+
+  assert.equal(summary.summary.total, 4);
+  assert.equal(summary.summary.startTasks, 2);
+  assert.equal(summary.summary.dependentTasks, 2);
+  assert.equal(summary.summary.influencingTasks, 2);
+  assert.equal(summary.summary.independentTasks, 1);
+  assert.equal(summary.summary.crossLinkedTasks, 1);
+});
+
+test("buildTaskDependencyForest groups activities under start tasks and keeps shared predecessors visible", () => {
+  const forest = buildTaskDependencyForest([
+    { id: "welcome", title: "Velkomst", dependencyIds: [] },
+    { id: "music", title: "Musikk", dependencyIds: [] },
+    { id: "games", title: "Leker", dependencyIds: ["welcome"] },
+    { id: "speech", title: "Tale", dependencyIds: ["welcome", "music"] }
+  ]);
+
+  assert.deepEqual(
+    forest.roots.map((node) => node.task.title).sort(),
+    ["Musikk", "Velkomst"]
+  );
+
+  const welcomeNode = forest.roots.find((node) => node.id === "welcome");
+  const speechNode = welcomeNode.children.find((node) => node.id === "speech");
+
+  assert.ok(speechNode);
+  assert.deepEqual(speechNode.predecessorIds.sort(), ["music", "welcome"]);
+  assert.deepEqual(speechNode.upstreamRootIds.sort(), ["music", "welcome"]);
 });

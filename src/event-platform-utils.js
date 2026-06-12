@@ -665,6 +665,8 @@ function createTask(task, fallbackIndex = 0) {
 
   return {
     id: taskId,
+    referenceCode:
+      typeof normalized.referenceCode === "string" ? normalized.referenceCode.trim() : "",
     title: typeof normalized.title === "string" ? normalized.title : "",
     description: typeof normalized.description === "string" ? normalized.description : "",
     status: normalizeRole(
