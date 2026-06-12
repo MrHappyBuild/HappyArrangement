@@ -1302,6 +1302,14 @@ export function buildTaskAgenda(event) {
   orderedTasks.forEach((task, index) => {
     const dependencyWarnings = [];
     let dependencyEndMs = null;
+    const parentTask =
+      task.parentTaskId && scheduledMap.has(task.parentTaskId)
+        ? scheduledMap.get(task.parentTaskId)
+        : null;
+    const parentAnchorStartMs =
+      parentTask && parentTask.hasExplicitTimeAnchor && Number.isFinite(parentTask.scheduledStartMs)
+        ? parentTask.scheduledStartMs
+        : null;
 
     task.dependencyIds.forEach((dependencyId) => {
       const dependency = scheduledMap.get(dependencyId);
@@ -1323,7 +1331,7 @@ export function buildTaskAgenda(event) {
     const desiredStartMs = parseDateTimeValue(task.desiredStartAt);
     const isFixedTime = Boolean(task.isFixedTime);
     const baselineStartMs =
-      previousEndMs ?? eventStartMs ?? dependencyEndMs ?? desiredStartMs ?? null;
+      parentAnchorStartMs ?? previousEndMs ?? eventStartMs ?? dependencyEndMs ?? desiredStartMs ?? null;
     let scheduledStartMs = baselineStartMs;
 
     if (dependencyEndMs !== null) {

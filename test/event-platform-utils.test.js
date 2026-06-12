@@ -864,7 +864,6 @@ test("buildTaskAgenda keeps an anchored parent task on its own fixed time even w
         title: "Introdusere leker og velkomstdrinker",
         parentTaskId: "task-parent",
         durationMinutes: 15,
-        desiredStartAt: "2026-06-20T16:00",
         orderIndex: 3
       }
     ]
@@ -876,6 +875,7 @@ test("buildTaskAgenda keeps an anchored parent task on its own fixed time even w
   assert.equal(agenda.tasks[2].warnings.length, 0);
   assert.equal(agenda.tasks[3].scheduledStartAt, "2026-06-20T16:00");
   assert.equal(agenda.tasks[3].scheduledEndAt, "2026-06-20T16:15");
+  assert.equal(agenda.tasks[3].warnings.length, 0);
 });
 
 test("buildTaskAgenda groups underaktiviteter under forelderen og viser samlet tidsrom", () => {
