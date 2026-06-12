@@ -9,7 +9,10 @@ import {
   buildGuestSiteNavigationEntries,
   ensureEventShape
 } from "@/event-platform-utils";
+import { parseGuestPageContent } from "@/guest-page-content";
 import { getEventBySlug } from "@/lib/local-store";
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://happy-arrangement.vercel.app";
 
 function buildGuestSiteBackgroundStyles(backgroundImageUrl) {
   if (!backgroundImageUrl) {
@@ -74,23 +77,76 @@ function renderGuestSiteFacts(event) {
   );
 }
 
-export default async function GuestSitePage({ params }) {
-  const resolvedParams = await params;
-  const pageSegments = Array.isArray(resolvedParams?.pageSlug) ? resolvedParams.pageSlug : [];
-  if (pageSegments.length > 1) {
-    notFound();
+function extractGuestPageDescription(selectedPage, event, guestSiteIntro) {
+  if (selectedPage?.kind === "venue_seating") {
+    return `Se sitteplanen for ${event.overview.title || event.name}.`;
   }
+
+  if (selectedPage?.kind === "guest_agenda") {
+    return `Se agendaen for ${event.overview.title || event.name}.`;
+  }
+
+  const content = typeof selectedPage?.content === "string" ? selectedPage.content : "";
+
+  if (content) {
+    const blocks = parseGuestPageContent(content);
+    const firstParagraph = blocks.find((block) => block.type === "paragraph");
+
+    if (firstParagraph?.parts?.length) {
+      const text = firstParagraph.parts
+        .map((part) => {
+          if (part.type === "link") {
+            return part.label;
+          }
+
+          if (part.type === "styled") {
+            return (part.parts || [])
+              .map((childPart) => (childPart.type === "link" ? childPart.label : childPart.text || ""))
+              .join("");
+          }
+
+          return part.text || "";
+        })
+        .join("")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  if (guestSiteIntro) {
+    return guestSiteIntro;
+  }
+
+  if (event.overview.description) {
+    return event.overview.description;
+  }
+
+  return `Informasjon for gjester til ${event.overview.title || event.name}.`;
+}
+
+async function loadGuestSiteState(paramsPromise) {
+  const resolvedParams = await paramsPromise;
+  const pageSegments = Array.isArray(resolvedParams?.pageSlug) ? resolvedParams.pageSlug : [];
+
+  if (pageSegments.length > 1) {
+    return null;
+  }
+
   const event = await getEventBySlug(resolvedParams?.eventSlug || "");
 
   if (!event) {
-    notFound();
+    return null;
   }
 
   const normalizedEvent = ensureEventShape(event);
   const pages = visibleGuestPages(normalizedEvent);
 
   if (!pages.length) {
-    notFound();
+    return null;
   }
 
   const requestedPageSlug = typeof pageSegments[0] === "string" ? pageSegments[0] : "";
@@ -99,8 +155,76 @@ export default async function GuestSitePage({ params }) {
     : pages[0];
 
   if (!selectedPage) {
+    return null;
+  }
+
+  return {
+    normalizedEvent,
+    pages,
+    selectedPage,
+    requestedPageSlug
+  };
+}
+
+export async function generateMetadata({ params }) {
+  const state = await loadGuestSiteState(params);
+
+  if (!state) {
+    return {
+      title: "Gjestenettside",
+      description: "Informasjonsside for gjester."
+    };
+  }
+
+  const { normalizedEvent, selectedPage } = state;
+  const eventTitle = normalizedEvent.overview.title || normalizedEvent.name || "Arrangement";
+  const guestSiteIntro =
+    typeof normalizedEvent.guestSite?.introText === "string"
+      ? normalizedEvent.guestSite.introText.trim()
+      : "";
+  const pageTitle = selectedPage.title || selectedPage.menuLabel || eventTitle;
+  const title = selectedPage === state.pages[0] ? eventTitle : `${pageTitle} | ${eventTitle}`;
+  const description = extractGuestPageDescription(selectedPage, normalizedEvent, guestSiteIntro);
+  const canonicalPath = selectedPage.path || buildGuestSiteBasePath(normalizedEvent);
+  const ogImage = normalizedEvent.guestSite?.backgroundImageUrl || undefined;
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: canonicalPath
+    },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      url: new URL(canonicalPath, APP_URL).toString(),
+      siteName: eventTitle,
+      images: ogImage
+        ? [
+            {
+              url: ogImage,
+              alt: eventTitle
+            }
+          ]
+        : undefined
+    },
+    twitter: {
+      card: ogImage ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: ogImage ? [ogImage] : undefined
+    }
+  };
+}
+
+export default async function GuestSitePage({ params }) {
+  const state = await loadGuestSiteState(params);
+
+  if (!state) {
     notFound();
   }
+  const { normalizedEvent, pages, selectedPage } = state;
 
   const basePath = buildGuestSiteBasePath(normalizedEvent);
   const guestSiteIntro =
