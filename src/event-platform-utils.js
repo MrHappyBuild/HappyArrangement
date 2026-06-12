@@ -1346,17 +1346,6 @@ export function buildTaskAgenda(event) {
           );
         }
 
-        if (previousEndMs !== null && previousEndMs > desiredStartMs) {
-          dependencyWarnings.push(
-            previousBlockingTask?.title
-              ? `Fast start ${formatAgendaDateTime(task.desiredStartAt)} kolliderer med "${previousBlockingTask.title}", som varer til ${formatAgendaDateTime(
-                  toDateTimeLocalString(previousEndMs)
-                )}.`
-              : `Fast start ${formatAgendaDateTime(task.desiredStartAt)} kolliderer med agendaen foran, som varer til ${formatAgendaDateTime(
-                  toDateTimeLocalString(previousEndMs)
-                )}.`
-          );
-        }
       }
     } else if (desiredStartMs !== null) {
       if (dependencyEndMs === null) {

@@ -673,7 +673,7 @@ test("buildTaskAgenda warns when a task depends on a later task in the list", ()
   assert.match(agenda.tasks[0].warnings[0], /ligger senere i agendaen/);
 });
 
-test("buildTaskAgenda keeps fixed-time tasks at desired start and warns on collisions", () => {
+test("buildTaskAgenda keeps fixed-time tasks at desired start without warning on unrelated overlap", () => {
   const agenda = buildTaskAgenda({
     id: "event-fixed-task",
     name: "Bryllup",
@@ -709,7 +709,7 @@ test("buildTaskAgenda keeps fixed-time tasks at desired start and warns on colli
   assert.equal(agenda.tasks[1].scheduledStartAt, "2026-06-10T11:00");
   assert.equal(agenda.tasks[1].scheduledEndAt, "2026-06-10T11:30");
   assert.equal(agenda.tasks[1].isFixedTime, true);
-  assert.match(agenda.tasks[1].warnings[0], /Fast start/);
+  assert.equal(agenda.tasks[1].warnings.length, 0);
   assert.equal(agenda.tasks[2].scheduledStartAt, "2026-06-10T12:00");
 });
 
@@ -742,6 +742,36 @@ test("buildTaskAgenda keeps desired start for independent tasks even when anothe
   assert.equal(agenda.tasks[1].scheduledStartAt, "2026-06-10T10:30");
   assert.equal(agenda.tasks[1].scheduledEndAt, "2026-06-10T10:45");
   assert.equal(agenda.tasks[1].warnings.length, 0);
+});
+
+test("buildTaskAgenda warns when a fixed-time task is blocked by an actual dependency", () => {
+  const agenda = buildTaskAgenda({
+    id: "event-fixed-dependency-collision",
+    name: "Bryllup",
+    overview: {
+      startsAt: "2026-06-10T10:00"
+    },
+    tasks: [
+      {
+        id: "task-1",
+        title: "Foto",
+        durationMinutes: 120,
+        orderIndex: 0
+      },
+      {
+        id: "task-2",
+        title: "Kirken",
+        durationMinutes: 30,
+        desiredStartAt: "2026-06-10T11:00",
+        isFixedTime: true,
+        dependencyIds: ["task-1"],
+        orderIndex: 1
+      }
+    ]
+  });
+
+  assert.equal(agenda.tasks[1].scheduledStartAt, "2026-06-10T11:00");
+  assert.match(agenda.tasks[1].warnings[0], /kolliderer med en avhengighet/);
 });
 
 test("buildTaskAgenda backfills tasks before a later fixed task", () => {
@@ -819,7 +849,9 @@ test("buildTaskAgenda keeps an anchored parent task on its own fixed time even w
   assert.equal(agenda.tasks[2].scheduledStartAt, "2026-06-20T16:00");
   assert.equal(agenda.tasks[2].timelineStartAt, "2026-06-20T16:00");
   assert.equal(agenda.tasks[2].timelineEndAt, "2026-06-20T16:05");
-  assert.match(agenda.tasks[2].warnings[0], /Bilder av brudeparet/);
+  assert.equal(agenda.tasks[2].warnings.length, 0);
+  assert.equal(agenda.tasks[3].scheduledStartAt, "2026-06-20T16:00");
+  assert.equal(agenda.tasks[3].scheduledEndAt, "2026-06-20T16:15");
 });
 
 test("buildTaskAgenda groups underaktiviteter under forelderen og viser samlet tidsrom", () => {
