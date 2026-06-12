@@ -713,6 +713,37 @@ test("buildTaskAgenda keeps fixed-time tasks at desired start and warns on colli
   assert.equal(agenda.tasks[2].scheduledStartAt, "2026-06-10T12:00");
 });
 
+test("buildTaskAgenda keeps desired start for independent tasks even when another task is earlier in the list", () => {
+  const agenda = buildTaskAgenda({
+    id: "event-independent-desired-start",
+    name: "Bryllup",
+    overview: {
+      startsAt: "2026-06-10T10:00"
+    },
+    tasks: [
+      {
+        id: "task-1",
+        title: "Foto",
+        durationMinutes: 120,
+        orderIndex: 0
+      },
+      {
+        id: "task-2",
+        title: "Velkomstdrinker",
+        durationMinutes: 15,
+        desiredStartAt: "2026-06-10T10:30",
+        orderIndex: 1
+      }
+    ]
+  });
+
+  assert.equal(agenda.tasks[0].scheduledStartAt, "2026-06-10T10:00");
+  assert.equal(agenda.tasks[0].scheduledEndAt, "2026-06-10T12:00");
+  assert.equal(agenda.tasks[1].scheduledStartAt, "2026-06-10T10:30");
+  assert.equal(agenda.tasks[1].scheduledEndAt, "2026-06-10T10:45");
+  assert.equal(agenda.tasks[1].warnings.length, 0);
+});
+
 test("buildTaskAgenda backfills tasks before a later fixed task", () => {
   const agenda = buildTaskAgenda({
     id: "event-backward-agenda",

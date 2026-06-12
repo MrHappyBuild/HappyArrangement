@@ -1359,9 +1359,12 @@ export function buildTaskAgenda(event) {
         }
       }
     } else if (desiredStartMs !== null) {
-      if (scheduledStartMs === null || desiredStartMs > scheduledStartMs) {
+      if (dependencyEndMs === null) {
         scheduledStartMs = desiredStartMs;
-      } else if (desiredStartMs < scheduledStartMs) {
+      } else if (desiredStartMs >= dependencyEndMs) {
+        scheduledStartMs = desiredStartMs;
+      } else {
+        scheduledStartMs = dependencyEndMs;
         dependencyWarnings.push(
           `Onsket start ${formatAgendaDateTime(task.desiredStartAt)} treffes ikke. Oppgaven starter ${formatAgendaDateTime(
             toDateTimeLocalString(scheduledStartMs)
