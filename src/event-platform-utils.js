@@ -1297,6 +1297,7 @@ export function buildTaskAgenda(event) {
   const scheduledMap = new Map();
   const dependentsMap = new Map();
   let previousEndMs = eventStartMs;
+  let previousBlockingTask = null;
 
   orderedTasks.forEach((task, index) => {
     const dependencyWarnings = [];
@@ -1347,9 +1348,13 @@ export function buildTaskAgenda(event) {
 
         if (previousEndMs !== null && previousEndMs > desiredStartMs) {
           dependencyWarnings.push(
-            `Fast start ${formatAgendaDateTime(task.desiredStartAt)} kolliderer med agendaen foran, som varer til ${formatAgendaDateTime(
-              toDateTimeLocalString(previousEndMs)
-            )}.`
+            previousBlockingTask?.title
+              ? `Fast start ${formatAgendaDateTime(task.desiredStartAt)} kolliderer med "${previousBlockingTask.title}", som varer til ${formatAgendaDateTime(
+                  toDateTimeLocalString(previousEndMs)
+                )}.`
+              : `Fast start ${formatAgendaDateTime(task.desiredStartAt)} kolliderer med agendaen foran, som varer til ${formatAgendaDateTime(
+                  toDateTimeLocalString(previousEndMs)
+                )}.`
           );
         }
       }
@@ -1375,7 +1380,13 @@ export function buildTaskAgenda(event) {
       scheduledStartMs === null ? null : scheduledStartMs + task.durationMinutes * 60 * 1000;
 
     if (scheduledEndMs !== null) {
-      previousEndMs = Math.max(previousEndMs ?? scheduledEndMs, scheduledEndMs);
+      const nextPreviousEndMs = Math.max(previousEndMs ?? scheduledEndMs, scheduledEndMs);
+
+      if (nextPreviousEndMs !== previousEndMs || previousBlockingTask === null) {
+        previousBlockingTask = task;
+      }
+
+      previousEndMs = nextPreviousEndMs;
     }
 
     const scheduledTask = {
@@ -1386,6 +1397,7 @@ export function buildTaskAgenda(event) {
         .filter(Boolean),
       warnings: dependencyWarnings,
       isFixedTime,
+      hasExplicitTimeAnchor: isFixedTime || desiredStartMs !== null,
       missesDesiredStart: dependencyWarnings.some((warning) => warning.includes("Onsket start")),
       scheduledStartAt: scheduledStartMs === null ? "" : toDateTimeLocalString(scheduledStartMs),
       scheduledEndAt: scheduledEndMs === null ? "" : toDateTimeLocalString(scheduledEndMs),
@@ -1493,6 +1505,18 @@ export function buildTaskAgenda(event) {
       };
       timelineWindowCache.set(taskId, ownWindow);
       return ownWindow;
+    }
+
+    if (task.hasExplicitTimeAnchor) {
+      const anchoredWindow = {
+        startMs: Number.isFinite(task.scheduledStartMs) ? task.scheduledStartMs : null,
+        endMs: Number.isFinite(task.scheduledEndMs) ? task.scheduledEndMs : null,
+        startAt: task.scheduledStartAt || "",
+        endAt: task.scheduledEndAt || "",
+        durationMinutes: Number.isFinite(task.durationMinutes) ? task.durationMinutes : null
+      };
+      timelineWindowCache.set(taskId, anchoredWindow);
+      return anchoredWindow;
     }
 
     const startMs = Math.min(...directChildren.map((window) => window.startMs));

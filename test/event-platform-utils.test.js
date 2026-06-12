@@ -743,6 +743,54 @@ test("buildTaskAgenda backfills tasks before a later fixed task", () => {
   assert.equal(agenda.unscheduledCount, 0);
 });
 
+test("buildTaskAgenda keeps an anchored parent task on its own fixed time even with children", () => {
+  const agenda = buildTaskAgenda({
+    id: "event-fixed-parent",
+    name: "Bryllup",
+    overview: {
+      startsAt: "2026-07-20T14:15"
+    },
+    tasks: [
+      {
+        id: "task-1",
+        title: "Vielse",
+        durationMinutes: 45,
+        desiredStartAt: "2026-07-20T14:15",
+        isFixedTime: true,
+        orderIndex: 0
+      },
+      {
+        id: "task-2",
+        title: "Bilder av brudeparet",
+        durationMinutes: 90,
+        dependencyIds: ["task-1"],
+        orderIndex: 1
+      },
+      {
+        id: "task-parent",
+        title: "Velkomstdrinker",
+        durationMinutes: 5,
+        desiredStartAt: "2026-06-20T16:00",
+        isFixedTime: true,
+        orderIndex: 2
+      },
+      {
+        id: "task-child",
+        title: "Introdusere leker og velkomstdrinker",
+        parentTaskId: "task-parent",
+        durationMinutes: 15,
+        desiredStartAt: "2026-06-20T16:00",
+        orderIndex: 3
+      }
+    ]
+  });
+
+  assert.equal(agenda.tasks[2].scheduledStartAt, "2026-06-20T16:00");
+  assert.equal(agenda.tasks[2].timelineStartAt, "2026-06-20T16:00");
+  assert.equal(agenda.tasks[2].timelineEndAt, "2026-06-20T16:05");
+  assert.match(agenda.tasks[2].warnings[0], /Bilder av brudeparet/);
+});
+
 test("buildTaskAgenda groups underaktiviteter under forelderen og viser samlet tidsrom", () => {
   const agenda = buildTaskAgenda({
     id: "event-hierarchy-agenda",
