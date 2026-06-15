@@ -3776,9 +3776,11 @@ p {
   position: fixed;
   inset: 0;
   z-index: 60;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   padding: 24px;
+  overflow: auto;
   background: rgba(28, 22, 15, 0.42);
   backdrop-filter: blur(6px);
 }
@@ -3787,6 +3789,8 @@ p {
   width: min(760px, 100%);
   display: grid;
   gap: 18px;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
   padding: 24px;
   border-radius: 28px;
   border: 1px solid rgba(91, 59, 18, 0.14);
@@ -3799,6 +3803,12 @@ p {
   justify-content: space-between;
   gap: 16px;
   align-items: start;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: -24px -24px 0;
+  padding: 24px 24px 0;
+  background: rgba(255, 252, 247, 0.98);
 }
 
 .venue-planner-grid {
