@@ -1002,6 +1002,460 @@ function getRsvpLabel(value) {
   return RSVP_OPTIONS.find((option) => option.value === value)?.label || RSVP_OPTIONS[0].label;
 }
 
+function getHospitalityMealTypeLabel(value) {
+  return value === "special" ? "Spesialmat" : "Vanlig meny";
+}
+
+function buildHospitalityBriefPdfLines(event, hospitalityBriefs, focus = "combined") {
+  const eventTitle = event?.overview?.title || event?.name || "Arrangement";
+  const title =
+    focus === "kitchen"
+      ? "Kjokkenbrief"
+      : focus === "service"
+        ? "Serveringsbrief"
+        : "Kjokkenbrief og serveringsbrief";
+  const lines = [eventTitle, title, ""];
+  const sharedContacts = [
+    hospitalityBriefs.shared.hostContactName
+      ? `Hovedkontakt: ${hospitalityBriefs.shared.hostContactName}${
+          hospitalityBriefs.shared.hostContactPhone ? ` (${hospitalityBriefs.shared.hostContactPhone})` : ""
+        }`
+      : "",
+    hospitalityBriefs.shared.venueContactName
+      ? `Lokale: ${hospitalityBriefs.shared.venueContactName}${
+          hospitalityBriefs.shared.venueContactPhone ? ` (${hospitalityBriefs.shared.venueContactPhone})` : ""
+        }`
+      : "",
+    hospitalityBriefs.shared.finalHeadcountLockedAt
+      ? `Låst antall: ${formatDateTime(hospitalityBriefs.shared.finalHeadcountLockedAt)}`
+      : ""
+  ].filter(Boolean);
+
+  if (sharedContacts.length) {
+    lines.push("Kontakter");
+    sharedContacts.forEach((line) => lines.push(line));
+    lines.push("");
+  }
+
+  lines.push(
+    `Bekreftet: ${hospitalityBriefs.guestCounts.accepted}`,
+    `Kanskje / venter: ${hospitalityBriefs.guestCounts.maybe + hospitalityBriefs.guestCounts.pending}`,
+    `Bord / stasjoner: ${hospitalityBriefs.seatingSummary.tableCount}`,
+    `Seter totalt: ${hospitalityBriefs.seatingSummary.seatsTotal}`,
+    ""
+  );
+
+  if (focus !== "service") {
+    lines.push("Kjokken");
+    lines.push(
+      `Ansvarlig: ${hospitalityBriefs.kitchen.leadName || "Ikke satt"}`,
+      `Telefon: ${hospitalityBriefs.kitchen.leadPhone || "Ikke satt"}`,
+      `Prep starter: ${
+        hospitalityBriefs.kitchen.prepStartsAt
+          ? formatDateTime(hospitalityBriefs.kitchen.prepStartsAt)
+          : "Ikke satt"
+      }`,
+      `Foerste servering: ${
+        hospitalityBriefs.kitchen.serviceStartsAt
+          ? formatDateTime(hospitalityBriefs.kitchen.serviceStartsAt)
+          : "Ikke satt"
+      }`
+    );
+    if (hospitalityBriefs.kitchen.menuSummary) {
+      lines.push(`Meny: ${hospitalityBriefs.kitchen.menuSummary}`);
+    }
+    if (hospitalityBriefs.kitchen.specialMenus) {
+      lines.push(`Spesialmenyer: ${hospitalityBriefs.kitchen.specialMenus}`);
+    }
+    if (hospitalityBriefs.kitchen.productionNotes) {
+      lines.push(`Produksjon: ${hospitalityBriefs.kitchen.productionNotes}`);
+    }
+    if (hospitalityBriefs.kitchen.equipmentNotes) {
+      lines.push(`Utstyr: ${hospitalityBriefs.kitchen.equipmentNotes}`);
+    }
+    if (hospitalityBriefs.kitchen.deliveryNotes) {
+      lines.push(`Leveranser: ${hospitalityBriefs.kitchen.deliveryNotes}`);
+    }
+    if (hospitalityBriefs.kitchen.fallbackPlan) {
+      lines.push(`Plan B: ${hospitalityBriefs.kitchen.fallbackPlan}`);
+    }
+    lines.push("");
+  }
+
+  if (focus !== "kitchen") {
+    lines.push("Servering");
+    lines.push(
+      `Ansvarlig: ${hospitalityBriefs.service.leadName || "Ikke satt"}`,
+      `Telefon: ${hospitalityBriefs.service.leadPhone || "Ikke satt"}`,
+      `Serveringsform: ${HOSPITALITY_SERVICE_STYLE_OPTIONS.find(
+        (option) => option.value === hospitalityBriefs.service.serviceStyle
+      )?.label || "Ikke satt"}`,
+      `Teamstorrelse: ${hospitalityBriefs.service.teamSize || 0}`,
+      `Foerste servering i salen: ${
+        hospitalityBriefs.service.serviceStartsAt
+          ? formatDateTime(hospitalityBriefs.service.serviceStartsAt)
+          : "Ikke satt"
+      }`
+    );
+    if (hospitalityBriefs.service.beveragePlan) {
+      lines.push(`Drikkeplan: ${hospitalityBriefs.service.beveragePlan}`);
+    }
+    if (hospitalityBriefs.service.tablePlanNotes) {
+      lines.push(`Bordflyt: ${hospitalityBriefs.service.tablePlanNotes}`);
+    }
+    if (hospitalityBriefs.service.clearingPlan) {
+      lines.push(`Rydding: ${hospitalityBriefs.service.clearingPlan}`);
+    }
+    if (hospitalityBriefs.service.guestCommunicationPlan) {
+      lines.push(`Kommunikasjon: ${hospitalityBriefs.service.guestCommunicationPlan}`);
+    }
+    if (hospitalityBriefs.service.issueEscalationPlan) {
+      lines.push(`Avvik: ${hospitalityBriefs.service.issueEscalationPlan}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("Mathensyn og plassering");
+  if (hospitalityBriefs.dietaryGuests.length) {
+    hospitalityBriefs.dietaryGuests.forEach((guest) => {
+      lines.push(
+        `${guest.name} - ${guest.placementLabel || "Ikke plassert"} - ${[
+          guest.allergies,
+          guest.dietaryNotes,
+          guest.seatingNote
+        ]
+          .filter(Boolean)
+          .join(" · ")}`
+      );
+    });
+  } else {
+    lines.push("Ingen registrerte allergier eller spesialmenyer.");
+  }
+  lines.push("");
+
+  lines.push("Bordoversikt");
+  if (hospitalityBriefs.tableRows.length) {
+    hospitalityBriefs.tableRows.forEach((table) => {
+      lines.push(
+        `${table.label}: ${table.acceptedCount} bekreftet · ${table.standardMealCount} vanlig · ${table.specialMealCount} spesial`
+      );
+      table.guestRows.forEach((guest) => {
+        lines.push(
+          `- ${guest.seatLabel || "Plass"} ${guest.name} (${getRsvpLabel(guest.rsvpStatus)}, ${getHospitalityMealTypeLabel(
+            guest.mealType
+          )}${[guest.allergies, guest.dietaryNotes, guest.seatingNote].filter(Boolean).length ? `, ${[
+            guest.allergies,
+            guest.dietaryNotes,
+            guest.seatingNote
+          ]
+            .filter(Boolean)
+            .join(" · ")}` : ""})`
+        );
+      });
+    });
+  } else {
+    lines.push("Ingen bord eller plasseringer er lagt inn enda.");
+  }
+  lines.push("");
+
+  if (focus !== "kitchen") {
+    lines.push("Servicekjoreplan");
+    if (hospitalityBriefs.serviceTimeline.length) {
+      hospitalityBriefs.serviceTimeline.forEach((item) => {
+        lines.push(
+          `${item.startAt ? formatClockTime(item.startAt) : "--:--"} - ${item.endAt ? formatClockTime(item.endAt) : "--:--"} ${item.title}${
+            item.isGeneratedBuffer
+              ? " (systembuffer)"
+              : item.agendaComment
+                ? ` - ${item.agendaComment}`
+                : ""
+          }`
+        );
+      });
+    } else {
+      lines.push("Ingen planlagte agendaelementer enda.");
+    }
+  }
+
+  return lines;
+}
+
+function HospitalityTableOverview({ tableRows }) {
+  if (!tableRows.length) {
+    return <p className="muted">Ingen bord eller plasseringer er lagt inn enda.</p>;
+  }
+
+  return (
+    <div className="hospitality-table-grid">
+      {tableRows.map((table) => (
+        <article className="panel stack nested-panel hospitality-table-card" key={`hospitality-table-${table.id}`}>
+          <div className="panel-header-inline">
+            <div>
+              <h4>{table.label}</h4>
+              <p className="muted">
+                {table.acceptedCount} bekreftet · {table.standardMealCount} vanlig · {table.specialMealCount} spesial
+              </p>
+            </div>
+            <div className="project-chip-row">
+              <span className="data-tag">{table.assignedCount} plassert</span>
+              {table.pendingCount || table.maybeCount ? (
+                <span className="data-tag warning-tag">
+                  {table.maybeCount + table.pendingCount} avventer
+                </span>
+              ) : null}
+            </div>
+          </div>
+          {table.guestRows.length ? (
+            <ul className="compact-list hospitality-seat-list">
+              {table.guestRows.map((guest) => (
+                <li key={guest.id}>
+                  <div className="compact-list-main">
+                    <strong>{guest.name}</strong>
+                    <small className="muted">
+                      {guest.seatLabel || "Plassering uten etikett"} · {getRsvpLabel(guest.rsvpStatus)}
+                      {guest.mealType === "special"
+                        ? ` · ${[guest.allergies, guest.dietaryNotes].filter(Boolean).join(" · ")}`
+                        : ""}
+                      {guest.seatingNote ? ` · ${guest.seatingNote}` : ""}
+                    </small>
+                  </div>
+                  <span className={`data-tag ${guest.mealType === "special" ? "warning-tag" : ""}`}>
+                    {getHospitalityMealTypeLabel(guest.mealType)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Ingen gjester er plassert ved dette bordet enda.</p>
+          )}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function HospitalityFocusedView({ event, hospitalityBriefs, focus }) {
+  const isKitchen = focus === "kitchen";
+
+  return (
+    <div className="stack hospitality-focused-view">
+      <section className="panel stack nested-panel">
+        <div className="panel-header-inline">
+          <div>
+            <h3>{isKitchen ? "Kjokkenvisning" : "Serveringsvisning"}</h3>
+            <p className="muted">
+              {isKitchen
+                ? "Fokusert oversikt for kokk og kjokkenansvarlig."
+                : "Fokusert oversikt for hovmester og serveringspersonell."}
+            </p>
+          </div>
+          <div className="project-chip-row">
+            <span className="role-pill">{hospitalityBriefs.guestCounts.accepted} bekreftet</span>
+            <span className="data-tag">
+              {hospitalityBriefs.dietaryGuests.length} med spesialmat
+            </span>
+          </div>
+        </div>
+        <div className="overview-grid">
+          <InfoCard label="Kommer" value={hospitalityBriefs.guestCounts.accepted} tone="success" />
+          <InfoCard label="Spesialmat" value={hospitalityBriefs.dietaryGuests.length} tone={hospitalityBriefs.dietaryGuests.length ? "warning" : "success"} />
+          <InfoCard label="Bord" value={hospitalityBriefs.seatingSummary.tableCount} />
+          <InfoCard label="Plasserte seter" value={hospitalityBriefs.seatingSummary.assignedSeats} />
+        </div>
+      </section>
+
+      <section className="panel stack nested-panel">
+        <h4>{isKitchen ? "Kontakt og produksjon" : "Kontakt og serviceflyt"}</h4>
+        <ul className="compact-list hospitality-summary-list">
+          <li>
+            <strong>Hovedkontakt:</strong>{" "}
+            {hospitalityBriefs.shared.hostContactName || "Ikke satt"}
+            {hospitalityBriefs.shared.hostContactPhone ? ` · ${hospitalityBriefs.shared.hostContactPhone}` : ""}
+          </li>
+          <li>
+            <strong>Lokale:</strong>{" "}
+            {hospitalityBriefs.shared.venueContactName || "Ikke satt"}
+            {hospitalityBriefs.shared.venueContactPhone ? ` · ${hospitalityBriefs.shared.venueContactPhone}` : ""}
+          </li>
+          {isKitchen ? (
+            <>
+              <li>
+                <strong>Kjokkenansvarlig:</strong>{" "}
+                {hospitalityBriefs.kitchen.leadName || "Ikke satt"}
+                {hospitalityBriefs.kitchen.leadPhone ? ` · ${hospitalityBriefs.kitchen.leadPhone}` : ""}
+              </li>
+              <li>
+                <strong>Prep starter:</strong>{" "}
+                {hospitalityBriefs.kitchen.prepStartsAt
+                  ? formatDateTime(hospitalityBriefs.kitchen.prepStartsAt)
+                  : "Ikke satt"}
+              </li>
+              <li>
+                <strong>Foerste servering:</strong>{" "}
+                {hospitalityBriefs.kitchen.serviceStartsAt
+                  ? formatDateTime(hospitalityBriefs.kitchen.serviceStartsAt)
+                  : "Ikke satt"}
+              </li>
+            </>
+          ) : (
+            <>
+              <li>
+                <strong>Serviceansvarlig:</strong>{" "}
+                {hospitalityBriefs.service.leadName || "Ikke satt"}
+                {hospitalityBriefs.service.leadPhone ? ` · ${hospitalityBriefs.service.leadPhone}` : ""}
+              </li>
+              <li>
+                <strong>Serveringsform:</strong>{" "}
+                {HOSPITALITY_SERVICE_STYLE_OPTIONS.find(
+                  (option) => option.value === hospitalityBriefs.service.serviceStyle
+                )?.label || "Ikke satt"}
+              </li>
+              <li>
+                <strong>Foerste servering i salen:</strong>{" "}
+                {hospitalityBriefs.service.serviceStartsAt
+                  ? formatDateTime(hospitalityBriefs.service.serviceStartsAt)
+                  : "Ikke satt"}
+              </li>
+            </>
+          )}
+        </ul>
+        {isKitchen ? (
+          <div className="stack compact-stack">
+            {hospitalityBriefs.kitchen.menuSummary ? (
+              <p>
+                <strong>Meny:</strong> {hospitalityBriefs.kitchen.menuSummary}
+              </p>
+            ) : null}
+            {hospitalityBriefs.kitchen.specialMenus ? (
+              <p>
+                <strong>Spesialmenyer:</strong> {hospitalityBriefs.kitchen.specialMenus}
+              </p>
+            ) : null}
+            {hospitalityBriefs.kitchen.productionNotes ? (
+              <p>
+                <strong>Produksjon:</strong> {hospitalityBriefs.kitchen.productionNotes}
+              </p>
+            ) : null}
+            {hospitalityBriefs.kitchen.deliveryNotes ? (
+              <p>
+                <strong>Leveranser:</strong> {hospitalityBriefs.kitchen.deliveryNotes}
+              </p>
+            ) : null}
+            {hospitalityBriefs.kitchen.equipmentNotes ? (
+              <p>
+                <strong>Utstyr:</strong> {hospitalityBriefs.kitchen.equipmentNotes}
+              </p>
+            ) : null}
+            {hospitalityBriefs.kitchen.fallbackPlan ? (
+              <p>
+                <strong>Plan B:</strong> {hospitalityBriefs.kitchen.fallbackPlan}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="stack compact-stack">
+            {hospitalityBriefs.service.beveragePlan ? (
+              <p>
+                <strong>Drikkeplan:</strong> {hospitalityBriefs.service.beveragePlan}
+              </p>
+            ) : null}
+            {hospitalityBriefs.service.tablePlanNotes ? (
+              <p>
+                <strong>Bordflyt:</strong> {hospitalityBriefs.service.tablePlanNotes}
+              </p>
+            ) : null}
+            {hospitalityBriefs.service.clearingPlan ? (
+              <p>
+                <strong>Rydding:</strong> {hospitalityBriefs.service.clearingPlan}
+              </p>
+            ) : null}
+            {hospitalityBriefs.service.guestCommunicationPlan ? (
+              <p>
+                <strong>Kommunikasjon:</strong> {hospitalityBriefs.service.guestCommunicationPlan}
+              </p>
+            ) : null}
+            {hospitalityBriefs.service.issueEscalationPlan ? (
+              <p>
+                <strong>Avvik:</strong> {hospitalityBriefs.service.issueEscalationPlan}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </section>
+
+      <section className="panel stack nested-panel">
+        <div className="panel-header-inline">
+          <div>
+            <h4>
+              {isKitchen ? "Mathensyn med bord og plassering" : "Bordoversikt og plasseringer"}
+            </h4>
+            <p className="muted">
+              {isKitchen
+                ? "Hvem som skal ha spesialmat, og hvor de sitter i rommet."
+                : "Bekreftede, vanlig/spesialmat og hvem som sitter hvor."}
+            </p>
+          </div>
+        </div>
+        {isKitchen ? (
+          hospitalityBriefs.dietaryGuests.length ? (
+            <ul className="compact-list hospitality-inline-list">
+              {hospitalityBriefs.dietaryGuests.map((guest) => (
+                <li key={`hospitality-dietary-${guest.id}`}>
+                  <div className="compact-list-main">
+                    <strong>{guest.name}</strong>
+                    <small className="muted">
+                      {guest.placementLabel || "Ikke plassert"} ·{" "}
+                      {[guest.allergies, guest.dietaryNotes, guest.seatingNote]
+                        .filter(Boolean)
+                        .join(" · ") || "Registrert uten detalj"}
+                    </small>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Ingen spesialmat registrert enda.</p>
+          )
+        ) : (
+          <HospitalityTableOverview tableRows={hospitalityBriefs.tableRows} />
+        )}
+      </section>
+
+      {!isKitchen ? (
+        <section className="panel stack nested-panel">
+          <div className="panel-header-inline">
+            <div>
+              <h4>Servicekjoreplan</h4>
+              <p className="muted">Tidsbildet servering skal jobbe etter gjennom kvelden.</p>
+            </div>
+          </div>
+          {hospitalityBriefs.serviceTimeline.length ? (
+            <ul className="compact-list hospitality-inline-list">
+              {hospitalityBriefs.serviceTimeline.map((item) => (
+                <li key={`hospitality-service-${item.id}`}>
+                  <div className="compact-list-main">
+                    <strong>
+                      {item.startAt ? formatClockTime(item.startAt) : "--:--"} {item.title}
+                    </strong>
+                    <small className="muted">
+                      {item.isGeneratedBuffer
+                        ? "Systembuffer"
+                        : [item.agendaComment, getTaskCategoryLabel(item.category)].filter(Boolean).join(" · ")}
+                    </small>
+                  </div>
+                  <strong>{item.endAt ? formatClockTime(item.endAt) : "--:--"}</strong>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Ingen planlagte agendaelementer enda.</p>
+          )}
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function buildGuestSiteBackgroundStyle(backgroundImageUrl) {
   if (!backgroundImageUrl) {
     return {
@@ -7706,6 +8160,56 @@ function ProjectTab({
 
 function HospitalityPlanPanel({ event, viewerAccess, onSaveHospitalityPlan }) {
   const hospitalityBriefs = useMemo(() => buildHospitalityBriefs(event), [event]);
+  const [focusedBriefView, setFocusedBriefView] = useState("");
+
+  async function handleDownloadHospitalityPdf(focus = "combined") {
+    try {
+      const { PDFDocument, StandardFonts } = await import("pdf-lib");
+      const pdfDocument = await PDFDocument.create();
+      const regularFont = await pdfDocument.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdfDocument.embedFont(StandardFonts.HelveticaBold);
+      const lines = buildHospitalityBriefPdfLines(event, hospitalityBriefs, focus);
+      const pageMargin = 48;
+      const fontSize = 11;
+      const lineHeight = 16;
+      let page = pdfDocument.addPage([595.28, 841.89]);
+      let currentY = page.getHeight() - pageMargin;
+      const maxWidth = page.getWidth() - pageMargin * 2;
+
+      lines.forEach((line, index) => {
+        const isTitle = index === 0 || line === "Kjokken" || line === "Servering" || line === "Mathensyn og plassering" || line === "Bordoversikt" || line === "Servicekjoreplan" || line === "Kontakter";
+        const activeFont = isTitle ? boldFont : regularFont;
+        const activeSize = index === 0 ? 15 : isTitle ? 12 : fontSize;
+        const wrappedLines = wrapPdfLine(line || " ", activeFont, activeSize, maxWidth);
+
+        wrappedLines.forEach((wrappedLine) => {
+          if (currentY < pageMargin) {
+            page = pdfDocument.addPage([595.28, 841.89]);
+            currentY = page.getHeight() - pageMargin;
+          }
+
+          page.drawText(wrappedLine, {
+            x: pageMargin,
+            y: currentY,
+            size: activeSize,
+            font: activeFont
+          });
+          currentY -= lineHeight;
+        });
+      });
+
+      const pdfBytes = await pdfDocument.save();
+      const suffix =
+        focus === "kitchen" ? "kjokkenbrief" : focus === "service" ? "serveringsbrief" : "driftsbrief";
+      downloadBlobFile(
+        `${(event?.name || "arrangement").toLowerCase().replace(/\s+/g, "-")}-${suffix}.pdf`,
+        pdfBytes,
+        "application/pdf"
+      );
+    } catch (error) {
+      console.error(error);
+    }
+  }
 
   return (
     <section className="panel stack">
@@ -7726,6 +8230,9 @@ function HospitalityPlanPanel({ event, viewerAccess, onSaveHospitalityPlan }) {
           ) : (
             <span className="data-tag success-tag">Ingen mathensyn registrert</span>
           )}
+          {hospitalityBriefs.tableRows.length ? (
+            <span className="data-tag">{hospitalityBriefs.tableRows.length} bord i drift</span>
+          ) : null}
         </div>
       </div>
       <div className="overview-grid">
@@ -7734,6 +8241,33 @@ function HospitalityPlanPanel({ event, viewerAccess, onSaveHospitalityPlan }) {
         <InfoCard label="Kanskje / venter" value={hospitalityBriefs.guestCounts.maybe + hospitalityBriefs.guestCounts.pending} tone="warning" />
         <InfoCard label="Seter i planen" value={hospitalityBriefs.seatingSummary.seatsTotal} />
       </div>
+      <section className="panel stack nested-panel">
+        <div className="panel-header-inline">
+          <div>
+            <h4>Driftsvisninger</h4>
+            <p className="muted">
+              Aapne fokuserte visninger for kjokken eller servering, eller eksporter alt som PDF.
+            </p>
+          </div>
+        </div>
+        <div className="button-row">
+          <button className="secondary-button" type="button" onClick={() => setFocusedBriefView("kitchen")}>
+            Aapne kjokkenvisning
+          </button>
+          <button className="secondary-button" type="button" onClick={() => setFocusedBriefView("service")}>
+            Aapne serveringsvisning
+          </button>
+          <button className="secondary-button" type="button" onClick={() => void handleDownloadHospitalityPdf("combined")}>
+            Eksporter samlet PDF
+          </button>
+          <button className="secondary-button" type="button" onClick={() => void handleDownloadHospitalityPdf("kitchen")}>
+            Kjokken PDF
+          </button>
+          <button className="secondary-button" type="button" onClick={() => void handleDownloadHospitalityPdf("service")}>
+            Servering PDF
+          </button>
+        </div>
+      </section>
       <form className="stack" key={`${event.id}-hospitality-plan`} onSubmit={onSaveHospitalityPlan}>
         <div className="compact-grid">
           <label className="field">
@@ -8075,8 +8609,14 @@ function HospitalityPlanPanel({ event, viewerAccess, onSaveHospitalityPlan }) {
                     <div className="compact-list-main">
                       <strong>{guest.name}</strong>
                       <small className="muted">
-                        {[guest.allergies, guest.dietaryNotes, guest.seatingNote].filter(Boolean).join(" · ") ||
-                          "Registrert uten detalj"}
+                        {[
+                          guest.placementLabel,
+                          guest.allergies,
+                          guest.dietaryNotes,
+                          guest.seatingNote
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Registrert uten detalj"}
                       </small>
                     </div>
                   </li>
@@ -8087,6 +8627,17 @@ function HospitalityPlanPanel({ event, viewerAccess, onSaveHospitalityPlan }) {
             )}
           </article>
         </div>
+        <article className="panel stack nested-panel">
+          <div className="panel-header-inline">
+            <div>
+              <h4>Bordoversikt for servering</h4>
+              <p className="muted">
+                Viser bekreftede per bord, vanlig meny vs spesialmat, og hvem som sitter hvor.
+              </p>
+            </div>
+          </div>
+          <HospitalityTableOverview tableRows={hospitalityBriefs.tableRows} />
+        </article>
         <article className="panel stack nested-panel">
           <div className="panel-header-inline">
             <div>
@@ -8127,6 +8678,30 @@ function HospitalityPlanPanel({ event, viewerAccess, onSaveHospitalityPlan }) {
           <p className="muted">Denne delen er lesemodus for planleggingen.</p>
         )}
       </form>
+      {focusedBriefView ? (
+        <ModalShell
+          title={focusedBriefView === "kitchen" ? "Kjokkenvisning" : "Serveringsvisning"}
+          body="En fokusert driftsflate med bare den informasjonen teamet trenger paa arrangementsdagen."
+          onClose={() => setFocusedBriefView("")}
+        >
+          <div className="stack">
+            <div className="button-row">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void handleDownloadHospitalityPdf(focusedBriefView)}
+              >
+                Eksporter denne som PDF
+              </button>
+            </div>
+            <HospitalityFocusedView
+              event={event}
+              hospitalityBriefs={hospitalityBriefs}
+              focus={focusedBriefView}
+            />
+          </div>
+        </ModalShell>
+      ) : null}
     </section>
   );
 }

@@ -3829,6 +3829,31 @@ p {
   font-size: 0.96rem;
 }
 
+.hospitality-table-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.hospitality-table-card {
+  min-height: 100%;
+}
+
+.hospitality-seat-list {
+  gap: 10px;
+}
+
+.hospitality-seat-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: start;
+}
+
+.hospitality-focused-view {
+  gap: 16px;
+}
+
 .finance-plan-list {
   gap: 14px;
 }

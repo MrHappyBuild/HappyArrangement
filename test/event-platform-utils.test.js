@@ -542,8 +542,13 @@ test("buildHospitalityBriefs combines guest, seating and agenda data for service
   assert.equal(briefs.guestCounts.accepted, 1);
   assert.equal(briefs.guestCounts.maybe, 1);
   assert.equal(briefs.dietaryGuests.length, 1);
+  assert.equal(briefs.dietaryGuests[0].placementLabel, "Bord 1 · Plass 1");
   assert.equal(briefs.seatingSummary.tableCount, 1);
   assert.equal(briefs.seatingSummary.assignedSeats, 1);
+  assert.equal(briefs.tableRows.length, 1);
+  assert.equal(briefs.tableRows[0].acceptedCount, 1);
+  assert.equal(briefs.tableRows[0].specialMealCount, 1);
+  assert.equal(briefs.tableRows[0].standardMealCount, 0);
   assert.equal(briefs.serviceTimeline.length, 1);
   assert.equal(briefs.serviceTimeline[0].title, "Middag");
 });

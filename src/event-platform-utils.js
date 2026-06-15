@@ -1,7 +1,7 @@
 import { buildEventSettlement } from "./event-settlement-utils.js";
 import { roundCurrency } from "./receipt-utils.js";
 import { buildTaskHierarchyDetails } from "./task-hierarchy-utils.js";
-import { normalizeVenuePlan } from "./venue-layout-utils.js";
+import { buildVenuePlanningState, normalizeVenuePlan } from "./venue-layout-utils.js";
 
 export const PERSON_TEMPLATES = {
   guest: {
@@ -2607,16 +2607,35 @@ function countGuestsByRsvp(people) {
   );
 }
 
-function buildDietaryGuestRows(people) {
+function hasSpecialMealNeed(person) {
+  return Boolean(String(person?.allergies || "").trim()) || Boolean(String(person?.dietaryNotes || "").trim());
+}
+
+function buildDietaryGuestRows(people, venueState) {
+  const seatByGuestId = new Map(
+    (Array.isArray(venueState?.seatSummaries) ? venueState.seatSummaries : [])
+      .filter((seat) => seat?.guest?.id)
+      .map((seat) => [seat.guest.id, seat])
+  );
+
   return (Array.isArray(people) ? people : [])
-    .filter((person) => String(person?.allergies || "").trim() || String(person?.dietaryNotes || "").trim())
-    .map((person) => ({
-      id: person.id,
-      name: person.name || "Ukjent gjest",
-      allergies: String(person.allergies || "").trim(),
-      dietaryNotes: String(person.dietaryNotes || "").trim(),
-      seatingNote: String(person.seatingNote || "").trim()
-    }))
+    .filter((person) => hasSpecialMealNeed(person))
+    .map((person) => {
+      const assignedSeat = seatByGuestId.get(person.id) || null;
+
+      return {
+        id: person.id,
+        name: person.name || "Ukjent gjest",
+        allergies: String(person.allergies || "").trim(),
+        dietaryNotes: String(person.dietaryNotes || "").trim(),
+        seatingNote: String(person.seatingNote || "").trim(),
+        tableLabel: assignedSeat?.itemLabel || "",
+        seatLabel: assignedSeat?.label || "",
+        placementLabel: assignedSeat
+          ? [assignedSeat.itemLabel, assignedSeat.label].filter(Boolean).join(" · ")
+          : ""
+      };
+    })
     .sort((left, right) => left.name.localeCompare(right.name, "nb"));
 }
 
@@ -2661,17 +2680,85 @@ function buildServiceTimelineRows(event) {
     }));
 }
 
+function compareHospitalityGuestRows(left, right) {
+  const statusRank = {
+    accepted: 0,
+    maybe: 1,
+    pending: 2,
+    declined: 3
+  };
+  const leftRank = statusRank[left?.rsvpStatus] ?? 4;
+  const rightRank = statusRank[right?.rsvpStatus] ?? 4;
+
+  if (leftRank !== rightRank) {
+    return leftRank - rightRank;
+  }
+
+  return (
+    String(left?.name || "").localeCompare(String(right?.name || ""), "nb") ||
+    String(left?.seatLabel || "").localeCompare(String(right?.seatLabel || ""), "nb")
+  );
+}
+
+function buildHospitalityTableRows(venueState) {
+  return (Array.isArray(venueState?.items) ? venueState.items : [])
+    .filter((item) => item?.seatable && Array.isArray(item.seats) && item.seats.length > 0)
+    .map((item) => {
+      const guestRows = item.seats
+        .filter((seat) => seat?.guest)
+        .map((seat) => ({
+          id: `${item.id}-${seat.id}`,
+          guestId: seat.guest.id,
+          name: seat.guest.name || "Ukjent gjest",
+          rsvpStatus: seat.guest.rsvpStatus || "pending",
+          seatLabel: seat.label || "",
+          itemLabel: item.label || "Uten navn",
+          allergies: String(seat.guest.allergies || "").trim(),
+          dietaryNotes: String(seat.guest.dietaryNotes || "").trim(),
+          seatingNote: String(seat.guest.seatingNote || "").trim(),
+          mealType: hasSpecialMealNeed(seat.guest) ? "special" : "standard"
+        }))
+        .sort(compareHospitalityGuestRows);
+      const acceptedGuests = guestRows.filter((row) => row.rsvpStatus === "accepted");
+      const maybeGuests = guestRows.filter((row) => row.rsvpStatus === "maybe");
+      const pendingGuests = guestRows.filter((row) => row.rsvpStatus === "pending");
+      const declinedGuests = guestRows.filter((row) => row.rsvpStatus === "declined");
+      const specialMealGuests = acceptedGuests.filter((row) => row.mealType === "special");
+
+      return {
+        id: item.id,
+        label: item.label || "Uten navn",
+        itemType: item.type || "unknown",
+        seatCount: Number(item.seatCount || 0),
+        assignedCount: guestRows.length,
+        acceptedCount: acceptedGuests.length,
+        maybeCount: maybeGuests.length,
+        pendingCount: pendingGuests.length,
+        declinedCount: declinedGuests.length,
+        specialMealCount: specialMealGuests.length,
+        standardMealCount: Math.max(0, acceptedGuests.length - specialMealGuests.length),
+        guestRows
+      };
+    })
+    .sort((left, right) => String(left.label || "").localeCompare(String(right.label || ""), "nb"));
+}
+
 export function buildHospitalityBriefs(event) {
   const normalized = ensureEventShape(event);
+  const venueState = buildVenuePlanningState(normalized);
   const guestCounts = countGuestsByRsvp(normalized.people);
-  const dietaryGuests = buildDietaryGuestRows(normalized.people);
+  const dietaryGuests = buildDietaryGuestRows(normalized.people, venueState);
   const seatingSummary = buildVenueSeatSummary(normalized.venuePlan);
   const serviceTimeline = buildServiceTimelineRows(normalized);
+  const tableRows = buildHospitalityTableRows(venueState);
+  const unplacedDietaryGuests = dietaryGuests.filter((guest) => !guest.placementLabel);
 
   return {
     guestCounts,
     dietaryGuests,
+    unplacedDietaryGuests,
     seatingSummary,
+    tableRows,
     serviceTimeline,
     kitchen: normalized.hospitalityPlan.kitchen,
     service: normalized.hospitalityPlan.service,
