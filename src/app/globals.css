@@ -1695,6 +1695,29 @@ p {
   white-space: nowrap;
 }
 
+.planning-live-recovery {
+  gap: 16px;
+}
+
+.planning-live-recovery-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.planning-live-recovery-card {
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 252, 247, 0.82);
+}
+
+.planning-live-recovery-step {
+  display: grid;
+  gap: 4px;
+}
+
 .grid-form {
   display: grid;
   gap: 14px;
@@ -2489,6 +2512,27 @@ p {
 
 .agenda-inline-field span {
   font-size: 0.78rem;
+}
+
+.task-settings-details {
+  border-radius: 18px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 250, 242, 0.62);
+  padding: 14px 16px;
+}
+
+.task-settings-details summary {
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.task-settings-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.task-settings-details[open] summary {
+  margin-bottom: 14px;
 }
 
 .task-inline-tools {

@@ -21,6 +21,8 @@ test("buildProjectTaskImportTemplateTable exposes key import columns", () => {
   ]);
   assert.equal(headerRow.includes("Tilgjengelig buffer (min)"), true);
   assert.equal(headerRow.includes("Navn pa bufferpunkt"), true);
+  assert.equal(headerRow.includes("Kan kortes ned live"), true);
+  assert.equal(headerRow.includes("Innhentingsprioritet"), true);
 });
 
 test("buildProjectTaskExportTable includes parent and dependency references", () => {
@@ -39,6 +41,13 @@ test("buildProjectTaskExportTable includes parent and dependency references", ()
           availablePlacement: "end",
           transitionMinutes: 0,
           label: "Buffer"
+        },
+        useCategoryRecoveryDefaults: true,
+        recoveryConfig: {
+          canShorten: true,
+          minimumDurationMinutes: 10,
+          canSkip: false,
+          priority: "optional"
         },
         durationMinutes: 0,
         desiredStartAt: "2026-07-20T16:00",
@@ -59,6 +68,13 @@ test("buildProjectTaskExportTable includes parent and dependency references", ()
           transitionMinutes: 2,
           label: "Pause"
         },
+        useCategoryRecoveryDefaults: false,
+        recoveryConfig: {
+          canShorten: true,
+          minimumDurationMinutes: 5,
+          canSkip: true,
+          priority: "optional"
+        },
         durationMinutes: 15,
         desiredStartAt: "",
         dependencyIds: ["a"],
@@ -76,12 +92,14 @@ test("buildProjectTaskExportTable includes parent and dependency references", ()
   const dependencyIndex = headerRow.indexOf("Avhenger av");
   const categoryIndex = headerRow.indexOf("Kategori");
   const bufferLabelIndex = headerRow.indexOf("Navn pa bufferpunkt");
+  const recoveryPriorityIndex = headerRow.indexOf("Innhentingsprioritet");
 
   assert.equal(rows[1][0], "VELKOMST");
   assert.equal(rows[2][0], "LEKER");
   assert.equal(rows[1][categoryIndex], "Mingling");
   assert.equal(rows[2][categoryIndex], "Underholdning");
   assert.equal(rows[2][bufferLabelIndex], "Pause");
+  assert.equal(rows[2][recoveryPriorityIndex], "Valgfri");
   assert.equal(rows[2][parentReferenceIndex], "VELKOMST");
   assert.equal(rows[2][dependencyIndex], "VELKOMST");
 });
@@ -102,11 +120,16 @@ test("parseProjectTaskImportRows resolves assignees and references", () => {
         "Bufferplassering",
         "Fast mellomrom (min)",
         "Navn pa bufferpunkt",
+        "Bruk kategoriens live-standard",
+        "Kan kortes ned live",
+        "Minimumsvarighet (min)",
+        "Kan hoppes over live",
+        "Innhentingsprioritet",
         "Overkode",
         "Avhenger av"
       ],
-      ["VELKOMST", "Velkomstdrinker", "Mingling", "Ida; aki@example.no", "0", "Ja", "Ja", "Ja", "15", "Legg pa slutten", "0", "Buffer", "", ""],
-      ["LEKER", "Introdusere leker", "Underholdning", "Ida", "15", "Nei", "Ja", "Nei", "5", "Fordel mellom underoppgavene", "2", "Pause", "VELKOMST", "VELKOMST"]
+      ["VELKOMST", "Velkomstdrinker", "Mingling", "Ida; aki@example.no", "0", "Ja", "Ja", "Ja", "15", "Legg pa slutten", "0", "Buffer", "Ja", "Ja", "10", "Nei", "Valgfri", "", ""],
+      ["LEKER", "Introdusere leker", "Underholdning", "Ida", "15", "Nei", "Ja", "Nei", "5", "Fordel mellom underoppgavene", "2", "Pause", "Nei", "Ja", "5", "Ja", "Valgfri", "VELKOMST", "VELKOMST"]
     ],
     [
       { id: "p1", name: "Ida", email: "ida@example.no" },
@@ -124,6 +147,11 @@ test("parseProjectTaskImportRows resolves assignees and references", () => {
   assert.equal(parsed.rows[1].bufferConfig.availablePlacement, "distributed");
   assert.equal(parsed.rows[1].bufferConfig.transitionMinutes, 2);
   assert.equal(parsed.rows[1].bufferConfig.label, "Pause");
+  assert.equal(parsed.rows[1].useCategoryRecoveryDefaults, false);
+  assert.equal(parsed.rows[1].recoveryConfig.canShorten, true);
+  assert.equal(parsed.rows[1].recoveryConfig.minimumDurationMinutes, 5);
+  assert.equal(parsed.rows[1].recoveryConfig.canSkip, true);
+  assert.equal(parsed.rows[1].recoveryConfig.priority, "optional");
   assert.equal(parsed.rows[1].parentReference, "VELKOMST");
   assert.deepEqual(parsed.rows[1].dependencyReferences, ["VELKOMST"]);
   assert.equal(parsed.matchedExistingCount, 1);

@@ -59,6 +59,7 @@ import {
   TASK_BUFFER_PLACEMENT_OPTIONS,
   TASK_CATEGORY_OPTIONS,
   TASK_LIVE_STATUS_OPTIONS,
+  TASK_RECOVERY_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
   buildApprovalSummary,
   buildLiveAgenda,
@@ -75,10 +76,12 @@ import {
   sortGuestSiteNavigationEntries,
   buildTaskAgenda,
   buildTaskBufferSummary,
+  buildTaskRecoverySummary,
   buildTaskSwimlanes,
   buildViewerAccess,
   ensureEventShape,
   getTaskCategoryBufferDefaults,
+  getTaskCategoryRecoveryDefaults,
   resolveTaskBufferConfig
 } from "@/event-platform-utils";
 import {
@@ -237,13 +240,27 @@ function normalizeTaskBufferPlacementInput(value, fallback = "end") {
       : "end";
 }
 
+function normalizeTaskRecoveryPriorityInput(value, fallback = "normal") {
+  return TASK_RECOVERY_PRIORITY_OPTIONS.some((option) => option.value === String(value || ""))
+    ? String(value || "")
+    : fallback;
+}
+
 function getTaskCategoryLabel(category) {
   return TASK_CATEGORY_OPTIONS.find((option) => option.value === category)?.label || "Generelt";
 }
 
-function buildTaskBufferPayload(formData) {
+function buildTaskBufferPayload(formData, planningSettings = null) {
   const category = String(formData.get("category") || "general");
-  const defaults = getTaskCategoryBufferDefaults(category);
+  const durationMinutes = parseTaskDurationInput(formData.get("durationMinutes"), 60);
+  const defaults = getTaskCategoryBufferDefaults(category, planningSettings);
+  const recoveryDefaults = getTaskCategoryRecoveryDefaults(category, durationMinutes, planningSettings);
+  const useCategoryRecoveryDefaults = formData.get("useCategoryRecoveryDefaults") === "on";
+  const customCanShorten = formData.get("recoveryCanShorten") === "on";
+  const customMinimumDuration = parseTaskDurationInput(
+    formData.get("recoveryMinimumDurationMinutes"),
+    recoveryDefaults.minimumDurationMinutes ?? 0
+  );
 
   return {
     category,
@@ -262,31 +279,116 @@ function buildTaskBufferPayload(formData) {
         defaults.transitionMinutes ?? 0
       ),
       label: String(formData.get("bufferLabel") || defaults.label || "Buffer").trim() || "Buffer"
-    }
+    },
+    useCategoryRecoveryDefaults,
+    recoveryConfig: useCategoryRecoveryDefaults
+      ? recoveryDefaults
+      : {
+          canShorten: customCanShorten,
+          minimumDurationMinutes: customCanShorten
+            ? Math.min(durationMinutes, customMinimumDuration)
+            : durationMinutes,
+          canSkip: formData.get("recoveryCanSkip") === "on",
+          priority: normalizeTaskRecoveryPriorityInput(
+            formData.get("recoveryPriority"),
+            recoveryDefaults.priority || "normal"
+          )
+        }
+  };
+}
+
+function buildPlanningSettingsPayload(formData) {
+  return {
+    categoryDefaults: TASK_CATEGORY_OPTIONS.reduce((currentDefaults, option) => {
+      const keyPrefix = `categoryDefaults__${option.value}__`;
+
+      currentDefaults[option.value] = {
+        bufferConfig: {
+          availableMinutes: parseTaskDurationInput(formData.get(`${keyPrefix}bufferAvailableMinutes`), 0),
+          availablePlacement: normalizeTaskBufferPlacementInput(
+            formData.get(`${keyPrefix}bufferAvailablePlacement`),
+            "end"
+          ),
+          transitionMinutes: parseTaskDurationInput(
+            formData.get(`${keyPrefix}bufferTransitionMinutes`),
+            0
+          ),
+          label: String(formData.get(`${keyPrefix}bufferLabel`) || "Buffer").trim() || "Buffer"
+        },
+        recoveryConfig: {
+          canShorten: formData.get(`${keyPrefix}recoveryCanShorten`) === "on",
+          minimumDurationMinutes: parseTaskDurationInput(
+            formData.get(`${keyPrefix}recoveryMinimumDurationMinutes`),
+            0
+          ),
+          canSkip: formData.get(`${keyPrefix}recoveryCanSkip`) === "on",
+          priority: normalizeTaskRecoveryPriorityInput(
+            formData.get(`${keyPrefix}recoveryPriority`),
+            "normal"
+          )
+        }
+      };
+      return currentDefaults;
+    }, {})
   };
 }
 
 function TaskBufferSettingsFields({
   task = null,
+  planningSettings = null,
   disabled = false,
   helperText = "Brukes naar aktiviteten har underoppgaver."
 }) {
-  const initialConfig = resolveTaskBufferConfig(task || {});
+  const initialConfig = resolveTaskBufferConfig(task || {}, planningSettings);
+  const initialDurationMinutes = parseTaskDurationInput(task?.durationMinutes, 60);
+  const initialRecoveryDefaults = getTaskCategoryRecoveryDefaults(
+    initialConfig.category,
+    initialDurationMinutes,
+    planningSettings
+  );
+  const initialRecoveryConfig =
+    task?.useCategoryRecoveryDefaults === false && task?.recoveryConfig && typeof task.recoveryConfig === "object"
+      ? {
+          ...initialRecoveryDefaults,
+          ...task.recoveryConfig
+        }
+      : initialRecoveryDefaults;
   const [category, setCategory] = useState(initialConfig.category);
   const [useDefaults, setUseDefaults] = useState(initialConfig.useCategoryBufferDefaults);
+  const [useRecoveryDefaults, setUseRecoveryDefaults] = useState(
+    task?.useCategoryRecoveryDefaults !== false
+  );
   const [customConfig, setCustomConfig] = useState({
     availableMinutes: initialConfig.availableMinutes,
     availablePlacement: initialConfig.availablePlacement,
     transitionMinutes: initialConfig.transitionMinutes,
     label: initialConfig.label
   });
-  const defaults = useMemo(() => getTaskCategoryBufferDefaults(category), [category]);
+  const [customRecoveryConfig, setCustomRecoveryConfig] = useState({
+    canShorten: Boolean(initialRecoveryConfig.canShorten),
+    minimumDurationMinutes: parseTaskDurationInput(
+      initialRecoveryConfig.minimumDurationMinutes,
+      initialDurationMinutes
+    ),
+    canSkip: Boolean(initialRecoveryConfig.canSkip),
+    priority: normalizeTaskRecoveryPriorityInput(initialRecoveryConfig.priority, "normal")
+  });
+  const defaults = useMemo(
+    () => getTaskCategoryBufferDefaults(category, planningSettings),
+    [category, planningSettings]
+  );
+  const recoveryDefaults = useMemo(
+    () => getTaskCategoryRecoveryDefaults(category, initialDurationMinutes, planningSettings),
+    [category, initialDurationMinutes, planningSettings]
+  );
   const effectiveConfig = useDefaults ? defaults : customConfig;
+  const effectiveRecoveryConfig = useRecoveryDefaults ? recoveryDefaults : customRecoveryConfig;
   const summary = buildTaskBufferSummary(effectiveConfig);
+  const recoverySummary = buildTaskRecoverySummary(effectiveRecoveryConfig);
 
   return (
     <div className="field field-span-full">
-      <span>Kategori og buffer</span>
+      <span>Kategori, buffer og live-regler</span>
       <div className="stack compact-stack">
         <div className="agenda-field-grid field-span-full">
           <label className="field agenda-inline-field">
@@ -322,6 +424,7 @@ function TaskBufferSettingsFields({
         <div className="tag-list">
           <span className="data-tag">{getTaskCategoryLabel(category)}</span>
           {summary ? <span className="data-tag">{summary}</span> : <span className="data-tag">Ingen automatisk buffer</span>}
+          <span className="data-tag">{recoverySummary}</span>
         </div>
         {useDefaults ? (
           <>
@@ -405,7 +508,236 @@ function TaskBufferSettingsFields({
             </label>
           </div>
         )}
+        <div className="agenda-field-grid field-span-full">
+          <label className="field agenda-inline-field checkbox-field">
+            <span>Live-standard</span>
+            <span className="checkbox-inline">
+              <input
+                checked={useRecoveryDefaults}
+                disabled={disabled}
+                name="useCategoryRecoveryDefaults"
+                type="checkbox"
+                onChange={(eventObject) => setUseRecoveryDefaults(eventObject.currentTarget.checked)}
+              />
+              <span>Bruk kategoriens live-standard</span>
+            </span>
+          </label>
+        </div>
+        {useRecoveryDefaults ? (
+          <>
+            <input
+              name="recoveryCanShorten"
+              type="hidden"
+              value={recoveryDefaults.canShorten ? "true" : "false"}
+            />
+            <input
+              name="recoveryMinimumDurationMinutes"
+              type="hidden"
+              value={String(recoveryDefaults.minimumDurationMinutes)}
+            />
+            <input
+              name="recoveryCanSkip"
+              type="hidden"
+              value={recoveryDefaults.canSkip ? "true" : "false"}
+            />
+            <input name="recoveryPriority" type="hidden" value={recoveryDefaults.priority} />
+          </>
+        ) : (
+          <div className="agenda-field-grid field-span-full">
+            <label className="field agenda-inline-field checkbox-field">
+              <span>Kan kortes ned live</span>
+              <span className="checkbox-inline">
+                <input
+                  checked={customRecoveryConfig.canShorten}
+                  disabled={disabled}
+                  name="recoveryCanShorten"
+                  type="checkbox"
+                  onChange={(eventObject) =>
+                    setCustomRecoveryConfig((current) => ({
+                      ...current,
+                      canShorten: eventObject.currentTarget.checked
+                    }))
+                  }
+                />
+                <span>La toastmaster korte ned dette punktet</span>
+              </span>
+            </label>
+            <label className="field agenda-inline-field">
+              <span>Minimumsvarighet (min)</span>
+              <input
+                disabled={disabled || !customRecoveryConfig.canShorten}
+                min="0"
+                name="recoveryMinimumDurationMinutes"
+                step="1"
+                type="number"
+                value={String(customRecoveryConfig.minimumDurationMinutes)}
+                onChange={(eventObject) =>
+                  setCustomRecoveryConfig((current) => ({
+                    ...current,
+                    minimumDurationMinutes: parseTaskDurationInput(eventObject.currentTarget.value, 0)
+                  }))
+                }
+              />
+            </label>
+            <label className="field agenda-inline-field checkbox-field">
+              <span>Kan hoppes over</span>
+              <span className="checkbox-inline">
+                <input
+                  checked={customRecoveryConfig.canSkip}
+                  disabled={disabled}
+                  name="recoveryCanSkip"
+                  type="checkbox"
+                  onChange={(eventObject) =>
+                    setCustomRecoveryConfig((current) => ({
+                      ...current,
+                      canSkip: eventObject.currentTarget.checked
+                    }))
+                  }
+                />
+                <span>Kan fjernes helt ved forsinkelse</span>
+              </span>
+            </label>
+            <label className="field agenda-inline-field">
+              <span>Innhentingsprioritet</span>
+              <select
+                disabled={disabled}
+                name="recoveryPriority"
+                value={customRecoveryConfig.priority}
+                onChange={(eventObject) =>
+                  setCustomRecoveryConfig((current) => ({
+                    ...current,
+                    priority: normalizeTaskRecoveryPriorityInput(eventObject.currentTarget.value, "normal")
+                  }))
+                }
+              >
+                {TASK_RECOVERY_PRIORITY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function TaskCategoryDefaultsEditor({ planningSettings, disabled = false }) {
+  return (
+    <div className="stack compact-stack">
+      {TASK_CATEGORY_OPTIONS.map((option) => {
+        const bufferDefaults = getTaskCategoryBufferDefaults(option.value, planningSettings);
+        const recoveryDefaults = getTaskCategoryRecoveryDefaults(option.value, 60, planningSettings);
+        const keyPrefix = `categoryDefaults__${option.value}__`;
+
+        return (
+          <details className="task-settings-details" key={`task-category-default-${option.value}`}>
+            <summary>
+              <strong>{option.label}</strong>
+              <span className="muted">
+                {buildTaskBufferSummary(bufferDefaults)} • {buildTaskRecoverySummary(recoveryDefaults)}
+              </span>
+            </summary>
+            <div className="agenda-field-grid field-span-full">
+              <label className="field agenda-inline-field">
+                <span>Tilgjengelig buffer (min)</span>
+                <input
+                  defaultValue={String(bufferDefaults.availableMinutes)}
+                  disabled={disabled}
+                  min="0"
+                  name={`${keyPrefix}bufferAvailableMinutes`}
+                  step="1"
+                  type="number"
+                />
+              </label>
+              <label className="field agenda-inline-field">
+                <span>Bufferplassering</span>
+                <select
+                  defaultValue={bufferDefaults.availablePlacement}
+                  disabled={disabled}
+                  name={`${keyPrefix}bufferAvailablePlacement`}
+                >
+                  {TASK_BUFFER_PLACEMENT_OPTIONS.map((placementOption) => (
+                    <option key={placementOption.value} value={placementOption.value}>
+                      {placementOption.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field agenda-inline-field">
+                <span>Fast mellomrom (min)</span>
+                <input
+                  defaultValue={String(bufferDefaults.transitionMinutes)}
+                  disabled={disabled}
+                  min="0"
+                  name={`${keyPrefix}bufferTransitionMinutes`}
+                  step="1"
+                  type="number"
+                />
+              </label>
+              <label className="field agenda-inline-field">
+                <span>Navn pa bufferpunkt</span>
+                <input
+                  defaultValue={bufferDefaults.label}
+                  disabled={disabled}
+                  name={`${keyPrefix}bufferLabel`}
+                />
+              </label>
+              <label className="field agenda-inline-field checkbox-field">
+                <span>Kan kortes ned live</span>
+                <span className="checkbox-inline">
+                  <input
+                    defaultChecked={Boolean(recoveryDefaults.canShorten)}
+                    disabled={disabled}
+                    name={`${keyPrefix}recoveryCanShorten`}
+                    type="checkbox"
+                  />
+                  <span>Forsla kortere varighet ved behov</span>
+                </span>
+              </label>
+              <label className="field agenda-inline-field">
+                <span>Minimumsvarighet (min)</span>
+                <input
+                  defaultValue={String(recoveryDefaults.minimumDurationMinutes)}
+                  disabled={disabled}
+                  min="0"
+                  name={`${keyPrefix}recoveryMinimumDurationMinutes`}
+                  step="1"
+                  type="number"
+                />
+              </label>
+              <label className="field agenda-inline-field checkbox-field">
+                <span>Kan hoppes over</span>
+                <span className="checkbox-inline">
+                  <input
+                    defaultChecked={Boolean(recoveryDefaults.canSkip)}
+                    disabled={disabled}
+                    name={`${keyPrefix}recoveryCanSkip`}
+                    type="checkbox"
+                  />
+                  <span>Kan foreslas hoppet over live</span>
+                </span>
+              </label>
+              <label className="field agenda-inline-field">
+                <span>Innhentingsprioritet</span>
+                <select
+                  defaultValue={recoveryDefaults.priority}
+                  disabled={disabled}
+                  name={`${keyPrefix}recoveryPriority`}
+                >
+                  {TASK_RECOVERY_PRIORITY_OPTIONS.map((priorityOption) => (
+                    <option key={priorityOption.value} value={priorityOption.value}>
+                      {priorityOption.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }
@@ -4969,6 +5301,7 @@ function ProjectTab({
               <span className="data-tag">{getTaskCategoryLabel(task.category)}</span>
             ) : null}
             {task.bufferSummary ? <span className="data-tag">{task.bufferSummary}</span> : null}
+            {task.recoverySummary ? <span className="data-tag">{task.recoverySummary}</span> : null}
             {task.toastmasterNotes ? <span className="data-tag">Manus</span> : null}
             {renderTaskDependencyTags(task)}
           </div>
@@ -5104,6 +5437,7 @@ function ProjectTab({
         </label>
         <TaskBufferSettingsFields
           disabled={!viewerAccess.canManageProject}
+          planningSettings={event.planningSettings}
           task={task}
         />
         </div>
@@ -6009,7 +6343,7 @@ function ProjectTab({
                 rows={3}
               />
             </label>
-            <TaskBufferSettingsFields />
+            <TaskBufferSettingsFields planningSettings={event.planningSettings} />
             <label className="field field-span-full">
               <span>Beskrivelse</span>
               <textarea name="description" placeholder="Hva skal gjores, og hva er viktig?" rows={3} />
@@ -6566,6 +6900,7 @@ function ProjectTab({
                                 <span className="role-pill">#{task.agendaPosition}</span>
                                 {task.isFixedTime ? <span className="data-tag">Fast</span> : null}
                                 {task.showOnAgenda ? <span className="data-tag">Agenda</span> : null}
+                                {task.recoverySummary ? <span className="data-tag">{task.recoverySummary}</span> : null}
                                 {task.toastmasterNotes ? <span className="data-tag">Manus</span> : null}
                                 {renderTaskDependencyTags(task)}
                                 {task.hasChildren ? (
@@ -6750,6 +7085,7 @@ function ProjectTab({
                                   <span className="data-tag">{getTaskCategoryLabel(task.category)}</span>
                                 ) : null}
                                 {task.bufferSummary ? <span className="data-tag">{task.bufferSummary}</span> : null}
+                                {task.recoverySummary ? <span className="data-tag">{task.recoverySummary}</span> : null}
                                 {task.toastmasterNotes ? <span className="data-tag">Manus</span> : null}
                                 {renderTaskDependencyTags(task)}
                                 {dropTaskId === `${task.id}:under` ? (
@@ -6880,6 +7216,11 @@ function ProjectTab({
                                 {task.bufferSummary ? (
                                   <span>
                                     <strong>Buffer:</strong> {task.bufferSummary}
+                                  </span>
+                                ) : null}
+                                {task.recoverySummary ? (
+                                  <span>
+                                    <strong>Live-regler:</strong> {task.recoverySummary}
                                   </span>
                                 ) : null}
                               </div>
@@ -7019,6 +7360,7 @@ function ProjectTab({
                                 </label>
                                 <TaskBufferSettingsFields
                                   disabled={!viewerAccess.canManageProject}
+                                  planningSettings={event.planningSettings}
                                   task={task}
                                 />
                               </div>
@@ -7223,7 +7565,13 @@ function ProjectTab({
   );
 }
 
-function PlanningTab({ event, viewerAccess, onSaveOverview, onUpdateTaskLiveState }) {
+function PlanningTab({
+  event,
+  viewerAccess,
+  onSaveOverview,
+  onSavePlanningSettings,
+  onUpdateTaskLiveState
+}) {
   const planningAgenda = buildPlanningAgenda(event);
   const liveAgenda = buildLiveAgenda(event);
   const agendaHighlightGroups = [];
@@ -7477,6 +7825,30 @@ function PlanningTab({ event, viewerAccess, onSaveOverview, onUpdateTaskLiveStat
       <section className="panel stack">
         <div className="panel-header-inline">
           <div>
+            <h3>Kategori-standarder</h3>
+            <p className="muted">
+              Her styrer du standardbuffer og live-regler per kategori for akkurat dette arrangementet.
+              Oppgaver som bruker kategoriens standard arver disse verdiene automatisk.
+            </p>
+          </div>
+          {!viewerAccess.canManagePlanning ? <span className="role-pill">Lesetilgang</span> : null}
+        </div>
+        <form className="stack" key={`${event.id}-planning-settings`} onSubmit={onSavePlanningSettings}>
+          <TaskCategoryDefaultsEditor
+            disabled={!viewerAccess.canManagePlanning}
+            planningSettings={event.planningSettings}
+          />
+          {viewerAccess.canManagePlanning ? (
+            <button className="primary-button" type="submit">
+              Lagre kategori-standarder
+            </button>
+          ) : null}
+        </form>
+      </section>
+
+      <section className="panel stack">
+        <div className="panel-header-inline">
+          <div>
             <h3>Vises pa agenda</h3>
             <p className="muted">
               Marker oppgaver med `Vises pa agenda` i prosjektrommet. Bufferpunkter fra hovedoppgaver
@@ -7615,6 +7987,48 @@ function PlanningTab({ event, viewerAccess, onSaveOverview, onUpdateTaskLiveStat
             igjen i lopet.
           </p>
         )}
+        {liveAgenda.recoverySuggestions?.length ? (
+          <section className="planning-live-recovery stack">
+            <div className="panel-header-inline">
+              <div>
+                <h4>Forslag for aa hente inn tid</h4>
+                <p className="muted">
+                  Forslagene bruker bare aktiviteter som er merket med regler for aa kortes ned eller hoppes over live.
+                </p>
+              </div>
+              <span className="data-tag">
+                {liveAgenda.recoveryCandidateCount} mulige tiltak
+              </span>
+            </div>
+            <div className="planning-live-recovery-grid">
+              {liveAgenda.recoverySuggestions.map((suggestion) => (
+                <article className="planning-live-recovery-card stack" key={`recovery-${suggestion.id}`}>
+                  <div className="planning-live-title-row">
+                    <strong>{suggestion.title}</strong>
+                    <span className={`data-tag ${suggestion.coversTarget ? "success-tag" : "warning-tag"}`}>
+                      Sparer {formatDurationMinutes(suggestion.savedMinutes)}
+                    </span>
+                  </div>
+                  <p className="muted">{suggestion.description}</p>
+                  {!suggestion.coversTarget ? (
+                    <p className="notice warning">
+                      Denne planen henter inn {formatDurationMinutes(suggestion.savedMinutes)} og mangler fortsatt{" "}
+                      {formatDurationMinutes(suggestion.remainingMinutes)}.
+                    </p>
+                  ) : null}
+                  <ul className="compact-list">
+                    {suggestion.actions.map((action) => (
+                      <li className="planning-live-recovery-step" key={`${suggestion.id}-${action.type}-${action.taskId}`}>
+                        <strong>{action.label}</strong>
+                        <span className="muted">{action.description}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
         {liveAgenda.unscheduledCount ? (
           <p className="notice warning">
             {liveAgenda.unscheduledCount} aktiviteter mangler fortsatt starttid og vil vaere vanskeligere aa bruke live. Sett tid paa dem i Oppgaver om de skal brukes i kjoringen.
@@ -8475,6 +8889,22 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     }
   }
 
+  async function handleSavePlanningSettings(formEvent) {
+    formEvent.preventDefault();
+    if (!viewerAccess.canManagePlanning) {
+      return;
+    }
+
+    const formData = new FormData(formEvent.currentTarget);
+    const nextEvent = await patchEvent("update_planning_settings", {
+      planningSettings: buildPlanningSettingsPayload(formData)
+    });
+
+    if (nextEvent) {
+      setStatusMessage("Kategorioppsettet for buffer og live ble oppdatert.");
+    }
+  }
+
   async function handleSaveVenuePlan(venuePlan, successMessage = "Lokaleplanen ble oppdatert.") {
     if (!viewerAccess.canManagePlanning) {
       return null;
@@ -8738,7 +9168,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     }
 
     const formData = new FormData(formEvent.currentTarget);
-    const bufferPayload = buildTaskBufferPayload(formData);
+    const bufferPayload = buildTaskBufferPayload(formData, event.planningSettings);
     const nextEvent = await patchEvent("add_task", {
       task: {
         title: String(formData.get("title") || "").trim(),
@@ -8783,7 +9213,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     }
 
     const formData = new FormData(formEvent.currentTarget);
-    const bufferPayload = buildTaskBufferPayload(formData);
+    const bufferPayload = buildTaskBufferPayload(formData, event.planningSettings);
     const nextEvent = await patchEvent("update_task", {
       taskId: task.id,
       changes: {
@@ -8838,7 +9268,11 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
         useCategoryBufferDefaults: viewerAccess.canManageProject
           ? bufferPayload.useCategoryBufferDefaults
           : task.useCategoryBufferDefaults,
-        bufferConfig: viewerAccess.canManageProject ? bufferPayload.bufferConfig : task.bufferConfig
+        bufferConfig: viewerAccess.canManageProject ? bufferPayload.bufferConfig : task.bufferConfig,
+        useCategoryRecoveryDefaults: viewerAccess.canManageProject
+          ? bufferPayload.useCategoryRecoveryDefaults
+          : task.useCategoryRecoveryDefaults,
+        recoveryConfig: viewerAccess.canManageProject ? bufferPayload.recoveryConfig : task.recoveryConfig
       }
     });
 
@@ -9389,6 +9823,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                 <PlanningTab
                   event={selectedEvent}
                   onSaveOverview={handleSaveOverview}
+                  onSavePlanningSettings={handleSavePlanningSettings}
                   onUpdateTaskLiveState={handleUpdateTaskLiveState}
                   viewerAccess={viewerAccess}
                 />

@@ -1,7 +1,8 @@
 import { parseDelimitedTable } from "./guest-list-utils.js";
 import {
   TASK_BUFFER_PLACEMENT_OPTIONS,
-  TASK_CATEGORY_OPTIONS
+  TASK_CATEGORY_OPTIONS,
+  TASK_RECOVERY_PRIORITY_OPTIONS
 } from "./event-platform-utils.js";
 
 export const PROJECT_TASK_IMPORT_COLUMNS = [
@@ -23,6 +24,11 @@ export const PROJECT_TASK_IMPORT_COLUMNS = [
   { key: "bufferAvailablePlacement", label: "Bufferplassering" },
   { key: "bufferTransitionMinutes", label: "Fast mellomrom (min)" },
   { key: "bufferLabel", label: "Navn pa bufferpunkt" },
+  { key: "useCategoryRecoveryDefaults", label: "Bruk kategoriens live-standard" },
+  { key: "recoveryCanShorten", label: "Kan kortes ned live" },
+  { key: "recoveryMinimumDurationMinutes", label: "Minimumsvarighet (min)" },
+  { key: "recoveryCanSkip", label: "Kan hoppes over live" },
+  { key: "recoveryPriority", label: "Innhentingsprioritet" },
   { key: "parentReference", label: "Overkode" },
   { key: "dependencyReferences", label: "Avhenger av" }
 ];
@@ -47,6 +53,11 @@ export const PROJECT_TASK_FIELD_OPTIONS = [
   { key: "bufferAvailablePlacement", label: "Bufferplassering" },
   { key: "bufferTransitionMinutes", label: "Fast mellomrom (min)" },
   { key: "bufferLabel", label: "Navn pa bufferpunkt" },
+  { key: "useCategoryRecoveryDefaults", label: "Bruk kategoriens live-standard" },
+  { key: "recoveryCanShorten", label: "Kan kortes ned live" },
+  { key: "recoveryMinimumDurationMinutes", label: "Minimumsvarighet (min)" },
+  { key: "recoveryCanSkip", label: "Kan hoppes over live" },
+  { key: "recoveryPriority", label: "Innhentingsprioritet" },
   { key: "parentReference", label: "Overkode" },
   { key: "dependencyReferences", label: "Avhenger av" },
   { key: "description", label: "Beskrivelse" }
@@ -70,6 +81,11 @@ export const DEFAULT_PROJECT_TASK_EXPORT_FIELDS = [
   "bufferAvailablePlacement",
   "bufferTransitionMinutes",
   "bufferLabel",
+  "useCategoryRecoveryDefaults",
+  "recoveryCanShorten",
+  "recoveryMinimumDurationMinutes",
+  "recoveryCanSkip",
+  "recoveryPriority",
   "parentReference",
   "dependencyReferences",
   "agendaComment",
@@ -121,6 +137,36 @@ const IMPORT_COLUMN_ALIASES = {
     "buffertransitionminutes"
   ],
   bufferLabel: ["navn pa bufferpunkt", "navn på bufferpunkt", "buffer label", "bufferlabel"],
+  useCategoryRecoveryDefaults: [
+    "bruk kategoriens live-standard",
+    "bruk live-standard",
+    "use category live defaults",
+    "usecategoryrecoverydefaults"
+  ],
+  recoveryCanShorten: [
+    "kan kortes ned live",
+    "kan kortes ned",
+    "recoverycanshorten",
+    "shorten live"
+  ],
+  recoveryMinimumDurationMinutes: [
+    "minimumsvarighet (min)",
+    "minimumsvarighet",
+    "minimum duration",
+    "recoveryminimumdurationminutes"
+  ],
+  recoveryCanSkip: [
+    "kan hoppes over live",
+    "kan hoppes over",
+    "recoverycanskip",
+    "skip live"
+  ],
+  recoveryPriority: [
+    "innhentingsprioritet",
+    "recovery priority",
+    "recoverypriority",
+    "prioritet"
+  ],
   parentReference: ["overkode", "parent", "parentref", "parentreference", "overoppgave"],
   dependencyReferences: [
     "avhenger av",
@@ -177,6 +223,14 @@ const BUFFER_PLACEMENT_IMPORT_MAP = TASK_BUFFER_PLACEMENT_OPTIONS.reduce((curren
   currentMap[normalizeKey(option.label)] = option.value;
   return currentMap;
 }, {});
+const RECOVERY_PRIORITY_EXPORT_MAP = Object.fromEntries(
+  TASK_RECOVERY_PRIORITY_OPTIONS.map((option) => [option.value, option.label])
+);
+const RECOVERY_PRIORITY_IMPORT_MAP = TASK_RECOVERY_PRIORITY_OPTIONS.reduce((currentMap, option) => {
+  currentMap[normalizeKey(option.value)] = option.value;
+  currentMap[normalizeKey(option.label)] = option.value;
+  return currentMap;
+}, {});
 
 function normalizeKey(value) {
   return String(value || "")
@@ -228,6 +282,10 @@ function parseTaskCategory(value) {
 
 function parseTaskBufferPlacement(value) {
   return BUFFER_PLACEMENT_IMPORT_MAP[normalizeKey(value)] || "end";
+}
+
+function parseRecoveryPriority(value) {
+  return RECOVERY_PRIORITY_IMPORT_MAP[normalizeKey(value)] || "normal";
 }
 
 function buildTaskReference(task, fallbackIndex = 0) {
@@ -320,6 +378,12 @@ function buildTaskExportRows(tasks, people, fieldKeys = DEFAULT_PROJECT_TASK_EXP
         BUFFER_PLACEMENT_EXPORT_MAP[task.bufferConfig?.availablePlacement] || "",
       bufferTransitionMinutes: String(task.bufferConfig?.transitionMinutes ?? ""),
       bufferLabel: task.bufferConfig?.label || "",
+      useCategoryRecoveryDefaults: formatBooleanLabel(task.useCategoryRecoveryDefaults !== false),
+      recoveryCanShorten: formatBooleanLabel(Boolean(task.recoveryConfig?.canShorten)),
+      recoveryMinimumDurationMinutes: String(task.recoveryConfig?.minimumDurationMinutes ?? ""),
+      recoveryCanSkip: formatBooleanLabel(Boolean(task.recoveryConfig?.canSkip)),
+      recoveryPriority:
+        RECOVERY_PRIORITY_EXPORT_MAP[task.recoveryConfig?.priority] || RECOVERY_PRIORITY_EXPORT_MAP.normal,
       parentReference: parentTask?.exportRef || "",
       dependencyReferences,
       parentTitle: parentTask?.title || ""
@@ -353,6 +417,11 @@ export function buildProjectTaskImportTemplateTable() {
       "Legg pa slutten",
       "0",
       "Buffer",
+      "Ja",
+      "Ja",
+      "10",
+      "Nei",
+      "Valgfri",
       "",
       ""
     ],
@@ -375,6 +444,11 @@ export function buildProjectTaskImportTemplateTable() {
       "Fordel mellom underoppgavene",
       "2",
       "Pause",
+      "Nei",
+      "Ja",
+      "5",
+      "Ja",
+      "Valgfri",
       "VELKOMST",
       ""
     ],
@@ -397,6 +471,11 @@ export function buildProjectTaskImportTemplateTable() {
       "Fordel mellom underoppgavene",
       "2",
       "Pause",
+      "Ja",
+      "Ja",
+      "3",
+      "Nei",
+      "Vanlig",
       "",
       "PAUSE-TALE"
     ]
@@ -542,6 +621,11 @@ export function parseProjectTaskImportRows(rows, people = [], existingTasks = []
     bufferAvailablePlacement: findImportColumnIndex(headerRow, "bufferAvailablePlacement"),
     bufferTransitionMinutes: findImportColumnIndex(headerRow, "bufferTransitionMinutes"),
     bufferLabel: findImportColumnIndex(headerRow, "bufferLabel"),
+    useCategoryRecoveryDefaults: findImportColumnIndex(headerRow, "useCategoryRecoveryDefaults"),
+    recoveryCanShorten: findImportColumnIndex(headerRow, "recoveryCanShorten"),
+    recoveryMinimumDurationMinutes: findImportColumnIndex(headerRow, "recoveryMinimumDurationMinutes"),
+    recoveryCanSkip: findImportColumnIndex(headerRow, "recoveryCanSkip"),
+    recoveryPriority: findImportColumnIndex(headerRow, "recoveryPriority"),
     parentReference: findImportColumnIndex(headerRow, "parentReference"),
     dependencyReferences: findImportColumnIndex(headerRow, "dependencyReferences")
   };
@@ -598,6 +682,13 @@ export function parseProjectTaskImportRows(rows, people = [], existingTasks = []
           availablePlacement: parseTaskBufferPlacement(getValue("bufferAvailablePlacement")),
           transitionMinutes: parseDuration(getValue("bufferTransitionMinutes"), 0),
           label: getValue("bufferLabel") || "Buffer"
+        },
+        useCategoryRecoveryDefaults: parseBooleanToken(getValue("useCategoryRecoveryDefaults")),
+        recoveryConfig: {
+          canShorten: parseBooleanToken(getValue("recoveryCanShorten")),
+          minimumDurationMinutes: parseDuration(getValue("recoveryMinimumDurationMinutes"), 0),
+          canSkip: parseBooleanToken(getValue("recoveryCanSkip")),
+          priority: parseRecoveryPriority(getValue("recoveryPriority"))
         },
         parentReference: getValue("parentReference"),
         dependencyReferences: splitListValue(getValue("dependencyReferences"))

@@ -1020,6 +1020,58 @@ test("buildTaskAgenda applies category buffer defaults between underaktiviteter"
   assert.equal(agenda.bufferDurationMinutes, 12);
 });
 
+test("buildTaskAgenda uses event-level category overrides for buffer defaults", () => {
+  const agenda = buildTaskAgenda({
+    id: "event-category-override",
+    name: "Bryllup",
+    planningSettings: {
+      categoryDefaults: {
+        speeches: {
+          bufferConfig: {
+            availableMinutes: 4,
+            availablePlacement: "distributed",
+            transitionMinutes: 1,
+            label: "Buffer"
+          }
+        }
+      }
+    },
+    overview: {
+      startsAt: "2026-06-10T18:00"
+    },
+    tasks: [
+      {
+        id: "task-parent",
+        title: "Taler",
+        category: "speeches",
+        durationMinutes: 0,
+        desiredStartAt: "2026-06-10T18:00",
+        isFixedTime: true,
+        orderIndex: 0
+      },
+      {
+        id: "task-child-1",
+        title: "Tale fra far",
+        parentTaskId: "task-parent",
+        durationMinutes: 10,
+        orderIndex: 1
+      },
+      {
+        id: "task-child-2",
+        title: "Tale fra mor",
+        parentTaskId: "task-parent",
+        durationMinutes: 15,
+        orderIndex: 2
+      }
+    ]
+  });
+
+  assert.equal(agenda.bufferItems.length, 1);
+  assert.equal(agenda.bufferItems[0].title, "Buffer");
+  assert.equal(agenda.bufferItems[0].durationMinutes, 5);
+  assert.equal(agenda.tasks[2].scheduledStartAt, "2026-06-10T18:15");
+});
+
 test("buildLiveAgenda tracks drift and remaining buffer against next fixed point", () => {
   const liveAgenda = buildLiveAgenda(
     {
@@ -1116,6 +1168,68 @@ test("buildLiveAgenda keeps generated buffer items and toastmaster notes in runn
     liveAgenda.items.find((item) => item.isGeneratedBuffer)?.durationMinutes,
     12
   );
+});
+
+test("buildLiveAgenda suggests legal recovery actions when running behind", () => {
+  const liveAgenda = buildLiveAgenda(
+    {
+      id: "event-live-recovery",
+      name: "Bryllup",
+      overview: {
+        startsAt: "2026-06-20T16:00"
+      },
+      tasks: [
+        {
+          id: "task-1",
+          title: "Velkomstdrinker",
+          durationMinutes: 30,
+          desiredStartAt: "2026-06-20T16:00",
+          liveStatus: "in_progress",
+          actualStartAt: "2026-06-20T16:10",
+          category: "mingling",
+          useCategoryRecoveryDefaults: false,
+          recoveryConfig: {
+            canShorten: true,
+            minimumDurationMinutes: 20,
+            canSkip: false,
+            priority: "optional"
+          },
+          orderIndex: 0
+        },
+        {
+          id: "task-2",
+          title: "Lek",
+          durationMinutes: 15,
+          dependencyIds: ["task-1"],
+          useCategoryRecoveryDefaults: false,
+          recoveryConfig: {
+            canShorten: true,
+            minimumDurationMinutes: 5,
+            canSkip: true,
+            priority: "optional"
+          },
+          orderIndex: 1
+        },
+        {
+          id: "task-3",
+          title: "Middag",
+          durationMinutes: 60,
+          desiredStartAt: "2026-06-20T16:45",
+          isFixedTime: true,
+          dependencyIds: ["task-2"],
+          orderIndex: 2
+        }
+      ]
+    },
+    {
+      now: "2026-06-20T16:32"
+    }
+  );
+
+  assert.equal(liveAgenda.needsCatchUpMinutes > 0, true);
+  assert.equal(liveAgenda.recoverySuggestions.length > 0, true);
+  assert.match(liveAgenda.recoverySuggestions[0].actions[0].label, /Kort ned|Hopp over/);
+  assert.equal(liveAgenda.recoveryCandidateCount >= 2, true);
 });
 
 test("buildTaskAgenda shifts following tasks after end buffer on a hovedoppgave", () => {

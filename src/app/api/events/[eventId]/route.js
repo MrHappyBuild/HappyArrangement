@@ -6,8 +6,10 @@ import { getLocalEnv } from "@/lib/env";
 import {
   TASK_LIVE_STATUS_OPTIONS,
   TASK_CATEGORY_OPTIONS,
+  TASK_RECOVERY_PRIORITY_OPTIONS,
   buildTaskAgenda,
-  getTaskCategoryBufferDefaults
+  getTaskCategoryBufferDefaults,
+  getTaskCategoryRecoveryDefaults
 } from "@/event-platform-utils";
 import { analyzeReceiptWithOllama } from "@/lib/local-ai";
 import {
@@ -243,6 +245,78 @@ function normalizeTaskLiveStatus(value, fallback = "planned") {
     : fallback;
 }
 
+function normalizeTaskRecoveryPriority(value, fallback = "normal") {
+  const normalized = cleanString(value);
+  return TASK_RECOVERY_PRIORITY_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : fallback;
+}
+
+function normalizeTaskRecoveryConfig(value, fallback = {}, durationMinutes = 60) {
+  const safeValue = value && typeof value === "object" ? value : {};
+  const safeFallback = fallback && typeof fallback === "object" ? fallback : {};
+  const safeDuration = normalizeDuration(durationMinutes, 60);
+  const canShorten = normalizeBooleanInput(
+    Object.prototype.hasOwnProperty.call(safeValue, "canShorten")
+      ? safeValue.canShorten
+      : safeFallback.canShorten
+  );
+  const minimumDurationMinutes = Math.min(
+    safeDuration,
+    normalizeDuration(
+      safeValue.minimumDurationMinutes,
+      normalizeDuration(safeFallback.minimumDurationMinutes, 0)
+    )
+  );
+
+  return {
+    canShorten,
+    minimumDurationMinutes: canShorten ? minimumDurationMinutes : safeDuration,
+    canSkip: normalizeBooleanInput(
+      Object.prototype.hasOwnProperty.call(safeValue, "canSkip")
+        ? safeValue.canSkip
+        : safeFallback.canSkip
+    ),
+    priority: normalizeTaskRecoveryPriority(
+      safeValue.priority,
+      normalizeTaskRecoveryPriority(safeFallback.priority, "normal")
+    )
+  };
+}
+
+function buildPlanningSettingsPayload(value, fallback = null) {
+  const safeValue = value && typeof value === "object" ? value : {};
+  const safeFallback = fallback && typeof fallback === "object" ? fallback : {};
+
+  return {
+    categoryDefaults: TASK_CATEGORY_OPTIONS.reduce((currentDefaults, option) => {
+      const incomingCategoryDefaults =
+        safeValue.categoryDefaults && typeof safeValue.categoryDefaults === "object"
+          ? safeValue.categoryDefaults[option.value]
+          : null;
+      const fallbackCategoryDefaults =
+        safeFallback.categoryDefaults && typeof safeFallback.categoryDefaults === "object"
+          ? safeFallback.categoryDefaults[option.value]
+          : null;
+      const baseBufferDefaults = getTaskCategoryBufferDefaults(option.value, fallback);
+      const baseRecoveryDefaults = getTaskCategoryRecoveryDefaults(option.value, 60, fallback);
+
+      currentDefaults[option.value] = {
+        bufferConfig: normalizeTaskBufferConfig(
+          incomingCategoryDefaults?.bufferConfig,
+          fallbackCategoryDefaults?.bufferConfig || baseBufferDefaults
+        ),
+        recoveryConfig: normalizeTaskRecoveryConfig(
+          incomingCategoryDefaults?.recoveryConfig,
+          fallbackCategoryDefaults?.recoveryConfig || baseRecoveryDefaults,
+          60
+        )
+      };
+      return currentDefaults;
+    }, {})
+  };
+}
+
 function isEventMember(event, personId) {
   return !!personId && Array.isArray(event?.members) && event.members.some((member) => member.id === personId);
 }
@@ -431,6 +505,16 @@ export async function PATCH(request, context) {
               current.guestSite?.agendaPage
             )
           }
+        };
+      }
+
+      if (action === "update_planning_settings") {
+        return {
+          ...current,
+          planningSettings: buildPlanningSettingsPayload(
+            payload?.planningSettings,
+            current.planningSettings
+          )
         };
       }
 
@@ -795,7 +879,13 @@ export async function PATCH(request, context) {
         const dependencyIds = cleanIdList(payload?.task?.dependencyIds);
         const followingTaskIds = cleanIdList(payload?.task?.followingTaskIds);
         const category = normalizeTaskCategory(payload?.task?.category);
-        const categoryBufferDefaults = getTaskCategoryBufferDefaults(category);
+        const durationMinutes = normalizeDuration(payload?.task?.durationMinutes);
+        const categoryBufferDefaults = getTaskCategoryBufferDefaults(category, current.planningSettings);
+        const categoryRecoveryDefaults = getTaskCategoryRecoveryDefaults(
+          category,
+          durationMinutes,
+          current.planningSettings
+        );
         const subprojectIds = (current.subprojects || []).map((subproject) => subproject.id);
         const usedReferenceCodes = new Set(
           baseTasks
@@ -825,13 +915,22 @@ export async function PATCH(request, context) {
           liveStatus: normalizeTaskLiveStatus(payload?.task?.liveStatus, "planned"),
           actualStartAt: cleanString(payload?.task?.actualStartAt),
           actualEndAt: cleanString(payload?.task?.actualEndAt),
-          durationMinutes: normalizeDuration(payload?.task?.durationMinutes),
+          durationMinutes,
           category,
           useCategoryBufferDefaults:
             Object.prototype.hasOwnProperty.call(payload?.task || {}, "useCategoryBufferDefaults")
               ? normalizeBooleanInput(payload?.task?.useCategoryBufferDefaults)
               : true,
           bufferConfig: normalizeTaskBufferConfig(payload?.task?.bufferConfig, categoryBufferDefaults),
+          useCategoryRecoveryDefaults:
+            Object.prototype.hasOwnProperty.call(payload?.task || {}, "useCategoryRecoveryDefaults")
+              ? normalizeBooleanInput(payload?.task?.useCategoryRecoveryDefaults)
+              : true,
+          recoveryConfig: normalizeTaskRecoveryConfig(
+            payload?.task?.recoveryConfig,
+            categoryRecoveryDefaults,
+            durationMinutes
+          ),
           status: cleanString(payload?.task?.status) || "todo",
           orderIndex: Array.isArray(current.tasks) ? current.tasks.length : 0,
           dependencyIds,
@@ -954,6 +1053,8 @@ export async function PATCH(request, context) {
           liveStatus: _ignoredLiveStatus,
           actualStartAt: _ignoredActualStartAt,
           actualEndAt: _ignoredActualEndAt,
+          useCategoryRecoveryDefaults: _ignoredUseCategoryRecoveryDefaults,
+          recoveryConfig: _ignoredRecoveryConfig,
           parentTaskId: _ignoredParentTaskId,
           subprojectId: _ignoredSubprojectId,
           ...directChanges
@@ -976,7 +1077,18 @@ export async function PATCH(request, context) {
         const nextCategory = Object.prototype.hasOwnProperty.call(rawChanges, "category")
           ? normalizeTaskCategory(rawChanges.category, existingTask.category || "general")
           : normalizeTaskCategory(existingTask.category, "general");
-        const nextCategoryBufferDefaults = getTaskCategoryBufferDefaults(nextCategory);
+        const nextDurationMinutes = Object.prototype.hasOwnProperty.call(rawChanges, "durationMinutes")
+          ? normalizeDuration(rawChanges.durationMinutes, existingTask.durationMinutes ?? 60)
+          : normalizeDuration(existingTask.durationMinutes, 60);
+        const nextCategoryBufferDefaults = getTaskCategoryBufferDefaults(
+          nextCategory,
+          current.planningSettings
+        );
+        const nextCategoryRecoveryDefaults = getTaskCategoryRecoveryDefaults(
+          nextCategory,
+          nextDurationMinutes,
+          current.planningSettings
+        );
         const baseTasks = currentTasks.map((task) =>
           task.id === taskId
             ? {
@@ -986,10 +1098,7 @@ export async function PATCH(request, context) {
                   Object.prototype.hasOwnProperty.call(rawChanges, "referenceCode")
                     ? cleanString(rawChanges.referenceCode)
                     : task.referenceCode,
-                durationMinutes:
-                  Object.prototype.hasOwnProperty.call(rawChanges, "durationMinutes")
-                    ? normalizeDuration(rawChanges.durationMinutes, task.durationMinutes ?? 60)
-                    : task.durationMinutes,
+                durationMinutes: nextDurationMinutes,
                 isFixedTime:
                   Object.prototype.hasOwnProperty.call(rawChanges, "isFixedTime")
                     ? normalizeBooleanInput(rawChanges.isFixedTime)
@@ -1027,6 +1136,22 @@ export async function PATCH(request, context) {
                   Object.prototype.hasOwnProperty.call(rawChanges, "bufferConfig")
                     ? normalizeTaskBufferConfig(rawChanges.bufferConfig, nextCategoryBufferDefaults)
                     : normalizeTaskBufferConfig(task.bufferConfig, nextCategoryBufferDefaults),
+                useCategoryRecoveryDefaults:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "useCategoryRecoveryDefaults")
+                    ? normalizeBooleanInput(rawChanges.useCategoryRecoveryDefaults)
+                    : task.useCategoryRecoveryDefaults !== false,
+                recoveryConfig:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "recoveryConfig")
+                    ? normalizeTaskRecoveryConfig(
+                        rawChanges.recoveryConfig,
+                        nextCategoryRecoveryDefaults,
+                        nextDurationMinutes
+                      )
+                    : normalizeTaskRecoveryConfig(
+                        task.recoveryConfig,
+                        nextCategoryRecoveryDefaults,
+                        nextDurationMinutes
+                      ),
                 dependencyIds: nextDependencyIds.filter((dependencyId) => dependencyId !== task.id),
                 assigneeIds:
                   Object.prototype.hasOwnProperty.call(rawChanges, "assigneeIds")
@@ -1060,6 +1185,7 @@ export async function PATCH(request, context) {
 
       if (action === "bulk_upsert_tasks") {
         const incomingTasks = Array.isArray(payload?.tasks) ? payload.tasks : [];
+        const currentPlanningSettings = current.planningSettings;
 
         if (incomingTasks.length === 0) {
           throw new Error("Ingen oppgaver aa importere.");
@@ -1139,7 +1265,16 @@ export async function PATCH(request, context) {
               toastmasterNotes: "",
               category: "general",
               useCategoryBufferDefaults: true,
-              bufferConfig: normalizeTaskBufferConfig(null, getTaskCategoryBufferDefaults("general")),
+              bufferConfig: normalizeTaskBufferConfig(
+                null,
+                getTaskCategoryBufferDefaults("general", currentPlanningSettings)
+              ),
+              useCategoryRecoveryDefaults: true,
+              recoveryConfig: normalizeTaskRecoveryConfig(
+                null,
+                getTaskCategoryRecoveryDefaults("general", 60, currentPlanningSettings),
+                60
+              ),
               liveStatus: "planned",
               actualStartAt: "",
               actualEndAt: "",
@@ -1175,18 +1310,32 @@ export async function PATCH(request, context) {
           matchedTask.actualStartAt = cleanString(incomingTask?.actualStartAt);
           matchedTask.actualEndAt = cleanString(incomingTask?.actualEndAt);
           matchedTask.category = normalizeTaskCategory(incomingTask?.category, matchedTask.category || "general");
+          const nextDurationMinutes = normalizeDuration(
+            incomingTask?.durationMinutes,
+            matchedTask.durationMinutes ?? 60
+          );
           matchedTask.useCategoryBufferDefaults =
             Object.prototype.hasOwnProperty.call(incomingTask || {}, "useCategoryBufferDefaults")
               ? normalizeBooleanInput(incomingTask?.useCategoryBufferDefaults)
               : matchedTask.useCategoryBufferDefaults !== false;
           matchedTask.bufferConfig = normalizeTaskBufferConfig(
             incomingTask?.bufferConfig,
-            getTaskCategoryBufferDefaults(matchedTask.category)
+            getTaskCategoryBufferDefaults(matchedTask.category, currentPlanningSettings)
           );
-          matchedTask.durationMinutes = normalizeDuration(
-            incomingTask?.durationMinutes,
-            matchedTask.durationMinutes ?? 60
+          matchedTask.useCategoryRecoveryDefaults =
+            Object.prototype.hasOwnProperty.call(incomingTask || {}, "useCategoryRecoveryDefaults")
+              ? normalizeBooleanInput(incomingTask?.useCategoryRecoveryDefaults)
+              : matchedTask.useCategoryRecoveryDefaults !== false;
+          matchedTask.recoveryConfig = normalizeTaskRecoveryConfig(
+            incomingTask?.recoveryConfig,
+            getTaskCategoryRecoveryDefaults(
+              matchedTask.category,
+              nextDurationMinutes,
+              currentPlanningSettings
+            ),
+            nextDurationMinutes
           );
+          matchedTask.durationMinutes = nextDurationMinutes;
           matchedTask.assigneeIds = cleanIdList(incomingTask?.assigneeIds);
 
           importTargets.push({

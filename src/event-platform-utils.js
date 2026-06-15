@@ -144,6 +144,12 @@ export const TASK_BUFFER_PLACEMENT_OPTIONS = [
   { value: "distributed", label: "Fordel mellom underoppgavene" }
 ];
 
+export const TASK_RECOVERY_PRIORITY_OPTIONS = [
+  { value: "critical", label: "Kritisk" },
+  { value: "normal", label: "Vanlig" },
+  { value: "optional", label: "Valgfri" }
+];
+
 export const SUBMISSION_STATUS_OPTIONS = [
   { value: "pending_approval", label: "Venter pa godkjenning" },
   { value: "approved", label: "Godkjent" },
@@ -192,6 +198,10 @@ const DEFAULT_OVERVIEW = {
   practicalInfo: ""
 };
 
+const DEFAULT_PLANNING_SETTINGS = {
+  categoryDefaults: {}
+};
+
 const DEFAULT_GUEST_SITE = {
   introText: "",
   navigationLabel: "Navigasjon",
@@ -218,49 +228,114 @@ const DEFAULT_TASK_BUFFER_CONFIG = {
   transitionMinutes: 0,
   label: "Buffer"
 };
-const TASK_CATEGORY_BUFFER_DEFAULTS = {
-  general: DEFAULT_TASK_BUFFER_CONFIG,
+const DEFAULT_TASK_RECOVERY_CONFIG = {
+  canShorten: false,
+  minimumDurationMinutes: 0,
+  canSkip: false,
+  priority: "normal"
+};
+const TASK_CATEGORY_DEFAULTS = {
+  general: {
+    bufferConfig: DEFAULT_TASK_BUFFER_CONFIG,
+    recoveryConfig: DEFAULT_TASK_RECOVERY_CONFIG
+  },
   ceremony: {
-    availableMinutes: 0,
-    availablePlacement: "end",
-    transitionMinutes: 0,
-    label: "Buffer"
+    bufferConfig: {
+      availableMinutes: 0,
+      availablePlacement: "end",
+      transitionMinutes: 0,
+      label: "Buffer"
+    },
+    recoveryConfig: {
+      canShorten: false,
+      minimumDurationMinutes: 0,
+      canSkip: false,
+      priority: "critical"
+    }
   },
   mingling: {
-    availableMinutes: 15,
-    availablePlacement: "end",
-    transitionMinutes: 0,
-    label: "Buffer"
+    bufferConfig: {
+      availableMinutes: 15,
+      availablePlacement: "end",
+      transitionMinutes: 0,
+      label: "Buffer"
+    },
+    recoveryConfig: {
+      canShorten: true,
+      minimumDurationMinutes: 10,
+      canSkip: false,
+      priority: "optional"
+    }
   },
   dinner: {
-    availableMinutes: 10,
-    availablePlacement: "end",
-    transitionMinutes: 0,
-    label: "Pause"
+    bufferConfig: {
+      availableMinutes: 10,
+      availablePlacement: "end",
+      transitionMinutes: 0,
+      label: "Pause"
+    },
+    recoveryConfig: {
+      canShorten: true,
+      minimumDurationMinutes: 30,
+      canSkip: false,
+      priority: "critical"
+    }
   },
   speeches: {
-    availableMinutes: 10,
-    availablePlacement: "distributed",
-    transitionMinutes: 2,
-    label: "Pause"
+    bufferConfig: {
+      availableMinutes: 10,
+      availablePlacement: "distributed",
+      transitionMinutes: 2,
+      label: "Pause"
+    },
+    recoveryConfig: {
+      canShorten: true,
+      minimumDurationMinutes: 3,
+      canSkip: false,
+      priority: "normal"
+    }
   },
   transport: {
-    availableMinutes: 10,
-    availablePlacement: "end",
-    transitionMinutes: 0,
-    label: "Buffer"
+    bufferConfig: {
+      availableMinutes: 10,
+      availablePlacement: "end",
+      transitionMinutes: 0,
+      label: "Buffer"
+    },
+    recoveryConfig: {
+      canShorten: false,
+      minimumDurationMinutes: 0,
+      canSkip: false,
+      priority: "critical"
+    }
   },
   entertainment: {
-    availableMinutes: 5,
-    availablePlacement: "distributed",
-    transitionMinutes: 2,
-    label: "Pause"
+    bufferConfig: {
+      availableMinutes: 5,
+      availablePlacement: "distributed",
+      transitionMinutes: 2,
+      label: "Pause"
+    },
+    recoveryConfig: {
+      canShorten: true,
+      minimumDurationMinutes: 5,
+      canSkip: true,
+      priority: "optional"
+    }
   },
   logistics: {
-    availableMinutes: 5,
-    availablePlacement: "end",
-    transitionMinutes: 0,
-    label: "Buffer"
+    bufferConfig: {
+      availableMinutes: 5,
+      availablePlacement: "end",
+      transitionMinutes: 0,
+      label: "Buffer"
+    },
+    recoveryConfig: {
+      canShorten: true,
+      minimumDurationMinutes: 0,
+      canSkip: true,
+      priority: "normal"
+    }
   }
 };
 
@@ -377,6 +452,10 @@ function normalizeTaskLiveStatus(value) {
   return TASK_LIVE_STATUS_OPTIONS.some((option) => option.value === value) ? value : "planned";
 }
 
+function normalizeTaskRecoveryPriority(value) {
+  return TASK_RECOVERY_PRIORITY_OPTIONS.some((option) => option.value === value) ? value : "normal";
+}
+
 function normalizeTaskBufferConfig(value, fallback = DEFAULT_TASK_BUFFER_CONFIG) {
   const safeValue = value && typeof value === "object" ? value : {};
   const safeFallback = fallback && typeof fallback === "object" ? fallback : DEFAULT_TASK_BUFFER_CONFIG;
@@ -397,19 +476,120 @@ function normalizeTaskBufferConfig(value, fallback = DEFAULT_TASK_BUFFER_CONFIG)
   };
 }
 
-export function getTaskCategoryBufferDefaults(category) {
+function normalizeTaskRecoveryConfig(
+  value,
+  fallback = DEFAULT_TASK_RECOVERY_CONFIG,
+  durationMinutes = DEFAULT_TASK_DURATION_MINUTES
+) {
+  const safeValue = value && typeof value === "object" ? value : {};
+  const safeFallback = fallback && typeof fallback === "object" ? fallback : DEFAULT_TASK_RECOVERY_CONFIG;
+  const safeDuration = Math.max(
+    0,
+    parseInteger(durationMinutes, DEFAULT_TASK_DURATION_MINUTES)
+  );
+  const canShorten = normalizeBooleanFlag(safeValue.canShorten ?? safeFallback.canShorten);
+  const minimumDurationMinutes = Math.min(
+    safeDuration,
+    Math.max(
+      0,
+      parseInteger(
+        safeValue.minimumDurationMinutes,
+        parseInteger(safeFallback.minimumDurationMinutes, 0)
+      )
+    )
+  );
+
+  return {
+    canShorten,
+    minimumDurationMinutes: canShorten ? minimumDurationMinutes : safeDuration,
+    canSkip: normalizeBooleanFlag(safeValue.canSkip ?? safeFallback.canSkip),
+    priority: normalizeTaskRecoveryPriority(safeValue.priority ?? safeFallback.priority)
+  };
+}
+
+function getBuiltInTaskCategoryDefaults(category) {
   const normalizedCategory = normalizeTaskCategory(category);
+  const defaults = TASK_CATEGORY_DEFAULTS[normalizedCategory] || TASK_CATEGORY_DEFAULTS.general;
+
+  return {
+    bufferConfig: normalizeTaskBufferConfig(
+      defaults.bufferConfig,
+      DEFAULT_TASK_BUFFER_CONFIG
+    ),
+    recoveryConfig: normalizeTaskRecoveryConfig(
+      defaults.recoveryConfig,
+      DEFAULT_TASK_RECOVERY_CONFIG
+    )
+  };
+}
+
+function normalizePlanningSettings(value) {
+  const safeValue = value && typeof value === "object" ? value : {};
+  const sourceDefaults =
+    safeValue.categoryDefaults && typeof safeValue.categoryDefaults === "object"
+      ? safeValue.categoryDefaults
+      : {};
+  const categoryDefaults = TASK_CATEGORY_OPTIONS.reduce((currentDefaults, option) => {
+    const builtInDefaults = getBuiltInTaskCategoryDefaults(option.value);
+    const overrideEntry =
+      sourceDefaults[option.value] && typeof sourceDefaults[option.value] === "object"
+        ? sourceDefaults[option.value]
+        : {};
+
+    currentDefaults[option.value] = {
+      bufferConfig: normalizeTaskBufferConfig(
+        overrideEntry.bufferConfig,
+        builtInDefaults.bufferConfig
+      ),
+      recoveryConfig: normalizeTaskRecoveryConfig(
+        overrideEntry.recoveryConfig,
+        builtInDefaults.recoveryConfig
+      )
+    };
+    return currentDefaults;
+  }, {});
+
+  return {
+    ...DEFAULT_PLANNING_SETTINGS,
+    ...safeValue,
+    categoryDefaults
+  };
+}
+
+export function getTaskCategoryBufferDefaults(category, planningSettings = null) {
+  const normalizedCategory = normalizeTaskCategory(category);
+  const builtInDefaults = getBuiltInTaskCategoryDefaults(normalizedCategory).bufferConfig;
+  const normalizedPlanningSettings = normalizePlanningSettings(planningSettings);
+  const categoryDefaults = normalizedPlanningSettings.categoryDefaults[normalizedCategory];
+
   return normalizeTaskBufferConfig(
-    TASK_CATEGORY_BUFFER_DEFAULTS[normalizedCategory],
-    DEFAULT_TASK_BUFFER_CONFIG
+    categoryDefaults?.bufferConfig,
+    builtInDefaults
   );
 }
 
-export function resolveTaskBufferConfig(task) {
+export function getTaskCategoryRecoveryDefaults(
+  category,
+  durationMinutes = DEFAULT_TASK_DURATION_MINUTES,
+  planningSettings = null
+) {
+  const normalizedCategory = normalizeTaskCategory(category);
+  const builtInDefaults = getBuiltInTaskCategoryDefaults(normalizedCategory).recoveryConfig;
+  const normalizedPlanningSettings = normalizePlanningSettings(planningSettings);
+  const categoryDefaults = normalizedPlanningSettings.categoryDefaults[normalizedCategory];
+
+  return normalizeTaskRecoveryConfig(
+    categoryDefaults?.recoveryConfig,
+    builtInDefaults,
+    durationMinutes
+  );
+}
+
+export function resolveTaskBufferConfig(task, planningSettings = null) {
   const normalizedTask = task && typeof task === "object" ? task : {};
   const category = normalizeTaskCategory(normalizedTask.category);
   const useCategoryBufferDefaults = normalizedTask.useCategoryBufferDefaults !== false;
-  const categoryDefaults = getTaskCategoryBufferDefaults(category);
+  const categoryDefaults = getTaskCategoryBufferDefaults(category, planningSettings);
   const overrideConfig = normalizeTaskBufferConfig(normalizedTask.bufferConfig, categoryDefaults);
   const effectiveConfig = useCategoryBufferDefaults ? categoryDefaults : overrideConfig;
 
@@ -420,13 +600,37 @@ export function resolveTaskBufferConfig(task) {
   };
 }
 
+export function resolveTaskRecoveryConfig(task, planningSettings = null) {
+  const normalizedTask = task && typeof task === "object" ? task : {};
+  const category = normalizeTaskCategory(normalizedTask.category);
+  const durationMinutes = normalizeTaskDuration(normalizedTask.durationMinutes);
+  const useCategoryRecoveryDefaults = normalizedTask.useCategoryRecoveryDefaults !== false;
+  const categoryDefaults = getTaskCategoryRecoveryDefaults(
+    category,
+    durationMinutes,
+    planningSettings
+  );
+  const overrideConfig = normalizeTaskRecoveryConfig(
+    normalizedTask.recoveryConfig,
+    categoryDefaults,
+    durationMinutes
+  );
+  const effectiveConfig = useCategoryRecoveryDefaults ? categoryDefaults : overrideConfig;
+
+  return {
+    category,
+    useCategoryRecoveryDefaults,
+    ...effectiveConfig
+  };
+}
+
 export function buildTaskBufferSummary(value) {
   const source = value && typeof value === "object" ? value : {};
   const config =
     Object.prototype.hasOwnProperty.call(source, "bufferConfig") ||
     Object.prototype.hasOwnProperty.call(source, "category") ||
     Object.prototype.hasOwnProperty.call(source, "useCategoryBufferDefaults")
-      ? resolveTaskBufferConfig(source)
+      ? resolveTaskBufferConfig(source, source.planningSettings)
       : normalizeTaskBufferConfig(source, DEFAULT_TASK_BUFFER_CONFIG);
   const parts = [];
 
@@ -445,6 +649,31 @@ export function buildTaskBufferSummary(value) {
   if (parts.length === 0) {
     return "";
   }
+
+  return parts.join(" · ");
+}
+
+export function buildTaskRecoverySummary(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const config =
+    Object.prototype.hasOwnProperty.call(source, "recoveryConfig") ||
+    Object.prototype.hasOwnProperty.call(source, "category") ||
+    Object.prototype.hasOwnProperty.call(source, "useCategoryRecoveryDefaults")
+      ? resolveTaskRecoveryConfig(source, source.planningSettings)
+      : normalizeTaskRecoveryConfig(source, DEFAULT_TASK_RECOVERY_CONFIG);
+  const parts = [];
+
+  if (config.canShorten) {
+    parts.push(`Kan kortes ned til ${config.minimumDurationMinutes} min`);
+  }
+
+  if (config.canSkip) {
+    parts.push("Kan hoppes over");
+  }
+
+  const priorityLabel =
+    TASK_RECOVERY_PRIORITY_OPTIONS.find((option) => option.value === config.priority)?.label || "Vanlig";
+  parts.push(`Prioritet: ${priorityLabel.toLowerCase()}`);
 
   return parts.join(" · ");
 }
@@ -846,7 +1075,15 @@ function mergeLegacyMember(existingPerson, member) {
 function createTask(task, fallbackIndex = 0) {
   const normalized = task && typeof task === "object" ? task : {};
   const taskId = typeof normalized.id === "string" ? normalized.id : "";
-  const resolvedBufferConfig = resolveTaskBufferConfig(normalized);
+  const durationMinutes = normalizeTaskDuration(normalized.durationMinutes);
+  const resolvedBufferConfig = resolveTaskBufferConfig({
+    ...normalized,
+    durationMinutes
+  });
+  const resolvedRecoveryConfig = resolveTaskRecoveryConfig({
+    ...normalized,
+    durationMinutes
+  });
 
   return {
     id: taskId,
@@ -877,8 +1114,15 @@ function createTask(task, fallbackIndex = 0) {
     liveStatus: normalizeTaskLiveStatus(normalized.liveStatus),
     actualStartAt: normalizeDateTimeString(normalized.actualStartAt),
     actualEndAt: normalizeDateTimeString(normalized.actualEndAt),
-    durationMinutes: normalizeTaskDuration(normalized.durationMinutes),
+    durationMinutes,
     orderIndex: Number.isFinite(normalized.orderIndex) ? normalized.orderIndex : fallbackIndex,
+    useCategoryRecoveryDefaults: resolvedRecoveryConfig.useCategoryRecoveryDefaults,
+    recoveryConfig: {
+      canShorten: resolvedRecoveryConfig.canShorten,
+      minimumDurationMinutes: resolvedRecoveryConfig.minimumDurationMinutes,
+      canSkip: resolvedRecoveryConfig.canSkip,
+      priority: resolvedRecoveryConfig.priority
+    },
     dependencyIds: uniqueIds(
       Array.isArray(normalized.dependencyIds) ? normalized.dependencyIds : [],
       taskId
@@ -1135,6 +1379,7 @@ export function ensureEventShape(event) {
     ...page,
     slug: ensureUniqueSlug(page.slug || page.menuLabel || page.title, usedPageSlugs, index === 0 ? "velkommen" : "side")
   }));
+  const planningSettings = normalizePlanningSettings(source.planningSettings);
   const normalizedTasks = buildTaskHierarchyDetails(
     Array.isArray(source.tasks) ? source.tasks.map((task, index) => createTask(task, index)) : [],
     subprojects
@@ -1167,6 +1412,7 @@ export function ensureEventShape(event) {
     guestPages: guestPagesWithSlugs,
     roles,
     people,
+    planningSettings,
     members: people
       .filter((person) => person.effectiveFinanceRole !== "none")
       .map((person) => createFinanceMember(person)),
@@ -1512,6 +1758,7 @@ export function buildProjectMatrix(event, options = {}) {
 
 export function buildTaskAgenda(event) {
   const normalized = ensureEventShape(event);
+  const planningSettings = normalized.planningSettings;
   const hierarchyTasks = buildTaskHierarchyDetails(sortTasksByAgenda(normalized.tasks), normalized.subprojects);
   const { orderedTasks, childMap } = orderTasksByHierarchy(hierarchyTasks);
   const orderedTaskMap = new Map(orderedTasks.map((task) => [task.id, task]));
@@ -1544,7 +1791,7 @@ export function buildTaskAgenda(event) {
       return;
     }
 
-    const bufferConfig = resolveTaskBufferConfig(parentTask);
+    const bufferConfig = resolveTaskBufferConfig(parentTask, planningSettings);
     const hasConfiguredBuffer = bufferConfig.availableMinutes > 0 || bufferConfig.transitionMinutes > 0;
 
     if (!hasConfiguredBuffer) {
@@ -1741,7 +1988,8 @@ export function buildTaskAgenda(event) {
       warnings: dependencyWarnings,
       isFixedTime,
       hasExplicitTimeAnchor: isFixedTime || desiredStartMs !== null,
-      bufferSummary: buildTaskBufferSummary(task),
+      bufferSummary: buildTaskBufferSummary({ ...task, planningSettings }),
+      recoverySummary: buildTaskRecoverySummary({ ...task, planningSettings }),
       missesDesiredStart: dependencyWarnings.some((warning) => warning.includes("Onsket start")),
       scheduledStartAt: scheduledStartMs === null ? "" : toDateTimeLocalString(scheduledStartMs),
       scheduledEndAt: scheduledEndMs === null ? "" : toDateTimeLocalString(scheduledEndMs),
@@ -2142,9 +2390,217 @@ function roundMinutes(value) {
   return Math.round(value / (60 * 1000));
 }
 
+function getRecoveryPriorityRank(priority) {
+  if (priority === "optional") {
+    return 0;
+  }
+
+  if (priority === "normal") {
+    return 1;
+  }
+
+  return 2;
+}
+
+function buildRecoveryActionLabel(action) {
+  if (action.type === "shorten") {
+    return `Kort ned "${action.taskTitle}" med ${action.savedMinutes} min`;
+  }
+
+  return `Hopp over "${action.taskTitle}" og spar ${action.savedMinutes} min`;
+}
+
+function buildRecoveryActionDescription(action) {
+  if (action.type === "shorten") {
+    return `Behold minst ${action.minimumDurationMinutes} min pa "${action.taskTitle}".`;
+  }
+
+  return `"${action.taskTitle}" kan hoppes over uten aa bryte faste punkt.`;
+}
+
+function buildRecoveryStrategy(candidates, targetMinutes, strategy) {
+  const sortedCandidates = [...candidates]
+    .filter((candidate) => strategy.filter(candidate))
+    .sort((left, right) => {
+      const leftPriority = getRecoveryPriorityRank(left.priority);
+      const rightPriority = getRecoveryPriorityRank(right.priority);
+      const leftTypeWeight = left.type === "shorten" ? 0 : 1;
+      const rightTypeWeight = right.type === "shorten" ? 0 : 1;
+
+      return (
+        leftPriority - rightPriority ||
+        leftTypeWeight - rightTypeWeight ||
+        right.savedMinutes - left.savedMinutes ||
+        left.taskTitle.localeCompare(right.taskTitle, "nb")
+      );
+    });
+  const selectedTaskIds = new Set();
+  const actions = [];
+  let savedMinutes = 0;
+
+  sortedCandidates.forEach((candidate) => {
+    if (savedMinutes >= targetMinutes) {
+      return;
+    }
+
+    if (selectedTaskIds.has(candidate.taskId) || candidate.savedMinutes <= 0) {
+      return;
+    }
+
+    selectedTaskIds.add(candidate.taskId);
+    actions.push({
+      ...candidate,
+      label: buildRecoveryActionLabel(candidate),
+      description: buildRecoveryActionDescription(candidate)
+    });
+    savedMinutes += candidate.savedMinutes;
+  });
+
+  if (!actions.length) {
+    return null;
+  }
+
+  return {
+    id: strategy.id,
+    title: strategy.title,
+    description: strategy.description,
+    actions,
+    savedMinutes,
+    remainingMinutes: Math.max(0, targetMinutes - savedMinutes),
+    coversTarget: savedMinutes >= targetMinutes
+  };
+}
+
+function buildLiveRecoverySuggestions({
+  items,
+  currentAnchorIndex,
+  nextFixedStartMs,
+  nowMs,
+  targetMinutes,
+  planningSettings
+}) {
+  if (!targetMinutes || targetMinutes <= 0) {
+    return {
+      candidates: [],
+      suggestions: []
+    };
+  }
+
+  const windowItems = items.filter((item, index) => {
+    if (index < currentAnchorIndex || item.isGeneratedBuffer) {
+      return false;
+    }
+
+    if (item.liveStatus === "done" || item.liveStatus === "skipped") {
+      return false;
+    }
+
+    if (!Number.isFinite(nextFixedStartMs)) {
+      return true;
+    }
+
+    if (item.id === items[currentAnchorIndex]?.id) {
+      return true;
+    }
+
+    const itemStartMs = item.scheduledStartMs ?? item.timelineStartMs;
+    return !Number.isFinite(itemStartMs) || itemStartMs < nextFixedStartMs;
+  });
+  const candidates = [];
+
+  windowItems.forEach((item) => {
+    const recoveryConfig = resolveTaskRecoveryConfig(item, planningSettings);
+    const remainingMinutes = Math.max(0, Math.ceil(getRemainingTaskDurationMs(item, nowMs) / (60 * 1000)));
+
+    if (remainingMinutes <= 0) {
+      return;
+    }
+
+    const actualStartMs = parseDateTimeValue(item.actualStartAt);
+    const elapsedMinutes = Number.isFinite(actualStartMs) && Number.isFinite(nowMs)
+      ? Math.max(0, Math.floor((nowMs - actualStartMs) / (60 * 1000)))
+      : 0;
+    const minimumRemainingMinutes = Math.max(
+      0,
+      recoveryConfig.minimumDurationMinutes - elapsedMinutes
+    );
+
+    if (recoveryConfig.canShorten) {
+      const savedMinutes = Math.max(0, remainingMinutes - minimumRemainingMinutes);
+
+      if (savedMinutes > 0) {
+        candidates.push({
+          taskId: item.id,
+          taskTitle: item.title || "Aktivitet",
+          type: "shorten",
+          savedMinutes,
+          priority: recoveryConfig.priority,
+          minimumDurationMinutes: recoveryConfig.minimumDurationMinutes
+        });
+      }
+    }
+
+    if (recoveryConfig.canSkip && recoveryConfig.priority !== "critical") {
+      candidates.push({
+        taskId: item.id,
+        taskTitle: item.title || "Aktivitet",
+        type: "skip",
+        savedMinutes: remainingMinutes,
+        priority: recoveryConfig.priority,
+        minimumDurationMinutes: recoveryConfig.minimumDurationMinutes
+      });
+    }
+  });
+
+  const strategies = [
+    {
+      id: "gentle",
+      title: "Skansom innhenting",
+      description: "Korter bare ned aktiviteter som allerede er merket som fleksible.",
+      filter(candidate) {
+        return candidate.type === "shorten";
+      }
+    },
+    {
+      id: "recommended",
+      title: "Anbefalt innhenting",
+      description: "Bruker forkorting forst, og hopper bare over valgfrie aktiviteter ved behov.",
+      filter(candidate) {
+        return candidate.type === "shorten" || candidate.priority === "optional";
+      }
+    },
+    {
+      id: "strong",
+      title: "Hard innhenting",
+      description: "Brukes hvis dere ma hente inn mye tid før neste faste punkt.",
+      filter(candidate) {
+        return candidate.priority !== "critical" || candidate.type === "shorten";
+      }
+    }
+  ];
+  const suggestions = strategies
+    .map((strategy) => buildRecoveryStrategy(candidates, targetMinutes, strategy))
+    .filter(Boolean)
+    .filter((suggestion, index, source) => {
+      return (
+        index ===
+        source.findIndex((entry) =>
+          entry.actions.map((action) => `${action.type}:${action.taskId}`).join("|") ===
+          suggestion.actions.map((action) => `${action.type}:${action.taskId}`).join("|")
+        )
+      );
+    });
+
+  return {
+    candidates,
+    suggestions
+  };
+}
+
 export function buildLiveAgenda(event, options = {}) {
   const normalized = ensureEventShape(event);
   const agenda = buildTaskAgenda(normalized);
+  const planningSettings = normalized.planningSettings;
   const nowMs =
     Number.isFinite(options.nowMs)
       ? options.nowMs
@@ -2266,6 +2722,14 @@ export function buildLiveAgenda(event, options = {}) {
   const availableBufferMinutes = roundMinutes(availableBufferMs);
   const plannedBufferMinutes = roundMinutes(plannedBufferRemainingMs);
   const needsCatchUpMinutes = availableBufferMinutes < 0 ? Math.abs(availableBufferMinutes) : 0;
+  const recoveryPlan = buildLiveRecoverySuggestions({
+    items,
+    currentAnchorIndex,
+    nextFixedStartMs,
+    nowMs,
+    targetMinutes: needsCatchUpMinutes,
+    planningSettings
+  });
   const statusTone =
     driftMinutes > 0 && availableBufferMinutes < driftMinutes
       ? "danger"
@@ -2297,6 +2761,8 @@ export function buildLiveAgenda(event, options = {}) {
     availableBufferMinutes,
     plannedBufferMinutes,
     needsCatchUpMinutes,
+    recoverySuggestions: recoveryPlan.suggestions,
+    recoveryCandidateCount: recoveryPlan.candidates.length,
     statusTone,
     activeTaskCount: activeTasks.length,
     doneTaskCount: actionableItems.filter((item) => item.liveStatus === "done").length,
