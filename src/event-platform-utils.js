@@ -121,6 +121,29 @@ export const TASK_STATUS_OPTIONS = [
   { value: "canceled", label: "Avlyst" }
 ];
 
+export const TASK_LIVE_STATUS_OPTIONS = [
+  { value: "planned", label: "Ikke startet live" },
+  { value: "in_progress", label: "Pagar na" },
+  { value: "done", label: "Markert ferdig" },
+  { value: "skipped", label: "Hoppet over" }
+];
+
+export const TASK_CATEGORY_OPTIONS = [
+  { value: "general", label: "Generelt" },
+  { value: "ceremony", label: "Vielse / fast punkt" },
+  { value: "mingling", label: "Mingling" },
+  { value: "dinner", label: "Middag" },
+  { value: "speeches", label: "Taler" },
+  { value: "transport", label: "Transport" },
+  { value: "entertainment", label: "Underholdning" },
+  { value: "logistics", label: "Praktisk / logistikk" }
+];
+
+export const TASK_BUFFER_PLACEMENT_OPTIONS = [
+  { value: "end", label: "Legg pa slutten" },
+  { value: "distributed", label: "Fordel mellom underoppgavene" }
+];
+
 export const SUBMISSION_STATUS_OPTIONS = [
   { value: "pending_approval", label: "Venter pa godkjenning" },
   { value: "approved", label: "Godkjent" },
@@ -188,6 +211,58 @@ const DEFAULT_GUEST_SEATING_PAGE = {
 const DEFAULT_TASK_DURATION_MINUTES = 60;
 const DEFAULT_GUEST_PAGE_ID = "guest-page-default";
 const PROJECT_DUE_SOON_WINDOW_MS = 48 * 60 * 60 * 1000;
+const DEFAULT_TASK_CATEGORY = "general";
+const DEFAULT_TASK_BUFFER_CONFIG = {
+  availableMinutes: 0,
+  availablePlacement: "end",
+  transitionMinutes: 0,
+  label: "Buffer"
+};
+const TASK_CATEGORY_BUFFER_DEFAULTS = {
+  general: DEFAULT_TASK_BUFFER_CONFIG,
+  ceremony: {
+    availableMinutes: 0,
+    availablePlacement: "end",
+    transitionMinutes: 0,
+    label: "Buffer"
+  },
+  mingling: {
+    availableMinutes: 15,
+    availablePlacement: "end",
+    transitionMinutes: 0,
+    label: "Buffer"
+  },
+  dinner: {
+    availableMinutes: 10,
+    availablePlacement: "end",
+    transitionMinutes: 0,
+    label: "Pause"
+  },
+  speeches: {
+    availableMinutes: 10,
+    availablePlacement: "distributed",
+    transitionMinutes: 2,
+    label: "Pause"
+  },
+  transport: {
+    availableMinutes: 10,
+    availablePlacement: "end",
+    transitionMinutes: 0,
+    label: "Buffer"
+  },
+  entertainment: {
+    availableMinutes: 5,
+    availablePlacement: "distributed",
+    transitionMinutes: 2,
+    label: "Pause"
+  },
+  logistics: {
+    availableMinutes: 5,
+    availablePlacement: "end",
+    transitionMinutes: 0,
+    label: "Buffer"
+  }
+};
 
 export function slugifySegment(value, fallback = "side") {
   const normalized = String(value || "")
@@ -282,6 +357,96 @@ function parseInteger(value, fallback) {
 function normalizeTaskDuration(value) {
   const duration = parseInteger(value, DEFAULT_TASK_DURATION_MINUTES);
   return duration >= 0 ? duration : DEFAULT_TASK_DURATION_MINUTES;
+}
+
+function normalizeTaskCategory(value) {
+  return TASK_CATEGORY_OPTIONS.some((option) => option.value === value)
+    ? value
+    : DEFAULT_TASK_CATEGORY;
+}
+
+function normalizeTaskBufferPlacement(value) {
+  return value === "distributed" ? "distributed" : "end";
+}
+
+function normalizeTaskBufferLabel(value, fallback = DEFAULT_TASK_BUFFER_CONFIG.label) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizeTaskLiveStatus(value) {
+  return TASK_LIVE_STATUS_OPTIONS.some((option) => option.value === value) ? value : "planned";
+}
+
+function normalizeTaskBufferConfig(value, fallback = DEFAULT_TASK_BUFFER_CONFIG) {
+  const safeValue = value && typeof value === "object" ? value : {};
+  const safeFallback = fallback && typeof fallback === "object" ? fallback : DEFAULT_TASK_BUFFER_CONFIG;
+
+  return {
+    availableMinutes: Math.max(
+      0,
+      parseInteger(safeValue.availableMinutes, parseInteger(safeFallback.availableMinutes, 0))
+    ),
+    availablePlacement: normalizeTaskBufferPlacement(
+      safeValue.availablePlacement ?? safeFallback.availablePlacement
+    ),
+    transitionMinutes: Math.max(
+      0,
+      parseInteger(safeValue.transitionMinutes, parseInteger(safeFallback.transitionMinutes, 0))
+    ),
+    label: normalizeTaskBufferLabel(safeValue.label, normalizeTaskBufferLabel(safeFallback.label))
+  };
+}
+
+export function getTaskCategoryBufferDefaults(category) {
+  const normalizedCategory = normalizeTaskCategory(category);
+  return normalizeTaskBufferConfig(
+    TASK_CATEGORY_BUFFER_DEFAULTS[normalizedCategory],
+    DEFAULT_TASK_BUFFER_CONFIG
+  );
+}
+
+export function resolveTaskBufferConfig(task) {
+  const normalizedTask = task && typeof task === "object" ? task : {};
+  const category = normalizeTaskCategory(normalizedTask.category);
+  const useCategoryBufferDefaults = normalizedTask.useCategoryBufferDefaults !== false;
+  const categoryDefaults = getTaskCategoryBufferDefaults(category);
+  const overrideConfig = normalizeTaskBufferConfig(normalizedTask.bufferConfig, categoryDefaults);
+  const effectiveConfig = useCategoryBufferDefaults ? categoryDefaults : overrideConfig;
+
+  return {
+    category,
+    useCategoryBufferDefaults,
+    ...effectiveConfig
+  };
+}
+
+export function buildTaskBufferSummary(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const config =
+    Object.prototype.hasOwnProperty.call(source, "bufferConfig") ||
+    Object.prototype.hasOwnProperty.call(source, "category") ||
+    Object.prototype.hasOwnProperty.call(source, "useCategoryBufferDefaults")
+      ? resolveTaskBufferConfig(source)
+      : normalizeTaskBufferConfig(source, DEFAULT_TASK_BUFFER_CONFIG);
+  const parts = [];
+
+  if (config.transitionMinutes > 0) {
+    parts.push(`${config.transitionMinutes} min mellom underoppgavene`);
+  }
+
+  if (config.availableMinutes > 0) {
+    parts.push(
+      config.availablePlacement === "distributed"
+        ? `${config.availableMinutes} min fordelt som ${config.label.toLowerCase()}`
+        : `${config.availableMinutes} min ${config.label.toLowerCase()} pa slutten`
+    );
+  }
+
+  if (parts.length === 0) {
+    return "";
+  }
+
+  return parts.join(" · ");
 }
 
 function normalizeBooleanFlag(value) {
@@ -460,6 +625,25 @@ function compareTaskMoments(left, right) {
   }
 
   return (left.agendaPosition || 0) - (right.agendaPosition || 0);
+}
+
+function distributeMinutes(totalMinutes, slotCount) {
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0 || !Number.isFinite(slotCount) || slotCount <= 0) {
+    return [];
+  }
+
+  const baseMinutes = Math.floor(totalMinutes / slotCount);
+  let remainder = totalMinutes % slotCount;
+
+  return Array.from({ length: slotCount }, () => {
+    const nextValue = baseMinutes + (remainder > 0 ? 1 : 0);
+
+    if (remainder > 0) {
+      remainder -= 1;
+    }
+
+    return nextValue;
+  });
 }
 
 function compareHierarchyDisplayOrder(left, right) {
@@ -662,6 +846,7 @@ function mergeLegacyMember(existingPerson, member) {
 function createTask(task, fallbackIndex = 0) {
   const normalized = task && typeof task === "object" ? task : {};
   const taskId = typeof normalized.id === "string" ? normalized.id : "";
+  const resolvedBufferConfig = resolveTaskBufferConfig(normalized);
 
   return {
     id: taskId,
@@ -679,6 +864,19 @@ function createTask(task, fallbackIndex = 0) {
     isFixedTime: normalizeBooleanFlag(normalized.isFixedTime),
     showOnAgenda: normalizeBooleanFlag(normalized.showOnAgenda),
     agendaComment: typeof normalized.agendaComment === "string" ? normalized.agendaComment.trim() : "",
+    toastmasterNotes:
+      typeof normalized.toastmasterNotes === "string" ? normalized.toastmasterNotes : "",
+    category: resolvedBufferConfig.category,
+    useCategoryBufferDefaults: resolvedBufferConfig.useCategoryBufferDefaults,
+    bufferConfig: {
+      availableMinutes: resolvedBufferConfig.availableMinutes,
+      availablePlacement: resolvedBufferConfig.availablePlacement,
+      transitionMinutes: resolvedBufferConfig.transitionMinutes,
+      label: resolvedBufferConfig.label
+    },
+    liveStatus: normalizeTaskLiveStatus(normalized.liveStatus),
+    actualStartAt: normalizeDateTimeString(normalized.actualStartAt),
+    actualEndAt: normalizeDateTimeString(normalized.actualEndAt),
     durationMinutes: normalizeTaskDuration(normalized.durationMinutes),
     orderIndex: Number.isFinite(normalized.orderIndex) ? normalized.orderIndex : fallbackIndex,
     dependencyIds: uniqueIds(
@@ -1316,17 +1514,97 @@ export function buildTaskAgenda(event) {
   const normalized = ensureEventShape(event);
   const hierarchyTasks = buildTaskHierarchyDetails(sortTasksByAgenda(normalized.tasks), normalized.subprojects);
   const { orderedTasks, childMap } = orderTasksByHierarchy(hierarchyTasks);
+  const orderedTaskMap = new Map(orderedTasks.map((task) => [task.id, task]));
   const taskNames = new Map(orderedTasks.map((task) => [task.id, task.title || "Aktivitet"]));
   const eventStartMs = parseDateTimeValue(normalized.overview.startsAt);
   const scheduled = [];
   const scheduledMap = new Map();
   const dependentsMap = new Map();
+  const directChildSequenceMap = new Map();
+  const bufferBeforeTaskId = new Map();
+  const bufferAfterTaskId = new Map();
   let previousEndMs = eventStartMs;
-  let previousBlockingTask = null;
+
+  orderedTasks.forEach((task) => {
+    if (!task.parentTaskId || !orderedTaskMap.has(task.parentTaskId)) {
+      return;
+    }
+
+    if (!directChildSequenceMap.has(task.parentTaskId)) {
+      directChildSequenceMap.set(task.parentTaskId, []);
+    }
+
+    directChildSequenceMap.get(task.parentTaskId).push(task.id);
+  });
+
+  directChildSequenceMap.forEach((childIds, parentTaskId) => {
+    const parentTask = orderedTaskMap.get(parentTaskId);
+
+    if (!parentTask || childIds.length === 0) {
+      return;
+    }
+
+    const bufferConfig = resolveTaskBufferConfig(parentTask);
+    const hasConfiguredBuffer = bufferConfig.availableMinutes > 0 || bufferConfig.transitionMinutes > 0;
+
+    if (!hasConfiguredBuffer) {
+      return;
+    }
+
+    const gapCount = Math.max(0, childIds.length - 1);
+    const distributedAvailableMinutes =
+      bufferConfig.availablePlacement === "distributed" && gapCount > 0
+        ? distributeMinutes(bufferConfig.availableMinutes, gapCount)
+        : [];
+    const endAvailableMinutes =
+      bufferConfig.availablePlacement === "end" || gapCount === 0
+        ? bufferConfig.availableMinutes
+        : 0;
+
+    for (let index = 1; index < childIds.length; index += 1) {
+      const previousTaskId = childIds[index - 1];
+      const nextTaskId = childIds[index];
+      const availableMinutes = distributedAvailableMinutes[index - 1] || 0;
+      const totalMinutes = bufferConfig.transitionMinutes + availableMinutes;
+
+      if (totalMinutes <= 0) {
+        continue;
+      }
+
+      const descriptor = {
+        parentTaskId,
+        previousTaskId,
+        nextTaskId,
+        totalMinutes,
+        availableMinutes,
+        transitionMinutes: bufferConfig.transitionMinutes,
+        label: bufferConfig.label,
+        placement: "between_children"
+      };
+
+      bufferBeforeTaskId.set(nextTaskId, descriptor);
+      bufferAfterTaskId.set(previousTaskId, descriptor);
+    }
+
+    if (endAvailableMinutes > 0) {
+      const lastChildTaskId = childIds[childIds.length - 1];
+      bufferAfterTaskId.set(lastChildTaskId, {
+        parentTaskId,
+        previousTaskId: lastChildTaskId,
+        nextTaskId: "",
+        totalMinutes: endAvailableMinutes,
+        availableMinutes: endAvailableMinutes,
+        transitionMinutes: 0,
+        label: bufferConfig.label,
+        placement: "end"
+      });
+    }
+  });
 
   orderedTasks.forEach((task, index) => {
     const dependencyWarnings = [];
     let dependencyEndMs = null;
+    let explicitDependencyEndMs = null;
     const parentTask =
       task.parentTaskId && scheduledMap.has(task.parentTaskId)
         ? scheduledMap.get(task.parentTaskId)
@@ -1349,9 +1627,32 @@ export function buildTaskAgenda(event) {
       }
 
       if (dependency.scheduledEndMs !== null) {
-        dependencyEndMs = Math.max(dependencyEndMs || dependency.scheduledEndMs, dependency.scheduledEndMs);
+        explicitDependencyEndMs = Math.max(
+          explicitDependencyEndMs || dependency.scheduledEndMs,
+          dependency.scheduledEndMs
+        );
       }
     });
+
+    const bufferBefore = bufferBeforeTaskId.get(task.id);
+    let bufferConstraintMs = null;
+
+    if (bufferBefore && bufferBefore.previousTaskId) {
+      const previousSiblingTask = scheduledMap.get(bufferBefore.previousTaskId);
+
+      if (previousSiblingTask && Number.isFinite(previousSiblingTask.scheduledEndMs)) {
+        bufferConstraintMs =
+          previousSiblingTask.scheduledEndMs + bufferBefore.totalMinutes * 60 * 1000;
+      }
+    }
+
+    if (explicitDependencyEndMs !== null) {
+      dependencyEndMs = Math.max(dependencyEndMs || explicitDependencyEndMs, explicitDependencyEndMs);
+    }
+
+    if (bufferConstraintMs !== null) {
+      dependencyEndMs = Math.max(dependencyEndMs || bufferConstraintMs, bufferConstraintMs);
+    }
 
     const desiredStartMs = parseDateTimeValue(task.desiredStartAt);
     const isFixedTime = Boolean(task.isFixedTime);
@@ -1372,13 +1673,20 @@ export function buildTaskAgenda(event) {
         scheduledStartMs = desiredStartMs;
 
         if (dependencyEndMs !== null && dependencyEndMs > desiredStartMs) {
-          dependencyWarnings.push(
-            `Fast start ${formatAgendaDateTime(task.desiredStartAt)} kolliderer med en avhengighet som varer til ${formatAgendaDateTime(
-              toDateTimeLocalString(dependencyEndMs)
-            )}.`
-          );
+          if (explicitDependencyEndMs !== null && explicitDependencyEndMs >= dependencyEndMs) {
+            dependencyWarnings.push(
+              `Fast start ${formatAgendaDateTime(task.desiredStartAt)} kolliderer med en avhengighet som varer til ${formatAgendaDateTime(
+                toDateTimeLocalString(explicitDependencyEndMs)
+              )}.`
+            );
+          } else if (bufferBefore && bufferConstraintMs !== null) {
+            dependencyWarnings.push(
+              `Fast start ${formatAgendaDateTime(task.desiredStartAt)} kolliderer med ${bufferBefore.label.toLowerCase()} etter "${taskNames.get(
+                bufferBefore.previousTaskId
+              ) || "forrige aktivitet"}".`
+            );
+          }
         }
-
       }
     } else if (desiredStartMs !== null) {
       if (dependencyEndMs === null) {
@@ -1387,11 +1695,22 @@ export function buildTaskAgenda(event) {
         scheduledStartMs = desiredStartMs;
       } else {
         scheduledStartMs = dependencyEndMs;
-        dependencyWarnings.push(
-          `Onsket start ${formatAgendaDateTime(task.desiredStartAt)} treffes ikke. Oppgaven starter ${formatAgendaDateTime(
-            toDateTimeLocalString(scheduledStartMs)
-          )}.`
-        );
+
+        if (explicitDependencyEndMs !== null && explicitDependencyEndMs >= dependencyEndMs) {
+          dependencyWarnings.push(
+            `Onsket start ${formatAgendaDateTime(task.desiredStartAt)} treffes ikke. Oppgaven starter ${formatAgendaDateTime(
+              toDateTimeLocalString(scheduledStartMs)
+            )} pa grunn av en avhengighet.`
+          );
+        } else if (bufferBefore && bufferConstraintMs !== null) {
+          dependencyWarnings.push(
+            `Onsket start ${formatAgendaDateTime(task.desiredStartAt)} treffes ikke. Oppgaven starter ${formatAgendaDateTime(
+              toDateTimeLocalString(scheduledStartMs)
+            )} for aa gi rom til ${bufferBefore.label.toLowerCase()} etter "${taskNames.get(
+              bufferBefore.previousTaskId
+            ) || "forrige aktivitet"}".`
+          );
+        }
       }
     }
 
@@ -1405,12 +1724,11 @@ export function buildTaskAgenda(event) {
       scheduledStartMs === null ? null : scheduledStartMs + task.durationMinutes * 60 * 1000;
 
     if (scheduledEndMs !== null) {
-      const nextPreviousEndMs = Math.max(previousEndMs ?? scheduledEndMs, scheduledEndMs);
-
-      if (nextPreviousEndMs !== previousEndMs || previousBlockingTask === null) {
-        previousBlockingTask = task;
-      }
-
+      const trailingBuffer = bufferAfterTaskId.get(task.id);
+      const nextPreviousEndMs = Math.max(
+        previousEndMs ?? scheduledEndMs,
+        scheduledEndMs + (trailingBuffer?.totalMinutes || 0) * 60 * 1000
+      );
       previousEndMs = nextPreviousEndMs;
     }
 
@@ -1423,6 +1741,7 @@ export function buildTaskAgenda(event) {
       warnings: dependencyWarnings,
       isFixedTime,
       hasExplicitTimeAnchor: isFixedTime || desiredStartMs !== null,
+      bufferSummary: buildTaskBufferSummary(task),
       missesDesiredStart: dependencyWarnings.some((warning) => warning.includes("Onsket start")),
       scheduledStartAt: scheduledStartMs === null ? "" : toDateTimeLocalString(scheduledStartMs),
       scheduledEndAt: scheduledEndMs === null ? "" : toDateTimeLocalString(scheduledEndMs),
@@ -1452,9 +1771,11 @@ export function buildTaskAgenda(event) {
 
     const candidateEndTimes = [];
     const nextTask = scheduled[index + 1];
+    const trailingBuffer = bufferAfterTaskId.get(task.id);
+    const trailingBufferMs = (trailingBuffer?.totalMinutes || 0) * 60 * 1000;
 
     if (nextTask && Number.isFinite(nextTask.scheduledStartMs)) {
-      candidateEndTimes.push(nextTask.scheduledStartMs);
+      candidateEndTimes.push(nextTask.scheduledStartMs - trailingBufferMs);
     }
 
     const dependentIds = dependentsMap.get(task.id) || [];
@@ -1463,7 +1784,7 @@ export function buildTaskAgenda(event) {
       const dependentTask = scheduledMap.get(dependentId);
 
       if (dependentTask && Number.isFinite(dependentTask.scheduledStartMs)) {
-        candidateEndTimes.push(dependentTask.scheduledStartMs);
+        candidateEndTimes.push(dependentTask.scheduledStartMs - trailingBufferMs);
       }
     });
 
@@ -1489,6 +1810,52 @@ export function buildTaskAgenda(event) {
       scheduledMap.set(task.id, task);
     }
   }
+
+  const generatedBuffers = [];
+  const generatedBufferIds = new Set();
+
+  bufferAfterTaskId.forEach((descriptor, taskId) => {
+    const sourceTask = scheduledMap.get(taskId);
+
+    if (!sourceTask || !Number.isFinite(sourceTask.scheduledEndMs) || descriptor.totalMinutes <= 0) {
+      return;
+    }
+
+    const bufferId = `buffer-${descriptor.parentTaskId}-${descriptor.previousTaskId}-${descriptor.nextTaskId || "end"}`;
+
+    if (generatedBufferIds.has(bufferId)) {
+      return;
+    }
+
+    generatedBufferIds.add(bufferId);
+
+    const startMs = sourceTask.scheduledEndMs;
+    const endMs = startMs + descriptor.totalMinutes * 60 * 1000;
+
+    generatedBuffers.push({
+      id: bufferId,
+      title: descriptor.label,
+      label: descriptor.label,
+      parentTaskId: descriptor.parentTaskId,
+      sourceTaskId: descriptor.previousTaskId,
+      nextTaskId: descriptor.nextTaskId,
+      availableMinutes: descriptor.availableMinutes,
+      transitionMinutes: descriptor.transitionMinutes,
+      durationMinutes: descriptor.totalMinutes,
+      placement: descriptor.placement,
+      isGeneratedBuffer: true,
+      isScheduled: true,
+      scheduledStartMs: startMs,
+      scheduledEndMs: endMs,
+      scheduledStartAt: toDateTimeLocalString(startMs),
+      scheduledEndAt: toDateTimeLocalString(endMs),
+      timelineStartMs: startMs,
+      timelineEndMs: endMs,
+      timelineStartAt: toDateTimeLocalString(startMs),
+      timelineEndAt: toDateTimeLocalString(endMs),
+      timelineDurationMinutes: descriptor.totalMinutes
+    });
+  });
 
   const warningCount = scheduled.reduce((sum, task) => sum + task.warnings.length, 0);
   const unscheduledCount = scheduled.reduce(
@@ -1581,18 +1948,26 @@ export function buildTaskAgenda(event) {
     };
   });
 
-  const firstScheduled = scheduledWithTimeline.find((task) => task.scheduledStartAt);
-  const lastScheduled = [...scheduledWithTimeline].reverse().find((task) => task.scheduledEndAt);
+  const agendaMoments = [...scheduledWithTimeline, ...generatedBuffers].sort(compareTaskMoments);
+  const firstScheduled = agendaMoments.find((task) => task.scheduledStartAt);
+  const lastScheduled = [...agendaMoments].reverse().find((task) => task.scheduledEndAt);
   const totalDurationMinutes = scheduledWithTimeline.reduce(
     (sum, task) => sum + (Number.isFinite(task.durationMinutes) ? task.durationMinutes : 0),
+    0
+  );
+  const bufferDurationMinutes = generatedBuffers.reduce(
+    (sum, item) => sum + (Number.isFinite(item.durationMinutes) ? item.durationMinutes : 0),
     0
   );
 
   return {
     tasks: scheduledWithTimeline,
+    bufferItems: generatedBuffers.sort(compareTaskMoments),
     warningCount,
     unscheduledCount,
-    totalDurationMinutes,
+    totalDurationMinutes: totalDurationMinutes + bufferDurationMinutes,
+    taskDurationMinutes: totalDurationMinutes,
+    bufferDurationMinutes,
     startsAt: firstScheduled?.scheduledStartAt || "",
     endsAt: lastScheduled?.scheduledEndAt || "",
     hasEventStart: Boolean(normalized.overview.startsAt),
@@ -1627,6 +2002,309 @@ export function buildAgendaHighlights(event) {
     total: visibleTasks.length,
     scheduledCount: scheduledTasks.length,
     unscheduledCount: unscheduledTasks.length
+  };
+}
+
+export function buildPlanningAgenda(event) {
+  const agenda = buildTaskAgenda(event);
+  const visibleTasks = agenda.tasks.filter((task) => task.showOnAgenda);
+  const items = [...visibleTasks, ...(agenda.bufferItems || [])].sort(compareTaskMoments);
+  const scheduledItems = items.filter((item) =>
+    Number.isFinite(item.timelineStartMs ?? item.scheduledStartMs)
+  );
+  const unscheduledItems = items.filter(
+    (item) => !Number.isFinite(item.timelineStartMs ?? item.scheduledStartMs)
+  );
+
+  const mappedItems = [...scheduledItems, ...unscheduledItems].map((item) => ({
+    ...item,
+    displayStartAt: item.timelineStartAt || item.scheduledStartAt || "",
+    displayEndAt: item.timelineEndAt || item.scheduledEndAt || "",
+    isScheduled: Number.isFinite(item.timelineStartMs ?? item.scheduledStartMs),
+    isGeneratedBuffer: Boolean(item.isGeneratedBuffer)
+  }));
+
+  return {
+    items: mappedItems,
+    tasks: mappedItems,
+    total: items.length,
+    taskCount: visibleTasks.length,
+    bufferCount: Array.isArray(agenda.bufferItems) ? agenda.bufferItems.length : 0,
+    unscheduledCount: unscheduledItems.length
+  };
+}
+
+function calculateTaskProjectedEndMs(task, nowMs) {
+  if (!task || task.isGeneratedBuffer) {
+    return null;
+  }
+
+  const durationMs = Math.max(0, Number(task.durationMinutes || 0)) * 60 * 1000;
+  const actualEndMs = parseDateTimeValue(task.actualEndAt);
+  const actualStartMs = parseDateTimeValue(task.actualStartAt);
+
+  if (Number.isFinite(actualEndMs)) {
+    return actualEndMs;
+  }
+
+  if (Number.isFinite(actualStartMs)) {
+    return actualStartMs + durationMs;
+  }
+
+  if (Number.isFinite(task.scheduledEndMs)) {
+    return task.scheduledEndMs;
+  }
+
+  if (Number.isFinite(task.scheduledStartMs)) {
+    return task.scheduledStartMs + durationMs;
+  }
+
+  return Number.isFinite(nowMs) ? nowMs + durationMs : null;
+}
+
+function getEffectiveLiveStatus(task) {
+  if (!task || task.isGeneratedBuffer) {
+    return "buffer";
+  }
+
+  const normalizedStatus = normalizeTaskLiveStatus(task.liveStatus);
+  const actualStartMs = parseDateTimeValue(task.actualStartAt);
+  const actualEndMs = parseDateTimeValue(task.actualEndAt);
+
+  if (normalizedStatus === "skipped") {
+    return "skipped";
+  }
+
+  if (Number.isFinite(actualEndMs) || normalizedStatus === "done") {
+    return "done";
+  }
+
+  if (Number.isFinite(actualStartMs) || normalizedStatus === "in_progress") {
+    return "in_progress";
+  }
+
+  return "planned";
+}
+
+function getRemainingTaskDurationMs(task, nowMs) {
+  if (!task || task.isGeneratedBuffer) {
+    return 0;
+  }
+
+  const durationMs = Math.max(0, Number(task.durationMinutes || 0)) * 60 * 1000;
+  const effectiveStatus = getEffectiveLiveStatus(task);
+
+  if (effectiveStatus === "done" || effectiveStatus === "skipped") {
+    return 0;
+  }
+
+  if (effectiveStatus === "in_progress") {
+    const actualStartMs = parseDateTimeValue(task.actualStartAt);
+
+    if (!Number.isFinite(actualStartMs) || !Number.isFinite(nowMs)) {
+      return durationMs;
+    }
+
+    return Math.max(0, durationMs - Math.max(0, nowMs - actualStartMs));
+  }
+
+  return durationMs;
+}
+
+function getRemainingBufferDurationMs(item, nowMs) {
+  if (!item?.isGeneratedBuffer) {
+    return 0;
+  }
+
+  const startMs = item.timelineStartMs ?? item.scheduledStartMs;
+  const endMs = item.timelineEndMs ?? item.scheduledEndMs;
+
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return 0;
+  }
+
+  if (!Number.isFinite(nowMs) || nowMs <= startMs) {
+    return Math.max(0, endMs - startMs);
+  }
+
+  if (nowMs >= endMs) {
+    return 0;
+  }
+
+  return Math.max(0, endMs - nowMs);
+}
+
+function roundMinutes(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.round(value / (60 * 1000));
+}
+
+export function buildLiveAgenda(event, options = {}) {
+  const normalized = ensureEventShape(event);
+  const agenda = buildTaskAgenda(normalized);
+  const nowMs =
+    Number.isFinite(options.nowMs)
+      ? options.nowMs
+      : parseDateTimeValue(options.now) ?? Date.now();
+  const items = [...agenda.tasks, ...(agenda.bufferItems || [])]
+    .sort(compareTaskMoments)
+    .map((item) => {
+      const liveStatus = getEffectiveLiveStatus(item);
+      const actualStartMs = parseDateTimeValue(item.actualStartAt);
+      const actualEndMs = parseDateTimeValue(item.actualEndAt);
+      const displayStartAt = item.timelineStartAt || item.scheduledStartAt || "";
+      const displayEndAt = item.timelineEndAt || item.scheduledEndAt || "";
+      const projectedEndMs = calculateTaskProjectedEndMs(item, nowMs);
+      const projectedEndAt = Number.isFinite(projectedEndMs)
+        ? toDateTimeLocalString(projectedEndMs)
+        : "";
+      const liveDeltaMinutes =
+        !item.isGeneratedBuffer && Number.isFinite(item.scheduledEndMs) && Number.isFinite(projectedEndMs)
+          ? roundMinutes(projectedEndMs - item.scheduledEndMs)
+          : 0;
+
+      return {
+        ...item,
+        liveStatus,
+        actualStartMs,
+        actualEndMs,
+        projectedEndMs,
+        projectedEndAt,
+        liveDeltaMinutes,
+        displayStartAt,
+        displayEndAt,
+        isScheduled: Number.isFinite(item.timelineStartMs ?? item.scheduledStartMs)
+      };
+    });
+  const actionableItems = items.filter((item) => !item.isGeneratedBuffer);
+  const activeTasks = actionableItems.filter((item) => item.liveStatus === "in_progress");
+  const currentTask =
+    [...activeTasks].sort((left, right) => {
+      const leftStart = left.actualStartMs ?? left.scheduledStartMs ?? Number.MAX_SAFE_INTEGER;
+      const rightStart = right.actualStartMs ?? right.scheduledStartMs ?? Number.MAX_SAFE_INTEGER;
+      return leftStart - rightStart;
+    })[0] || null;
+  const nextTask = currentTask
+    ? actionableItems.find(
+        (item) =>
+          item.id !== currentTask.id &&
+          item.liveStatus !== "done" &&
+          item.liveStatus !== "skipped" &&
+          (item.scheduledStartMs ?? Number.MAX_SAFE_INTEGER) >=
+            (currentTask.scheduledStartMs ?? Number.NEGATIVE_INFINITY)
+      ) || null
+    : actionableItems.find(
+        (item) => item.liveStatus !== "done" && item.liveStatus !== "skipped"
+      ) || null;
+  const latestFinishedTask =
+    [...actionableItems]
+      .filter((item) => item.liveStatus === "done" || item.liveStatus === "skipped")
+      .sort((left, right) => {
+        const leftEnd = left.actualEndMs ?? left.scheduledEndMs ?? Number.NEGATIVE_INFINITY;
+        const rightEnd = right.actualEndMs ?? right.scheduledEndMs ?? Number.NEGATIVE_INFINITY;
+        return rightEnd - leftEnd;
+      })[0] || null;
+  const driftMinutes = currentTask
+    ? currentTask.liveDeltaMinutes
+    : latestFinishedTask?.liveDeltaMinutes || 0;
+  const currentAnchorIndex =
+    items.findIndex((item) => item.id === (currentTask?.id || nextTask?.id || "")) >= 0
+      ? items.findIndex((item) => item.id === (currentTask?.id || nextTask?.id || ""))
+      : 0;
+  const nextFixedTask =
+    actionableItems.find((item) => {
+      if (!item.isFixedTime || item.liveStatus === "done" || item.liveStatus === "skipped") {
+        return false;
+      }
+
+      if (currentTask && item.id === currentTask.id) {
+        return false;
+      }
+
+      const scheduledStartMs = item.scheduledStartMs ?? item.timelineStartMs;
+      return (
+        Number.isFinite(scheduledStartMs) &&
+        scheduledStartMs >=
+          (currentTask?.scheduledStartMs ??
+            nextTask?.scheduledStartMs ??
+            Number.NEGATIVE_INFINITY)
+      );
+    }) || null;
+  const nextFixedStartMs = nextFixedTask?.scheduledStartMs ?? nextFixedTask?.timelineStartMs ?? null;
+  let requiredRemainingMs = 0;
+  let plannedBufferRemainingMs = 0;
+
+  items.forEach((item, index) => {
+    if (index < currentAnchorIndex) {
+      return;
+    }
+
+    if (nextFixedTask && item.id === nextFixedTask.id) {
+      return;
+    }
+
+    const itemStartMs = item.scheduledStartMs ?? item.timelineStartMs;
+
+    if (Number.isFinite(nextFixedStartMs) && Number.isFinite(itemStartMs) && itemStartMs >= nextFixedStartMs) {
+      return;
+    }
+
+    if (item.isGeneratedBuffer) {
+      plannedBufferRemainingMs += getRemainingBufferDurationMs(item, nowMs);
+      return;
+    }
+
+    requiredRemainingMs += getRemainingTaskDurationMs(item, nowMs);
+  });
+
+  const availableBufferMs = Number.isFinite(nextFixedStartMs)
+    ? nextFixedStartMs - nowMs - requiredRemainingMs
+    : plannedBufferRemainingMs;
+  const availableBufferMinutes = roundMinutes(availableBufferMs);
+  const plannedBufferMinutes = roundMinutes(plannedBufferRemainingMs);
+  const needsCatchUpMinutes = availableBufferMinutes < 0 ? Math.abs(availableBufferMinutes) : 0;
+  const statusTone =
+    driftMinutes > 0 && availableBufferMinutes < driftMinutes
+      ? "danger"
+      : driftMinutes > 0
+        ? "warning"
+        : "success";
+  const currentTaskId = currentTask?.id || "";
+  const nextTaskId = nextTask?.id || "";
+  const mappedItems = items.map((item) => ({
+    ...item,
+    isCurrent: Boolean(currentTaskId && item.id === currentTaskId),
+    isNext: Boolean(nextTaskId && item.id === nextTaskId),
+    canStart: !item.isGeneratedBuffer && item.liveStatus === "planned",
+    canComplete: !item.isGeneratedBuffer && item.liveStatus === "in_progress",
+    canSkip:
+      !item.isGeneratedBuffer && item.liveStatus !== "done" && item.liveStatus !== "skipped",
+    canReset:
+      !item.isGeneratedBuffer &&
+      (item.liveStatus !== "planned" || item.actualStartAt || item.actualEndAt)
+  }));
+
+  return {
+    items: mappedItems,
+    nowAt: toDateTimeLocalString(nowMs),
+    currentTask,
+    nextTask,
+    nextFixedTask,
+    driftMinutes,
+    availableBufferMinutes,
+    plannedBufferMinutes,
+    needsCatchUpMinutes,
+    statusTone,
+    activeTaskCount: activeTasks.length,
+    doneTaskCount: actionableItems.filter((item) => item.liveStatus === "done").length,
+    skippedTaskCount: actionableItems.filter((item) => item.liveStatus === "skipped").length,
+    remainingTaskCount: actionableItems.filter(
+      (item) => item.liveStatus === "planned" || item.liveStatus === "in_progress"
+    ).length,
+    unscheduledCount: actionableItems.filter((item) => !item.isScheduled).length
   };
 }
 

@@ -1,10 +1,15 @@
 import { parseDelimitedTable } from "./guest-list-utils.js";
+import {
+  TASK_BUFFER_PLACEMENT_OPTIONS,
+  TASK_CATEGORY_OPTIONS
+} from "./event-platform-utils.js";
 
 export const PROJECT_TASK_IMPORT_COLUMNS = [
   { key: "referenceCode", label: "Aktivitetskode" },
   { key: "title", label: "Tittel" },
   { key: "description", label: "Beskrivelse" },
   { key: "status", label: "Status" },
+  { key: "category", label: "Kategori" },
   { key: "assigneeNames", label: "Ansvarlige" },
   { key: "durationMinutes", label: "Varighet (min)" },
   { key: "desiredStartAt", label: "Onsket start" },
@@ -12,6 +17,12 @@ export const PROJECT_TASK_IMPORT_COLUMNS = [
   { key: "isFixedTime", label: "Fast tidspunkt" },
   { key: "showOnAgenda", label: "Vises pa agenda" },
   { key: "agendaComment", label: "Agenda-kommentar" },
+  { key: "toastmasterNotes", label: "Toastmaster-notat / manus" },
+  { key: "useCategoryBufferDefaults", label: "Bruk kategoriens bufferstandard" },
+  { key: "bufferAvailableMinutes", label: "Tilgjengelig buffer (min)" },
+  { key: "bufferAvailablePlacement", label: "Bufferplassering" },
+  { key: "bufferTransitionMinutes", label: "Fast mellomrom (min)" },
+  { key: "bufferLabel", label: "Navn pa bufferpunkt" },
   { key: "parentReference", label: "Overkode" },
   { key: "dependencyReferences", label: "Avhenger av" }
 ];
@@ -20,6 +31,7 @@ export const PROJECT_TASK_FIELD_OPTIONS = [
   { key: "referenceCode", label: "Aktivitetskode" },
   { key: "title", label: "Tittel" },
   { key: "status", label: "Status" },
+  { key: "category", label: "Kategori" },
   { key: "assigneeNames", label: "Ansvarlige" },
   { key: "durationMinutes", label: "Varighet (min)" },
   { key: "desiredStartAt", label: "Onsket start" },
@@ -29,6 +41,12 @@ export const PROJECT_TASK_FIELD_OPTIONS = [
   { key: "isFixedTime", label: "Fast tidspunkt" },
   { key: "showOnAgenda", label: "Vises pa agenda" },
   { key: "agendaComment", label: "Agenda-kommentar" },
+  { key: "toastmasterNotes", label: "Toastmaster-notat / manus" },
+  { key: "useCategoryBufferDefaults", label: "Bruk kategoriens bufferstandard" },
+  { key: "bufferAvailableMinutes", label: "Tilgjengelig buffer (min)" },
+  { key: "bufferAvailablePlacement", label: "Bufferplassering" },
+  { key: "bufferTransitionMinutes", label: "Fast mellomrom (min)" },
+  { key: "bufferLabel", label: "Navn pa bufferpunkt" },
   { key: "parentReference", label: "Overkode" },
   { key: "dependencyReferences", label: "Avhenger av" },
   { key: "description", label: "Beskrivelse" }
@@ -38,6 +56,7 @@ export const DEFAULT_PROJECT_TASK_EXPORT_FIELDS = [
   "referenceCode",
   "title",
   "status",
+  "category",
   "assigneeNames",
   "durationMinutes",
   "desiredStartAt",
@@ -46,9 +65,15 @@ export const DEFAULT_PROJECT_TASK_EXPORT_FIELDS = [
   "dueDate",
   "isFixedTime",
   "showOnAgenda",
+  "useCategoryBufferDefaults",
+  "bufferAvailableMinutes",
+  "bufferAvailablePlacement",
+  "bufferTransitionMinutes",
+  "bufferLabel",
   "parentReference",
   "dependencyReferences",
-  "agendaComment"
+  "agendaComment",
+  "toastmasterNotes"
 ];
 
 const IMPORT_COLUMN_ALIASES = {
@@ -56,6 +81,7 @@ const IMPORT_COLUMN_ALIASES = {
   title: ["tittel", "aktivitet", "task", "name", "navn"],
   description: ["beskrivelse", "description", "notat", "note"],
   status: ["status"],
+  category: ["kategori", "category", "type"],
   assigneeNames: ["ansvarlige", "ansvarlig", "assignees", "owner", "eier"],
   durationMinutes: ["varighet", "varighet (min)", "duration", "durationminutes", "minutter"],
   desiredStartAt: ["onsket start", "ønsket start", "desiredstart", "startonske", "start"],
@@ -63,6 +89,38 @@ const IMPORT_COLUMN_ALIASES = {
   isFixedTime: ["fast tidspunkt", "kan ikke forskyves", "fixedtime", "lockedtime"],
   showOnAgenda: ["vises pa agenda", "vises på agenda", "showonagenda", "agenda"],
   agendaComment: ["agenda-kommentar", "agendakommentar", "agendacomment", "kommentar"],
+  toastmasterNotes: [
+    "toastmaster-notat / manus",
+    "toastmaster-notat",
+    "toastmasternotat",
+    "manus",
+    "script",
+    "run of show notes"
+  ],
+  useCategoryBufferDefaults: [
+    "bruk kategoriens bufferstandard",
+    "bruk kategoristandard",
+    "use category defaults",
+    "usecategorybufferdefaults"
+  ],
+  bufferAvailableMinutes: [
+    "tilgjengelig buffer (min)",
+    "tilgjengelig buffer",
+    "available buffer",
+    "bufferavailableminutes"
+  ],
+  bufferAvailablePlacement: [
+    "bufferplassering",
+    "buffer placement",
+    "bufferavailableplacement"
+  ],
+  bufferTransitionMinutes: [
+    "fast mellomrom (min)",
+    "fast mellomrom",
+    "transition minutes",
+    "buffertransitionminutes"
+  ],
+  bufferLabel: ["navn pa bufferpunkt", "navn på bufferpunkt", "buffer label", "bufferlabel"],
   parentReference: ["overkode", "parent", "parentref", "parentreference", "overoppgave"],
   dependencyReferences: [
     "avhenger av",
@@ -103,6 +161,22 @@ const TASK_STATUS_EXPORT_MAP = {
   done: "Ferdig",
   canceled: "Avlyst"
 };
+const TASK_CATEGORY_EXPORT_MAP = Object.fromEntries(
+  TASK_CATEGORY_OPTIONS.map((option) => [option.value, option.label])
+);
+const TASK_CATEGORY_IMPORT_MAP = TASK_CATEGORY_OPTIONS.reduce((currentMap, option) => {
+  currentMap[normalizeKey(option.value)] = option.value;
+  currentMap[normalizeKey(option.label)] = option.value;
+  return currentMap;
+}, {});
+const BUFFER_PLACEMENT_EXPORT_MAP = Object.fromEntries(
+  TASK_BUFFER_PLACEMENT_OPTIONS.map((option) => [option.value, option.label])
+);
+const BUFFER_PLACEMENT_IMPORT_MAP = TASK_BUFFER_PLACEMENT_OPTIONS.reduce((currentMap, option) => {
+  currentMap[normalizeKey(option.value)] = option.value;
+  currentMap[normalizeKey(option.label)] = option.value;
+  return currentMap;
+}, {});
 
 function normalizeKey(value) {
   return String(value || "")
@@ -146,6 +220,14 @@ function parseDuration(value, fallback = 60) {
 
 function formatBooleanLabel(value) {
   return value ? "Ja" : "Nei";
+}
+
+function parseTaskCategory(value) {
+  return TASK_CATEGORY_IMPORT_MAP[normalizeKey(value)] || "general";
+}
+
+function parseTaskBufferPlacement(value) {
+  return BUFFER_PLACEMENT_IMPORT_MAP[normalizeKey(value)] || "end";
 }
 
 function buildTaskReference(task, fallbackIndex = 0) {
@@ -221,6 +303,7 @@ function buildTaskExportRows(tasks, people, fieldKeys = DEFAULT_PROJECT_TASK_EXP
       title: task.title || "",
       description: task.description || "",
       status: TASK_STATUS_EXPORT_MAP[task.status] || TASK_STATUS_EXPORT_MAP.todo,
+      category: TASK_CATEGORY_EXPORT_MAP[task.category] || TASK_CATEGORY_EXPORT_MAP.general,
       assigneeNames,
       durationMinutes: String(task.durationMinutes ?? ""),
       desiredStartAt: task.desiredStartAt || "",
@@ -230,6 +313,13 @@ function buildTaskExportRows(tasks, people, fieldKeys = DEFAULT_PROJECT_TASK_EXP
       isFixedTime: formatBooleanLabel(Boolean(task.isFixedTime)),
       showOnAgenda: formatBooleanLabel(Boolean(task.showOnAgenda)),
       agendaComment: task.agendaComment || "",
+      toastmasterNotes: task.toastmasterNotes || "",
+      useCategoryBufferDefaults: formatBooleanLabel(task.useCategoryBufferDefaults !== false),
+      bufferAvailableMinutes: String(task.bufferConfig?.availableMinutes ?? ""),
+      bufferAvailablePlacement:
+        BUFFER_PLACEMENT_EXPORT_MAP[task.bufferConfig?.availablePlacement] || "",
+      bufferTransitionMinutes: String(task.bufferConfig?.transitionMinutes ?? ""),
+      bufferLabel: task.bufferConfig?.label || "",
       parentReference: parentTask?.exportRef || "",
       dependencyReferences,
       parentTitle: parentTask?.title || ""
@@ -249,6 +339,7 @@ export function buildProjectTaskImportTemplateTable() {
       "Velkomstdrinker",
       "Samle gjestene ute og starte mingling",
       "Ikke startet",
+      "Mingling",
       "Ida; Aki",
       "0",
       "2026-07-20T16:00",
@@ -256,6 +347,12 @@ export function buildProjectTaskImportTemplateTable() {
       "Ja",
       "Ja",
       "Starter ute ved inngangen",
+      "Hils velkommen og pek gjestene mot hagen",
+      "Ja",
+      "15",
+      "Legg pa slutten",
+      "0",
+      "Buffer",
       "",
       ""
     ],
@@ -264,6 +361,7 @@ export function buildProjectTaskImportTemplateTable() {
       "Introdusere leker og velkomstdrinker",
       "Kort introduksjon for gjestene",
       "Ikke startet",
+      "Underholdning",
       "Ida",
       "15",
       "",
@@ -271,6 +369,12 @@ export function buildProjectTaskImportTemplateTable() {
       "Nei",
       "Ja",
       "Hold mikrofon klar",
+      "Presenter lekene kort og send videre til Ida",
+      "Nei",
+      "5",
+      "Fordel mellom underoppgavene",
+      "2",
+      "Pause",
       "VELKOMST",
       ""
     ],
@@ -279,6 +383,7 @@ export function buildProjectTaskImportTemplateTable() {
       "Brudens tale",
       "Klart etter pause",
       "Ikke startet",
+      "Taler",
       "Toastmaster",
       "20",
       "",
@@ -286,6 +391,12 @@ export function buildProjectTaskImportTemplateTable() {
       "Nei",
       "Ja",
       "",
+      "Gi toastmaster beskjed naar pausen er over",
+      "Ja",
+      "10",
+      "Fordel mellom underoppgavene",
+      "2",
+      "Pause",
       "",
       "PAUSE-TALE"
     ]
@@ -417,6 +528,7 @@ export function parseProjectTaskImportRows(rows, people = [], existingTasks = []
     title: findImportColumnIndex(headerRow, "title"),
     description: findImportColumnIndex(headerRow, "description"),
     status: findImportColumnIndex(headerRow, "status"),
+    category: findImportColumnIndex(headerRow, "category"),
     assigneeNames: findImportColumnIndex(headerRow, "assigneeNames"),
     durationMinutes: findImportColumnIndex(headerRow, "durationMinutes"),
     desiredStartAt: findImportColumnIndex(headerRow, "desiredStartAt"),
@@ -424,6 +536,12 @@ export function parseProjectTaskImportRows(rows, people = [], existingTasks = []
     isFixedTime: findImportColumnIndex(headerRow, "isFixedTime"),
     showOnAgenda: findImportColumnIndex(headerRow, "showOnAgenda"),
     agendaComment: findImportColumnIndex(headerRow, "agendaComment"),
+    toastmasterNotes: findImportColumnIndex(headerRow, "toastmasterNotes"),
+    useCategoryBufferDefaults: findImportColumnIndex(headerRow, "useCategoryBufferDefaults"),
+    bufferAvailableMinutes: findImportColumnIndex(headerRow, "bufferAvailableMinutes"),
+    bufferAvailablePlacement: findImportColumnIndex(headerRow, "bufferAvailablePlacement"),
+    bufferTransitionMinutes: findImportColumnIndex(headerRow, "bufferTransitionMinutes"),
+    bufferLabel: findImportColumnIndex(headerRow, "bufferLabel"),
     parentReference: findImportColumnIndex(headerRow, "parentReference"),
     dependencyReferences: findImportColumnIndex(headerRow, "dependencyReferences")
   };
@@ -465,6 +583,7 @@ export function parseProjectTaskImportRows(rows, people = [], existingTasks = []
         title,
         description: getValue("description"),
         status: TASK_STATUS_IMPORT_MAP[normalizeKey(getValue("status"))] || "todo",
+        category: parseTaskCategory(getValue("category")),
         assigneeIds: [...new Set(assigneeIds)],
         durationMinutes: parseDuration(getValue("durationMinutes"), 60),
         desiredStartAt: getValue("desiredStartAt"),
@@ -472,6 +591,14 @@ export function parseProjectTaskImportRows(rows, people = [], existingTasks = []
         isFixedTime: parseBooleanToken(getValue("isFixedTime")),
         showOnAgenda: parseBooleanToken(getValue("showOnAgenda")),
         agendaComment: getValue("agendaComment"),
+        toastmasterNotes: getValue("toastmasterNotes"),
+        useCategoryBufferDefaults: parseBooleanToken(getValue("useCategoryBufferDefaults")),
+        bufferConfig: {
+          availableMinutes: parseDuration(getValue("bufferAvailableMinutes"), 0),
+          availablePlacement: parseTaskBufferPlacement(getValue("bufferAvailablePlacement")),
+          transitionMinutes: parseDuration(getValue("bufferTransitionMinutes"), 0),
+          label: getValue("bufferLabel") || "Buffer"
+        },
         parentReference: getValue("parentReference"),
         dependencyReferences: splitListValue(getValue("dependencyReferences"))
       };

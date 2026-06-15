@@ -1575,6 +1575,126 @@ p {
   color: var(--warning);
 }
 
+.live-status-pill.is-success {
+  background: rgba(36, 95, 82, 0.14);
+  color: var(--accent-strong);
+}
+
+.live-status-pill.is-warning,
+.live-status-pill.is-danger {
+  background: rgba(176, 104, 28, 0.14);
+  color: #8f4f04;
+}
+
+.planning-live-groups {
+  display: grid;
+  gap: 18px;
+}
+
+.planning-live-group {
+  gap: 10px;
+}
+
+.planning-live-list {
+  gap: 12px;
+}
+
+.planning-live-item {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  align-items: start;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(91, 59, 18, 0.1);
+  background: rgba(255, 252, 247, 0.82);
+}
+
+.planning-live-item.is-current {
+  border-color: rgba(36, 95, 82, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(36, 95, 82, 0.1), transparent 36%),
+    rgba(246, 252, 249, 0.92);
+}
+
+.planning-live-item.is-next {
+  border-color: rgba(91, 59, 18, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(91, 59, 18, 0.06);
+}
+
+.planning-live-item.is-buffer {
+  background: rgba(249, 246, 240, 0.86);
+}
+
+.planning-live-item.is-unscheduled .planning-live-time strong {
+  color: var(--warning);
+}
+
+.planning-live-time {
+  display: grid;
+  gap: 4px;
+}
+
+.planning-live-time strong {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.planning-live-time span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.planning-live-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.planning-live-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.planning-live-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.planning-live-comment {
+  line-height: 1.45;
+}
+
+.planning-live-script {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(36, 95, 82, 0.12);
+  background: rgba(246, 252, 249, 0.78);
+}
+
+.planning-live-script p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.planning-live-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  align-content: start;
+}
+
+.planning-live-actions .task-inline-button {
+  white-space: nowrap;
+}
+
 .grid-form {
   display: grid;
   gap: 14px;
@@ -4220,6 +4340,7 @@ p {
   .detail-list > div,
   .compact-list li,
   .agenda-card-layout,
+  .planning-live-item,
   .guest-site-shell,
   .person-card-header,
   .task-headline,
@@ -4232,6 +4353,14 @@ p {
 
   .agenda-card-layout {
     grid-template-columns: 1fr;
+  }
+
+  .planning-live-item {
+    grid-template-columns: 1fr;
+  }
+
+  .planning-live-actions {
+    justify-items: stretch;
   }
 
   .agenda-task-card.is-nested {

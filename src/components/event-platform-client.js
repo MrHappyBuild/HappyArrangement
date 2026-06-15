@@ -56,13 +56,17 @@ import {
   PROJECT_ROLE_OPTIONS,
   RSVP_OPTIONS,
   SUBMISSION_STATUS_OPTIONS,
+  TASK_BUFFER_PLACEMENT_OPTIONS,
+  TASK_CATEGORY_OPTIONS,
+  TASK_LIVE_STATUS_OPTIONS,
   TASK_STATUS_OPTIONS,
   buildApprovalSummary,
+  buildLiveAgenda,
+  buildPlanningAgenda,
   buildGuestSiteBasePath,
   buildGuestSiteNavigationEntries,
   canViewerSeeGuestPage,
   buildEventFinanceSummary,
-  buildAgendaHighlights,
   buildProjectDashboard,
   buildProjectHierarchy,
   buildGuestSummary,
@@ -70,9 +74,12 @@ import {
   buildSettlementSuggestions,
   sortGuestSiteNavigationEntries,
   buildTaskAgenda,
+  buildTaskBufferSummary,
   buildTaskSwimlanes,
   buildViewerAccess,
-  ensureEventShape
+  ensureEventShape,
+  getTaskCategoryBufferDefaults,
+  resolveTaskBufferConfig
 } from "@/event-platform-utils";
 import {
   buildTaskDependencyDragPayload,
@@ -184,6 +191,32 @@ function formatDurationMinutes(value) {
   return `${remainder} min`;
 }
 
+function formatLiveDelta(value) {
+  const minutes = typeof value === "number" ? value : Number(value || 0);
+
+  if (!Number.isFinite(minutes) || Math.abs(minutes) < 1) {
+    return "I rute";
+  }
+
+  return minutes > 0
+    ? `${formatDurationMinutes(minutes)} bak skjema`
+    : `${formatDurationMinutes(Math.abs(minutes))} foran skjema`;
+}
+
+function getTaskLiveStatusLabel(status) {
+  return TASK_LIVE_STATUS_OPTIONS.find((option) => option.value === status)?.label || "Ikke startet live";
+}
+
+function toCurrentDateTimeLocalString(date = new Date()) {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 function parseTaskDurationInput(value, fallback = 60) {
   const rawValue =
     typeof value === "string" || typeof value === "number" ? String(value) : "";
@@ -194,6 +227,187 @@ function parseTaskDurationInput(value, fallback = 60) {
   }
 
   return parsed;
+}
+
+function normalizeTaskBufferPlacementInput(value, fallback = "end") {
+  return String(value || "") === "distributed"
+    ? "distributed"
+    : fallback === "distributed"
+      ? "distributed"
+      : "end";
+}
+
+function getTaskCategoryLabel(category) {
+  return TASK_CATEGORY_OPTIONS.find((option) => option.value === category)?.label || "Generelt";
+}
+
+function buildTaskBufferPayload(formData) {
+  const category = String(formData.get("category") || "general");
+  const defaults = getTaskCategoryBufferDefaults(category);
+
+  return {
+    category,
+    useCategoryBufferDefaults: formData.get("useCategoryBufferDefaults") === "on",
+    bufferConfig: {
+      availableMinutes: parseTaskDurationInput(
+        formData.get("bufferAvailableMinutes"),
+        defaults.availableMinutes ?? 0
+      ),
+      availablePlacement: normalizeTaskBufferPlacementInput(
+        formData.get("bufferAvailablePlacement"),
+        defaults.availablePlacement || "end"
+      ),
+      transitionMinutes: parseTaskDurationInput(
+        formData.get("bufferTransitionMinutes"),
+        defaults.transitionMinutes ?? 0
+      ),
+      label: String(formData.get("bufferLabel") || defaults.label || "Buffer").trim() || "Buffer"
+    }
+  };
+}
+
+function TaskBufferSettingsFields({
+  task = null,
+  disabled = false,
+  helperText = "Brukes naar aktiviteten har underoppgaver."
+}) {
+  const initialConfig = resolveTaskBufferConfig(task || {});
+  const [category, setCategory] = useState(initialConfig.category);
+  const [useDefaults, setUseDefaults] = useState(initialConfig.useCategoryBufferDefaults);
+  const [customConfig, setCustomConfig] = useState({
+    availableMinutes: initialConfig.availableMinutes,
+    availablePlacement: initialConfig.availablePlacement,
+    transitionMinutes: initialConfig.transitionMinutes,
+    label: initialConfig.label
+  });
+  const defaults = useMemo(() => getTaskCategoryBufferDefaults(category), [category]);
+  const effectiveConfig = useDefaults ? defaults : customConfig;
+  const summary = buildTaskBufferSummary(effectiveConfig);
+
+  return (
+    <div className="field field-span-full">
+      <span>Kategori og buffer</span>
+      <div className="stack compact-stack">
+        <div className="agenda-field-grid field-span-full">
+          <label className="field agenda-inline-field">
+            <span>Kategori</span>
+            <select
+              disabled={disabled}
+              name="category"
+              value={category}
+              onChange={(eventObject) => setCategory(eventObject.currentTarget.value)}
+            >
+              {TASK_CATEGORY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field agenda-inline-field checkbox-field">
+            <span>Standardbuffer</span>
+            <span className="checkbox-inline">
+              <input
+                checked={useDefaults}
+                disabled={disabled}
+                name="useCategoryBufferDefaults"
+                type="checkbox"
+                onChange={(eventObject) => setUseDefaults(eventObject.currentTarget.checked)}
+              />
+              <span>Bruk kategoriens standard</span>
+            </span>
+          </label>
+        </div>
+        <p className="muted">{helperText}</p>
+        <div className="tag-list">
+          <span className="data-tag">{getTaskCategoryLabel(category)}</span>
+          {summary ? <span className="data-tag">{summary}</span> : <span className="data-tag">Ingen automatisk buffer</span>}
+        </div>
+        {useDefaults ? (
+          <>
+            <input name="bufferAvailableMinutes" type="hidden" value={String(defaults.availableMinutes)} />
+            <input name="bufferAvailablePlacement" type="hidden" value={defaults.availablePlacement} />
+            <input name="bufferTransitionMinutes" type="hidden" value={String(defaults.transitionMinutes)} />
+            <input name="bufferLabel" type="hidden" value={defaults.label} />
+          </>
+        ) : (
+          <div className="agenda-field-grid field-span-full">
+            <label className="field agenda-inline-field">
+              <span>Tilgjengelig buffer (min)</span>
+              <input
+                disabled={disabled}
+                min="0"
+                name="bufferAvailableMinutes"
+                step="1"
+                type="number"
+                value={String(customConfig.availableMinutes)}
+                onChange={(eventObject) =>
+                  setCustomConfig((current) => ({
+                    ...current,
+                    availableMinutes: parseTaskDurationInput(eventObject.currentTarget.value, 0)
+                  }))
+                }
+              />
+            </label>
+            <label className="field agenda-inline-field">
+              <span>Plassering</span>
+              <select
+                disabled={disabled}
+                name="bufferAvailablePlacement"
+                value={customConfig.availablePlacement}
+                onChange={(eventObject) =>
+                  setCustomConfig((current) => ({
+                    ...current,
+                    availablePlacement: normalizeTaskBufferPlacementInput(
+                      eventObject.currentTarget.value,
+                      "end"
+                    )
+                  }))
+                }
+              >
+                {TASK_BUFFER_PLACEMENT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field agenda-inline-field">
+              <span>Fast mellomrom (min)</span>
+              <input
+                disabled={disabled}
+                min="0"
+                name="bufferTransitionMinutes"
+                step="1"
+                type="number"
+                value={String(customConfig.transitionMinutes)}
+                onChange={(eventObject) =>
+                  setCustomConfig((current) => ({
+                    ...current,
+                    transitionMinutes: parseTaskDurationInput(eventObject.currentTarget.value, 0)
+                  }))
+                }
+              />
+            </label>
+            <label className="field agenda-inline-field">
+              <span>Navn pa bufferpunkt</span>
+              <input
+                disabled={disabled}
+                name="bufferLabel"
+                value={customConfig.label}
+                onChange={(eventObject) =>
+                  setCustomConfig((current) => ({
+                    ...current,
+                    label: eventObject.currentTarget.value
+                  }))
+                }
+              />
+            </label>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function buildGuestInlineStyleMarkup(text, styles) {
@@ -4562,6 +4776,14 @@ function ProjectTab({
             placeholder="F.eks. Velkomst og mingling i hagen"
           />
         </label>
+        <label className="field field-span-full">
+          <span>Toastmaster-notat / manus</span>
+          <textarea
+            name="toastmasterNotes"
+            placeholder="Stikkord, manus, hvem som skal introduseres eller praktiske cue-er"
+            rows={3}
+          />
+        </label>
         <button className="primary-button" type="submit">
           Opprett underoppgave
         </button>
@@ -4743,6 +4965,11 @@ function ProjectTab({
             <span className="role-pill">#{task.agendaPosition}</span>
             {task.isFixedTime ? <span className="data-tag">Fast tidspunkt</span> : null}
             {task.showOnAgenda ? <span className="data-tag">Agenda</span> : null}
+            {task.category && task.category !== "general" ? (
+              <span className="data-tag">{getTaskCategoryLabel(task.category)}</span>
+            ) : null}
+            {task.bufferSummary ? <span className="data-tag">{task.bufferSummary}</span> : null}
+            {task.toastmasterNotes ? <span className="data-tag">Manus</span> : null}
             {renderTaskDependencyTags(task)}
           </div>
           <div className="agenda-meta">
@@ -4856,15 +5083,29 @@ function ProjectTab({
               />
             </label>
           </div>
-          <label className="field field-span-full">
-            <span>Synlig kommentar i agenda</span>
-            <input
-              defaultValue={task.agendaComment || ""}
-              disabled={!viewerAccess.canManageProject}
-              name="agendaComment"
-              placeholder="F.eks. Velkomst og mingling i hagen"
-            />
-          </label>
+        <label className="field field-span-full">
+          <span>Synlig kommentar i agenda</span>
+          <input
+            defaultValue={task.agendaComment || ""}
+            disabled={!viewerAccess.canManageProject}
+            name="agendaComment"
+            placeholder="F.eks. Velkomst og mingling i hagen"
+          />
+        </label>
+        <label className="field field-span-full">
+          <span>Toastmaster-notat / manus</span>
+          <textarea
+            defaultValue={task.toastmasterNotes || ""}
+            disabled={!viewerAccess.canManageProject}
+            name="toastmasterNotes"
+            placeholder="Stikkord, manus, intern instruks eller praktisk informasjon"
+            rows={4}
+          />
+        </label>
+        <TaskBufferSettingsFields
+          disabled={!viewerAccess.canManageProject}
+          task={task}
+        />
         </div>
         <label className="field">
           <span>Beskrivelse</span>
@@ -5761,6 +6002,15 @@ function ProjectTab({
               />
             </label>
             <label className="field field-span-full">
+              <span>Toastmaster-notat / manus</span>
+              <textarea
+                name="toastmasterNotes"
+                placeholder="Stikkord, intern info eller manus for den som leder punktet"
+                rows={3}
+              />
+            </label>
+            <TaskBufferSettingsFields />
+            <label className="field field-span-full">
               <span>Beskrivelse</span>
               <textarea name="description" placeholder="Hva skal gjores, og hva er viktig?" rows={3} />
             </label>
@@ -6316,6 +6566,7 @@ function ProjectTab({
                                 <span className="role-pill">#{task.agendaPosition}</span>
                                 {task.isFixedTime ? <span className="data-tag">Fast</span> : null}
                                 {task.showOnAgenda ? <span className="data-tag">Agenda</span> : null}
+                                {task.toastmasterNotes ? <span className="data-tag">Manus</span> : null}
                                 {renderTaskDependencyTags(task)}
                                 {task.hasChildren ? (
                                   <span className="data-tag">
@@ -6495,6 +6746,11 @@ function ProjectTab({
                                 <span className="role-pill">#{task.agendaPosition}</span>
                                 {task.isFixedTime ? <span className="data-tag">Fast tidspunkt</span> : null}
                                 {task.showOnAgenda ? <span className="data-tag">Agenda</span> : null}
+                                {task.category && task.category !== "general" ? (
+                                  <span className="data-tag">{getTaskCategoryLabel(task.category)}</span>
+                                ) : null}
+                                {task.bufferSummary ? <span className="data-tag">{task.bufferSummary}</span> : null}
+                                {task.toastmasterNotes ? <span className="data-tag">Manus</span> : null}
                                 {renderTaskDependencyTags(task)}
                                 {dropTaskId === `${task.id}:under` ? (
                                   <span className="data-tag warning-tag">Blir underoppgave</span>
@@ -6621,6 +6877,11 @@ function ProjectTab({
                                       ? `Overaktivitet for ${task.childTaskIds.length}`
                                       : "Topplan"}
                                 </span>
+                                {task.bufferSummary ? (
+                                  <span>
+                                    <strong>Buffer:</strong> {task.bufferSummary}
+                                  </span>
+                                ) : null}
                               </div>
                               {task.dependencyNames.length ? (
                                 <div className="tag-list">
@@ -6746,6 +7007,20 @@ function ProjectTab({
                                     placeholder="F.eks. Velkomst og mingling i hagen"
                                   />
                                 </label>
+                                <label className="field field-span-full">
+                                  <span>Toastmaster-notat / manus</span>
+                                  <textarea
+                                    defaultValue={task.toastmasterNotes || ""}
+                                    disabled={!viewerAccess.canManageProject}
+                                    name="toastmasterNotes"
+                                    placeholder="Stikkord, manus, intern instruks eller praktisk informasjon"
+                                    rows={4}
+                                  />
+                                </label>
+                                <TaskBufferSettingsFields
+                                  disabled={!viewerAccess.canManageProject}
+                                  task={task}
+                                />
                               </div>
                               <label className="field">
                                 <span>Beskrivelse</span>
@@ -6948,12 +7223,13 @@ function ProjectTab({
   );
 }
 
-function PlanningTab({ event, viewerAccess, onSaveOverview }) {
-  const agendaHighlights = buildAgendaHighlights(event);
+function PlanningTab({ event, viewerAccess, onSaveOverview, onUpdateTaskLiveState }) {
+  const planningAgenda = buildPlanningAgenda(event);
+  const liveAgenda = buildLiveAgenda(event);
   const agendaHighlightGroups = [];
   let currentAgendaGroup = null;
 
-  agendaHighlights.tasks.forEach((task) => {
+  planningAgenda.items.forEach((task) => {
     const groupKey = task.displayStartAt ? String(task.displayStartAt).slice(0, 10) : "__missing_date";
 
     if (!currentAgendaGroup || currentAgendaGroup.key !== groupKey) {
@@ -6967,6 +7243,124 @@ function PlanningTab({ event, viewerAccess, onSaveOverview }) {
 
     currentAgendaGroup.tasks.push(task);
   });
+
+  const liveAgendaGroups = [];
+  let currentLiveAgendaGroup = null;
+
+  liveAgenda.items.forEach((item) => {
+    const groupKey = item.displayStartAt ? String(item.displayStartAt).slice(0, 10) : "__missing_date";
+
+    if (!currentLiveAgendaGroup || currentLiveAgendaGroup.key !== groupKey) {
+      currentLiveAgendaGroup = {
+        key: groupKey,
+        label: formatAgendaGroupDate(item.displayStartAt),
+        items: []
+      };
+      liveAgendaGroups.push(currentLiveAgendaGroup);
+    }
+
+    currentLiveAgendaGroup.items.push(item);
+  });
+
+  async function handleStartLiveTask(task) {
+    if (!viewerAccess.canManagePlanning || !task || task.isGeneratedBuffer) {
+      return;
+    }
+
+    const nowValue = toCurrentDateTimeLocalString();
+    await onUpdateTaskLiveState(
+      task,
+      {
+        liveStatus: "in_progress",
+        actualStartAt: nowValue,
+        actualEndAt: ""
+      },
+      `Live agenda startet "${task.title}".`
+    );
+  }
+
+  async function handleCompleteLiveTask(task) {
+    if (!viewerAccess.canManagePlanning || !task || task.isGeneratedBuffer) {
+      return;
+    }
+
+    const nowValue = toCurrentDateTimeLocalString();
+    await onUpdateTaskLiveState(
+      task,
+      {
+        liveStatus: "done",
+        actualStartAt: task.actualStartAt || task.scheduledStartAt || nowValue,
+        actualEndAt: nowValue
+      },
+      `"${task.title}" er markert ferdig i live agenda.`
+    );
+  }
+
+  async function handleSkipLiveTask(task) {
+    if (!viewerAccess.canManagePlanning || !task || task.isGeneratedBuffer) {
+      return;
+    }
+
+    const nowValue = toCurrentDateTimeLocalString();
+    await onUpdateTaskLiveState(
+      task,
+      {
+        liveStatus: "skipped",
+        actualEndAt: nowValue
+      },
+      `"${task.title}" er hoppet over i live agenda.`
+    );
+  }
+
+  async function handleResetLiveTask(task) {
+    if (!viewerAccess.canManagePlanning || !task || task.isGeneratedBuffer) {
+      return;
+    }
+
+    await onUpdateTaskLiveState(
+      task,
+      {
+        liveStatus: "planned",
+        actualStartAt: "",
+        actualEndAt: ""
+      },
+      `Tilbakestilte live status for "${task.title}".`
+    );
+  }
+
+  function renderLiveTaskNotes(task) {
+    if (
+      !task ||
+      task.isGeneratedBuffer ||
+      (!task.isCurrent && !task.isNext && task.id !== liveAgenda.currentTask?.id)
+    ) {
+      return null;
+    }
+
+    const note = String(task.toastmasterNotes || "").trim();
+    const description = String(task.description || "").trim();
+
+    if (!note && !description) {
+      return null;
+    }
+
+    return (
+      <div className="planning-live-script">
+        {note ? (
+          <div className="stack compact-stack">
+            <strong>Toastmaster-notat / manus</strong>
+            <p>{note}</p>
+          </div>
+        ) : null}
+        {description ? (
+          <div className="stack compact-stack">
+            <strong>Beskrivelse</strong>
+            <p>{description}</p>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   if (!viewerAccess.canViewPlanning) {
     return (
@@ -7085,20 +7479,23 @@ function PlanningTab({ event, viewerAccess, onSaveOverview }) {
           <div>
             <h3>Vises pa agenda</h3>
             <p className="muted">
-              Marker oppgaver med `Vises pa agenda` i prosjektrommet, sa havner de her i en ren,
-              tids-sortert liste for programmet.
+              Marker oppgaver med `Vises pa agenda` i prosjektrommet. Bufferpunkter fra hovedoppgaver
+              legges ogsaa inn her, slik at intern planlegging viser reell flyt.
             </p>
           </div>
           <div className="project-chip-row">
-            <span className="role-pill">{agendaHighlights.total} punkter</span>
-            {agendaHighlights.unscheduledCount ? (
+            <span className="role-pill">{planningAgenda.total} punkter</span>
+            {planningAgenda.bufferCount ? (
+              <span className="data-tag">{planningAgenda.bufferCount} bufferpunkter</span>
+            ) : null}
+            {planningAgenda.unscheduledCount ? (
               <span className="data-tag warning-tag">
-                {agendaHighlights.unscheduledCount} mangler starttid
+                {planningAgenda.unscheduledCount} mangler starttid
               </span>
             ) : null}
           </div>
         </div>
-        {agendaHighlights.total === 0 ? (
+        {planningAgenda.total === 0 ? (
           <EmptyState
             title="Ingen agenda-punkter valgt enda"
             body="Gaa til Oppgaver og marker de aktivitetene som skal vises i agendaen."
@@ -7122,9 +7519,235 @@ function PlanningTab({ event, viewerAccess, onSaveOverview }) {
                       </div>
                       <div className="planning-agenda-main">
                         <strong>{task.title}</strong>
+                        {task.isGeneratedBuffer ? (
+                          <span className="data-tag">
+                            {task.transitionMinutes && task.availableMinutes
+                              ? `${task.transitionMinutes} min fast + ${task.availableMinutes} min tilgjengelig`
+                              : task.transitionMinutes
+                                ? `${task.transitionMinutes} min fast mellomrom`
+                                : `${task.availableMinutes} min tilgjengelig tid`}
+                          </span>
+                        ) : null}
                         {task.agendaComment ? (
                           <span className="muted planning-agenda-comment">{task.agendaComment}</span>
                         ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="panel stack">
+        <div className="panel-header-inline">
+          <div>
+            <h3>Live agenda / kjoring</h3>
+            <p className="muted">
+              Denne visningen er laget for toastmaster eller fransier under selve arrangementet. Her ser du hva som gaar naa, hva som kommer, og om dere er foran eller bak skjema.
+            </p>
+          </div>
+          <div className="project-chip-row">
+            <span className={`role-pill live-status-pill is-${liveAgenda.statusTone}`}>
+              {formatLiveDelta(liveAgenda.driftMinutes)}
+            </span>
+            {liveAgenda.activeTaskCount ? (
+              <span className="data-tag">{liveAgenda.activeTaskCount} paagaar naa</span>
+            ) : null}
+            {liveAgenda.remainingTaskCount ? (
+              <span className="data-tag">{liveAgenda.remainingTaskCount} igjen</span>
+            ) : null}
+          </div>
+        </div>
+        <div className="overview-grid">
+          <InfoCard
+            label="Na paagar"
+            value={liveAgenda.currentTask?.title || "Ikke startet enda"}
+            tone={liveAgenda.currentTask ? "success" : "warning"}
+          />
+          <InfoCard
+            label="Neste punkt"
+            value={liveAgenda.nextTask?.title || "Ingen flere planlagte punkter"}
+          />
+          <InfoCard
+            label="Neste faste punkt"
+            value={
+              liveAgenda.nextFixedTask
+                ? `${liveAgenda.nextFixedTask.title} - ${formatDateTime(liveAgenda.nextFixedTask.displayStartAt)}`
+                : "Ingen fast laas senere"
+            }
+            tone={liveAgenda.nextFixedTask ? "success" : "warning"}
+          />
+          <InfoCard
+            label={
+              liveAgenda.nextFixedTask ? "Tilgjengelig buffer" : "Planlagt buffer igjen"
+            }
+            value={formatDurationMinutes(Math.max(0, liveAgenda.availableBufferMinutes))}
+            tone={liveAgenda.availableBufferMinutes > 0 ? "success" : "warning"}
+          />
+        </div>
+        {liveAgenda.currentTask ? renderLiveTaskNotes(liveAgenda.currentTask) : null}
+        {liveAgenda.activeTaskCount > 1 ? (
+          <p className="notice warning">
+            Flere aktiviteter star som paagaar samtidig. Live agenda bruker den tidligste av dem som hovedpunkt akkurat naa.
+          </p>
+        ) : null}
+        {liveAgenda.nextFixedTask ? (
+          <p className={`notice ${liveAgenda.needsCatchUpMinutes ? "warning" : "success"}`}>
+            {liveAgenda.needsCatchUpMinutes
+              ? `Dere maa hente inn ${formatDurationMinutes(
+                  liveAgenda.needsCatchUpMinutes
+                )} for aa rekke "${liveAgenda.nextFixedTask.title}" til ${formatDateTime(
+                  liveAgenda.nextFixedTask.displayStartAt
+                )}.`
+              : `Fram til "${liveAgenda.nextFixedTask.title}" har dere ${formatDurationMinutes(
+                  Math.max(0, liveAgenda.availableBufferMinutes)
+                )} tilgjengelig tid. Av dette ligger ${formatDurationMinutes(
+                  Math.max(0, liveAgenda.plannedBufferMinutes)
+                )} som planlagt buffer i lopet.`}
+          </p>
+        ) : (
+          <p className="notice success">
+            Ingen flere faste tidspunkt senere i planen. Dere har minst{" "}
+            {formatDurationMinutes(Math.max(0, liveAgenda.plannedBufferMinutes))} med planlagt buffer
+            igjen i lopet.
+          </p>
+        )}
+        {liveAgenda.unscheduledCount ? (
+          <p className="notice warning">
+            {liveAgenda.unscheduledCount} aktiviteter mangler fortsatt starttid og vil vaere vanskeligere aa bruke live. Sett tid paa dem i Oppgaver om de skal brukes i kjoringen.
+          </p>
+        ) : null}
+        {liveAgenda.items.length === 0 ? (
+          <EmptyState
+            title="Ingen aktiviteter aa kjore live enda"
+            body="Legg inn oppgaver i prosjektrommet for aa bruke live agendaen."
+          />
+        ) : (
+          <div className="planning-live-groups">
+            {liveAgendaGroups.map((group) => (
+              <section className="planning-live-group stack" key={`live-group-${group.key}`}>
+                <div className="planning-agenda-group-header">
+                  <h4>{group.label}</h4>
+                  <span className="role-pill">{group.items.length}</span>
+                </div>
+                <ul className="compact-list planning-live-list">
+                  {group.items.map((item) => (
+                    <li
+                      className={`planning-live-item ${
+                        item.isGeneratedBuffer ? "is-buffer" : ""
+                      } ${item.isCurrent ? "is-current" : ""} ${item.isNext ? "is-next" : ""} ${
+                        item.isScheduled ? "" : "is-unscheduled"
+                      }`}
+                      key={`planning-live-${item.id}`}
+                    >
+                      <div className="planning-live-time">
+                        <strong>
+                          {item.displayStartAt ? formatClockTime(item.displayStartAt) : "Ikke satt"}
+                        </strong>
+                        <span>
+                          {item.displayEndAt
+                            ? `${formatClockTime(item.displayEndAt)} slutt`
+                            : "Mangler slutt"}
+                        </span>
+                      </div>
+                      <div className="planning-live-main">
+                        <div className="planning-live-title-row">
+                          <strong>{item.title}</strong>
+                          {item.isGeneratedBuffer ? (
+                            <span className="data-tag">{formatDurationMinutes(item.durationMinutes)}</span>
+                          ) : (
+                            <span className="data-tag">{getTaskLiveStatusLabel(item.liveStatus)}</span>
+                          )}
+                          {item.isFixedTime ? <span className="data-tag">Fast punkt</span> : null}
+                          {item.isCurrent ? <span className="data-tag success-tag">Na</span> : null}
+                          {item.isNext ? <span className="data-tag">Neste</span> : null}
+                          {!item.isGeneratedBuffer && item.liveDeltaMinutes ? (
+                            <span className="data-tag warning-tag">
+                              {formatLiveDelta(item.liveDeltaMinutes)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="planning-live-meta">
+                          <span>
+                            Planlagt:{" "}
+                            {item.displayStartAt && item.displayEndAt
+                              ? `${formatDateTime(item.displayStartAt)} - ${formatClockTime(item.displayEndAt)}`
+                              : "Mangler planlagt tid"}
+                          </span>
+                          {!item.isGeneratedBuffer ? (
+                            <span>
+                              Faktisk:{" "}
+                              {item.actualStartAt
+                                ? `${formatDateTime(item.actualStartAt)}${
+                                    item.actualEndAt
+                                      ? ` - ${formatClockTime(item.actualEndAt)}`
+                                      : " - paagaar"
+                                  }`
+                                : "Ikke startet live"}
+                            </span>
+                          ) : (
+                            <span>
+                              {item.transitionMinutes && item.availableMinutes
+                                ? `${item.transitionMinutes} min fast + ${item.availableMinutes} min tilgjengelig`
+                                : item.transitionMinutes
+                                  ? `${item.transitionMinutes} min fast mellomrom`
+                                  : `${item.availableMinutes} min tilgjengelig tid`}
+                            </span>
+                          )}
+                        </div>
+                        {item.agendaComment ? (
+                          <span className="muted planning-live-comment">{item.agendaComment}</span>
+                        ) : null}
+                        {renderLiveTaskNotes(item)}
+                      </div>
+                      <div className="planning-live-actions">
+                        {!item.isGeneratedBuffer && viewerAccess.canManagePlanning ? (
+                          <>
+                            {item.canStart ? (
+                              <button
+                                className="primary-button task-inline-button"
+                                type="button"
+                                onClick={() => void handleStartLiveTask(item)}
+                              >
+                                Start na
+                              </button>
+                            ) : null}
+                            {item.canComplete ? (
+                              <button
+                                className="primary-button task-inline-button"
+                                type="button"
+                                onClick={() => void handleCompleteLiveTask(item)}
+                              >
+                                Marker ferdig
+                              </button>
+                            ) : null}
+                            {item.canSkip ? (
+                              <button
+                                className="secondary-button task-inline-button"
+                                type="button"
+                                onClick={() => void handleSkipLiveTask(item)}
+                              >
+                                Hopp over
+                              </button>
+                            ) : null}
+                            {item.canReset ? (
+                              <button
+                                className="secondary-button task-inline-button"
+                                type="button"
+                                onClick={() => void handleResetLiveTask(item)}
+                              >
+                                Nullstill
+                              </button>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="muted">
+                            {item.isGeneratedBuffer ? "Systembuffer" : "Lesetilgang"}
+                          </span>
+                        )}
                       </div>
                     </li>
                   ))}
@@ -8115,6 +8738,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     }
 
     const formData = new FormData(formEvent.currentTarget);
+    const bufferPayload = buildTaskBufferPayload(formData);
     const nextEvent = await patchEvent("add_task", {
       task: {
         title: String(formData.get("title") || "").trim(),
@@ -8124,6 +8748,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
         isFixedTime: formData.get("isFixedTime") === "on",
         showOnAgenda: formData.get("showOnAgenda") === "on",
         agendaComment: String(formData.get("agendaComment") || "").trim(),
+        toastmasterNotes: String(formData.get("toastmasterNotes") || "").trim(),
         durationMinutes: parseTaskDurationInput(formData.get("durationMinutes"), 60),
         status: String(formData.get("status") || "todo"),
         subprojectId: formData.has("subprojectId")
@@ -8132,7 +8757,8 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
         parentTaskId: String(formData.get("parentTaskId") || "").trim(),
         dependencyIds: collectFormList(formData, "dependencyIds"),
         followingTaskIds: collectFormList(formData, "followingTaskIds"),
-        assigneeIds: collectFormList(formData, "assigneeIds")
+        assigneeIds: collectFormList(formData, "assigneeIds"),
+        ...bufferPayload
       }
     });
 
@@ -8157,6 +8783,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     }
 
     const formData = new FormData(formEvent.currentTarget);
+    const bufferPayload = buildTaskBufferPayload(formData);
     const nextEvent = await patchEvent("update_task", {
       taskId: task.id,
       changes: {
@@ -8173,6 +8800,9 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
         agendaComment: viewerAccess.canManageProject
           ? String(formData.get("agendaComment") || "").trim()
           : task.agendaComment,
+        toastmasterNotes: viewerAccess.canManageProject
+          ? String(formData.get("toastmasterNotes") || "").trim()
+          : task.toastmasterNotes,
         desiredStartAt: viewerAccess.canManageProject
           ? String(formData.get("desiredStartAt") || "").trim()
           : task.desiredStartAt,
@@ -8203,12 +8833,34 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
           : {}),
         assigneeIds: viewerAccess.canManageProject
           ? collectFormList(formData, "assigneeIds")
-          : task.assigneeIds
+          : task.assigneeIds,
+        category: viewerAccess.canManageProject ? bufferPayload.category : task.category,
+        useCategoryBufferDefaults: viewerAccess.canManageProject
+          ? bufferPayload.useCategoryBufferDefaults
+          : task.useCategoryBufferDefaults,
+        bufferConfig: viewerAccess.canManageProject ? bufferPayload.bufferConfig : task.bufferConfig
       }
     });
 
     if (nextEvent) {
       setStatusMessage(`Oppdaterte oppgaven "${task.title}".`);
+    }
+
+    return nextEvent;
+  }
+
+  async function handleUpdateTaskLiveState(task, changes, successMessage = "") {
+    if (!viewerAccess.canManagePlanning || !selectedEvent || !task) {
+      return null;
+    }
+
+    const nextEvent = await patchEvent("update_task", {
+      taskId: task.id,
+      changes
+    });
+
+    if (nextEvent && successMessage) {
+      setStatusMessage(successMessage);
     }
 
     return nextEvent;
@@ -8737,6 +9389,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                 <PlanningTab
                   event={selectedEvent}
                   onSaveOverview={handleSaveOverview}
+                  onUpdateTaskLiveState={handleUpdateTaskLiveState}
                   viewerAccess={viewerAccess}
                 />
               ) : null}

@@ -3,7 +3,12 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { getLocalEnv } from "@/lib/env";
-import { buildTaskAgenda } from "@/event-platform-utils";
+import {
+  TASK_LIVE_STATUS_OPTIONS,
+  TASK_CATEGORY_OPTIONS,
+  buildTaskAgenda,
+  getTaskCategoryBufferDefaults
+} from "@/event-platform-utils";
 import { analyzeReceiptWithOllama } from "@/lib/local-ai";
 import {
   createLocalJob,
@@ -195,6 +200,47 @@ function normalizeDuration(value, fallback = 60) {
   }
 
   return numeric;
+}
+
+function normalizeTaskCategory(value, fallback = "general") {
+  const normalized = cleanString(value);
+  return TASK_CATEGORY_OPTIONS.some((option) => option.value === normalized) ? normalized : fallback;
+}
+
+function normalizeTaskBufferPlacement(value, fallback = "end") {
+  return cleanString(value) === "distributed"
+    ? "distributed"
+    : fallback === "distributed"
+      ? "distributed"
+      : "end";
+}
+
+function normalizeTaskBufferConfig(value, fallback = {}) {
+  const safeValue = value && typeof value === "object" ? value : {};
+  const safeFallback = fallback && typeof fallback === "object" ? fallback : {};
+
+  return {
+    availableMinutes: normalizeDuration(
+      safeValue.availableMinutes,
+      normalizeDuration(safeFallback.availableMinutes, 0)
+    ),
+    availablePlacement: normalizeTaskBufferPlacement(
+      safeValue.availablePlacement,
+      normalizeTaskBufferPlacement(safeFallback.availablePlacement, "end")
+    ),
+    transitionMinutes: normalizeDuration(
+      safeValue.transitionMinutes,
+      normalizeDuration(safeFallback.transitionMinutes, 0)
+    ),
+    label: cleanString(safeValue.label) || cleanString(safeFallback.label) || "Buffer"
+  };
+}
+
+function normalizeTaskLiveStatus(value, fallback = "planned") {
+  const normalized = cleanString(value);
+  return TASK_LIVE_STATUS_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : fallback;
 }
 
 function isEventMember(event, personId) {
@@ -748,6 +794,8 @@ export async function PATCH(request, context) {
         const baseTasks = [...(current.tasks || [])];
         const dependencyIds = cleanIdList(payload?.task?.dependencyIds);
         const followingTaskIds = cleanIdList(payload?.task?.followingTaskIds);
+        const category = normalizeTaskCategory(payload?.task?.category);
+        const categoryBufferDefaults = getTaskCategoryBufferDefaults(category);
         const subprojectIds = (current.subprojects || []).map((subproject) => subproject.id);
         const usedReferenceCodes = new Set(
           baseTasks
@@ -769,11 +817,21 @@ export async function PATCH(request, context) {
           title,
           description: cleanString(payload?.task?.description),
           agendaComment: cleanString(payload?.task?.agendaComment),
+          toastmasterNotes: cleanString(payload?.task?.toastmasterNotes),
           dueDate: cleanString(payload?.task?.dueDate),
           desiredStartAt: cleanString(payload?.task?.desiredStartAt),
           isFixedTime: normalizeBooleanInput(payload?.task?.isFixedTime),
           showOnAgenda: normalizeBooleanInput(payload?.task?.showOnAgenda),
+          liveStatus: normalizeTaskLiveStatus(payload?.task?.liveStatus, "planned"),
+          actualStartAt: cleanString(payload?.task?.actualStartAt),
+          actualEndAt: cleanString(payload?.task?.actualEndAt),
           durationMinutes: normalizeDuration(payload?.task?.durationMinutes),
+          category,
+          useCategoryBufferDefaults:
+            Object.prototype.hasOwnProperty.call(payload?.task || {}, "useCategoryBufferDefaults")
+              ? normalizeBooleanInput(payload?.task?.useCategoryBufferDefaults)
+              : true,
+          bufferConfig: normalizeTaskBufferConfig(payload?.task?.bufferConfig, categoryBufferDefaults),
           status: cleanString(payload?.task?.status) || "todo",
           orderIndex: Array.isArray(current.tasks) ? current.tasks.length : 0,
           dependencyIds,
@@ -892,6 +950,10 @@ export async function PATCH(request, context) {
           isFixedTime: _ignoredIsFixedTime,
           showOnAgenda: _ignoredShowOnAgenda,
           agendaComment: _ignoredAgendaComment,
+          toastmasterNotes: _ignoredToastmasterNotes,
+          liveStatus: _ignoredLiveStatus,
+          actualStartAt: _ignoredActualStartAt,
+          actualEndAt: _ignoredActualEndAt,
           parentTaskId: _ignoredParentTaskId,
           subprojectId: _ignoredSubprojectId,
           ...directChanges
@@ -911,6 +973,10 @@ export async function PATCH(request, context) {
         const nextFollowingTaskIds = hasFollowingTaskIds
           ? cleanIdList(rawChanges.followingTaskIds)
           : deriveFollowingTaskIds(currentTasks, taskId);
+        const nextCategory = Object.prototype.hasOwnProperty.call(rawChanges, "category")
+          ? normalizeTaskCategory(rawChanges.category, existingTask.category || "general")
+          : normalizeTaskCategory(existingTask.category, "general");
+        const nextCategoryBufferDefaults = getTaskCategoryBufferDefaults(nextCategory);
         const baseTasks = currentTasks.map((task) =>
           task.id === taskId
             ? {
@@ -936,6 +1002,31 @@ export async function PATCH(request, context) {
                   Object.prototype.hasOwnProperty.call(rawChanges, "agendaComment")
                     ? cleanString(rawChanges.agendaComment)
                     : task.agendaComment,
+                toastmasterNotes:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "toastmasterNotes")
+                    ? cleanString(rawChanges.toastmasterNotes)
+                    : task.toastmasterNotes,
+                liveStatus:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "liveStatus")
+                    ? normalizeTaskLiveStatus(rawChanges.liveStatus, task.liveStatus || "planned")
+                    : normalizeTaskLiveStatus(task.liveStatus, "planned"),
+                actualStartAt:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "actualStartAt")
+                    ? cleanString(rawChanges.actualStartAt)
+                    : task.actualStartAt,
+                actualEndAt:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "actualEndAt")
+                    ? cleanString(rawChanges.actualEndAt)
+                    : task.actualEndAt,
+                category: nextCategory,
+                useCategoryBufferDefaults:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "useCategoryBufferDefaults")
+                    ? normalizeBooleanInput(rawChanges.useCategoryBufferDefaults)
+                    : task.useCategoryBufferDefaults !== false,
+                bufferConfig:
+                  Object.prototype.hasOwnProperty.call(rawChanges, "bufferConfig")
+                    ? normalizeTaskBufferConfig(rawChanges.bufferConfig, nextCategoryBufferDefaults)
+                    : normalizeTaskBufferConfig(task.bufferConfig, nextCategoryBufferDefaults),
                 dependencyIds: nextDependencyIds.filter((dependencyId) => dependencyId !== task.id),
                 assigneeIds:
                   Object.prototype.hasOwnProperty.call(rawChanges, "assigneeIds")
@@ -1045,6 +1136,13 @@ export async function PATCH(request, context) {
               isFixedTime: false,
               showOnAgenda: false,
               agendaComment: "",
+              toastmasterNotes: "",
+              category: "general",
+              useCategoryBufferDefaults: true,
+              bufferConfig: normalizeTaskBufferConfig(null, getTaskCategoryBufferDefaults("general")),
+              liveStatus: "planned",
+              actualStartAt: "",
+              actualEndAt: "",
               durationMinutes: 60,
               orderIndex: currentTasks.length + importTargets.length,
               dependencyIds: [],
@@ -1069,6 +1167,22 @@ export async function PATCH(request, context) {
           matchedTask.isFixedTime = normalizeBooleanInput(incomingTask?.isFixedTime);
           matchedTask.showOnAgenda = normalizeBooleanInput(incomingTask?.showOnAgenda);
           matchedTask.agendaComment = cleanString(incomingTask?.agendaComment);
+          matchedTask.toastmasterNotes = cleanString(incomingTask?.toastmasterNotes);
+          matchedTask.liveStatus = normalizeTaskLiveStatus(
+            incomingTask?.liveStatus,
+            matchedTask.liveStatus || "planned"
+          );
+          matchedTask.actualStartAt = cleanString(incomingTask?.actualStartAt);
+          matchedTask.actualEndAt = cleanString(incomingTask?.actualEndAt);
+          matchedTask.category = normalizeTaskCategory(incomingTask?.category, matchedTask.category || "general");
+          matchedTask.useCategoryBufferDefaults =
+            Object.prototype.hasOwnProperty.call(incomingTask || {}, "useCategoryBufferDefaults")
+              ? normalizeBooleanInput(incomingTask?.useCategoryBufferDefaults)
+              : matchedTask.useCategoryBufferDefaults !== false;
+          matchedTask.bufferConfig = normalizeTaskBufferConfig(
+            incomingTask?.bufferConfig,
+            getTaskCategoryBufferDefaults(matchedTask.category)
+          );
           matchedTask.durationMinutes = normalizeDuration(
             incomingTask?.durationMinutes,
             matchedTask.durationMinutes ?? 60

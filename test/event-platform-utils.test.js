@@ -7,6 +7,8 @@ import {
   buildGuestSiteBasePath,
   buildGuestSiteNavigationEntries,
   buildGuestSitePagePath,
+  buildLiveAgenda,
+  buildPlanningAgenda,
   buildProjectDashboard,
   buildProjectHierarchy,
   buildProjectMatrix,
@@ -973,6 +975,202 @@ test("buildTaskAgenda groups underaktiviteter under forelderen og viser samlet t
   assert.equal(agenda.tasks[3].scheduledStartAt, "2026-06-10T13:30");
 });
 
+test("buildTaskAgenda applies category buffer defaults between underaktiviteter", () => {
+  const agenda = buildTaskAgenda({
+    id: "event-category-buffer",
+    name: "Bryllup",
+    overview: {
+      startsAt: "2026-06-10T18:00"
+    },
+    tasks: [
+      {
+        id: "task-parent",
+        title: "Taler",
+        category: "speeches",
+        durationMinutes: 0,
+        desiredStartAt: "2026-06-10T18:00",
+        isFixedTime: true,
+        orderIndex: 0
+      },
+      {
+        id: "task-child-1",
+        title: "Tale fra far",
+        parentTaskId: "task-parent",
+        durationMinutes: 10,
+        orderIndex: 1
+      },
+      {
+        id: "task-child-2",
+        title: "Tale fra mor",
+        parentTaskId: "task-parent",
+        durationMinutes: 15,
+        orderIndex: 2
+      }
+    ]
+  });
+
+  assert.equal(agenda.tasks[1].scheduledStartAt, "2026-06-10T18:00");
+  assert.equal(agenda.tasks[1].scheduledEndAt, "2026-06-10T18:10");
+  assert.equal(agenda.tasks[2].scheduledStartAt, "2026-06-10T18:22");
+  assert.equal(agenda.tasks[2].scheduledEndAt, "2026-06-10T18:37");
+  assert.equal(agenda.bufferItems.length, 1);
+  assert.equal(agenda.bufferItems[0].title, "Pause");
+  assert.equal(agenda.bufferItems[0].scheduledStartAt, "2026-06-10T18:10");
+  assert.equal(agenda.bufferItems[0].scheduledEndAt, "2026-06-10T18:22");
+  assert.equal(agenda.bufferDurationMinutes, 12);
+});
+
+test("buildLiveAgenda tracks drift and remaining buffer against next fixed point", () => {
+  const liveAgenda = buildLiveAgenda(
+    {
+      id: "event-live-agenda",
+      name: "Bryllup",
+      overview: {
+        startsAt: "2026-06-20T16:00"
+      },
+      tasks: [
+        {
+          id: "task-1",
+          title: "Velkomstdrinker",
+          durationMinutes: 30,
+          desiredStartAt: "2026-06-20T16:00",
+          liveStatus: "in_progress",
+          actualStartAt: "2026-06-20T16:10",
+          orderIndex: 0
+        },
+        {
+          id: "task-2",
+          title: "Velkomstord",
+          durationMinutes: 10,
+          dependencyIds: ["task-1"],
+          orderIndex: 1
+        },
+        {
+          id: "task-3",
+          title: "Middag",
+          durationMinutes: 60,
+          desiredStartAt: "2026-06-20T17:00",
+          isFixedTime: true,
+          dependencyIds: ["task-2"],
+          orderIndex: 2
+        }
+      ]
+    },
+    {
+      now: "2026-06-20T16:18"
+    }
+  );
+
+  assert.equal(liveAgenda.currentTask?.title, "Velkomstdrinker");
+  assert.equal(liveAgenda.nextTask?.title, "Velkomstord");
+  assert.equal(liveAgenda.nextFixedTask?.title, "Middag");
+  assert.equal(liveAgenda.driftMinutes, 10);
+  assert.equal(liveAgenda.availableBufferMinutes, 10);
+  assert.equal(liveAgenda.statusTone, "warning");
+});
+
+test("buildLiveAgenda keeps generated buffer items and toastmaster notes in running order", () => {
+  const liveAgenda = buildLiveAgenda(
+    {
+      id: "event-live-buffer",
+      name: "Bryllup",
+      overview: {
+        startsAt: "2026-06-20T18:00"
+      },
+      tasks: [
+        {
+          id: "task-parent",
+          title: "Taler",
+          durationMinutes: 0,
+          desiredStartAt: "2026-06-20T18:00",
+          isFixedTime: true,
+          category: "speeches",
+          useCategoryBufferDefaults: true,
+          orderIndex: 0
+        },
+        {
+          id: "task-1",
+          title: "Toastmaster intro",
+          parentTaskId: "task-parent",
+          durationMinutes: 5,
+          toastmasterNotes: "Presenter de neste talerne tydelig.",
+          orderIndex: 1
+        },
+        {
+          id: "task-2",
+          title: "Tale fra mor",
+          parentTaskId: "task-parent",
+          durationMinutes: 5,
+          orderIndex: 2
+        }
+      ]
+    },
+    {
+      now: "2026-06-20T18:00"
+    }
+  );
+
+  assert.equal(liveAgenda.items[1].toastmasterNotes, "Presenter de neste talerne tydelig.");
+  assert.ok(liveAgenda.items.some((item) => item.isGeneratedBuffer && item.title === "Pause"));
+  assert.equal(
+    liveAgenda.items.find((item) => item.isGeneratedBuffer)?.durationMinutes,
+    12
+  );
+});
+
+test("buildTaskAgenda shifts following tasks after end buffer on a hovedoppgave", () => {
+  const agenda = buildTaskAgenda({
+    id: "event-end-buffer",
+    name: "Bryllup",
+    overview: {
+      startsAt: "2026-06-10T18:00"
+    },
+    tasks: [
+      {
+        id: "task-parent",
+        title: "Velkomst",
+        durationMinutes: 0,
+        desiredStartAt: "2026-06-10T18:00",
+        isFixedTime: true,
+        useCategoryBufferDefaults: false,
+        bufferConfig: {
+          availableMinutes: 10,
+          availablePlacement: "end",
+          transitionMinutes: 0,
+          label: "Buffer"
+        },
+        orderIndex: 0
+      },
+      {
+        id: "task-child-1",
+        title: "Introduksjon",
+        parentTaskId: "task-parent",
+        durationMinutes: 10,
+        orderIndex: 1
+      },
+      {
+        id: "task-child-2",
+        title: "Skal",
+        parentTaskId: "task-parent",
+        durationMinutes: 15,
+        orderIndex: 2
+      },
+      {
+        id: "task-after",
+        title: "Middag",
+        durationMinutes: 30,
+        orderIndex: 3
+      }
+    ]
+  });
+
+  assert.equal(agenda.tasks[3].scheduledStartAt, "2026-06-10T18:25");
+  assert.equal(agenda.tasks[3].scheduledEndAt, "2026-06-10T18:55");
+  assert.equal(agenda.bufferItems.length, 1);
+  assert.equal(agenda.bufferItems[0].scheduledStartAt, "2026-06-10T18:15");
+  assert.equal(agenda.bufferItems[0].scheduledEndAt, "2026-06-10T18:25");
+});
+
 test("buildAgendaHighlights returns only marked tasks sorted by start time", () => {
   const highlights = buildAgendaHighlights({
     id: "event-agenda-highlights",
@@ -1023,6 +1221,50 @@ test("buildAgendaHighlights returns only marked tasks sorted by start time", () 
   );
   assert.equal(highlights.tasks[0].displayStartAt, "2026-06-10T13:30");
   assert.equal(highlights.tasks[1].agendaComment, "Mor holder tale for brudeparet");
+});
+
+test("buildPlanningAgenda includes generated buffer points without publishing them to guest agenda", () => {
+  const event = {
+    id: "event-planning-buffer",
+    name: "Sommerfest",
+    overview: {
+      startsAt: "2026-06-10T18:00"
+    },
+    tasks: [
+      {
+        id: "task-parent",
+        title: "Taler",
+        category: "speeches",
+        durationMinutes: 0,
+        desiredStartAt: "2026-06-10T18:00",
+        isFixedTime: true,
+        orderIndex: 0
+      },
+      {
+        id: "task-child-1",
+        title: "Tale 1",
+        parentTaskId: "task-parent",
+        durationMinutes: 10,
+        showOnAgenda: true,
+        orderIndex: 1
+      },
+      {
+        id: "task-child-2",
+        title: "Tale 2",
+        parentTaskId: "task-parent",
+        durationMinutes: 15,
+        showOnAgenda: true,
+        orderIndex: 2
+      }
+    ]
+  };
+  const planningAgenda = buildPlanningAgenda(event);
+  const guestAgenda = buildAgendaHighlights(event);
+
+  assert.equal(planningAgenda.total, 3);
+  assert.equal(planningAgenda.bufferCount, 1);
+  assert.equal(planningAgenda.items[1].isGeneratedBuffer, true);
+  assert.equal(guestAgenda.total, 2);
 });
 
 test("buildTaskSwimlanes groups tasks by responsible lane and keeps dependency links", () => {
