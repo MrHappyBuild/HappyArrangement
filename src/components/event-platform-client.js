@@ -47,10 +47,14 @@ import {
 import {
   CAPABILITY_OPTIONS,
   FINANCE_ROLE_OPTIONS,
+  FINANCE_CATEGORY_OPTIONS,
+  FINANCE_SUPPLIER_STATUS_OPTIONS,
   GUEST_PAGE_FONT_OPTIONS,
   GUEST_PAGE_TEXT_SIZE_OPTIONS,
   GUEST_PAGE_TEXT_WEIGHT_OPTIONS,
   GUEST_PAGE_VISIBILITY_OPTIONS,
+  HOSPITALITY_SERVICE_STYLE_OPTIONS,
+  LOCAL_AI_MODE_OPTIONS,
   PERSON_TEMPLATES,
   PLANNING_ROLE_OPTIONS,
   PROJECT_ROLE_OPTIONS,
@@ -67,7 +71,9 @@ import {
   buildGuestSiteBasePath,
   buildGuestSiteNavigationEntries,
   canViewerSeeGuestPage,
+  buildFinanceControlRoom,
   buildEventFinanceSummary,
+  buildHospitalityBriefs,
   buildProjectDashboard,
   buildProjectHierarchy,
   buildGuestSummary,
@@ -331,6 +337,139 @@ function buildPlanningSettingsPayload(formData) {
       return currentDefaults;
     }, {})
   };
+}
+
+function buildHospitalityPlanPayload(formData, fallback = null) {
+  const safeFallback = fallback && typeof fallback === "object" ? fallback : {};
+  const fallbackShared = safeFallback.shared && typeof safeFallback.shared === "object" ? safeFallback.shared : {};
+  const fallbackKitchen =
+    safeFallback.kitchen && typeof safeFallback.kitchen === "object" ? safeFallback.kitchen : {};
+  const fallbackService =
+    safeFallback.service && typeof safeFallback.service === "object" ? safeFallback.service : {};
+
+  return {
+    shared: {
+      hostContactName: String(formData.get("hostContactName") || fallbackShared.hostContactName || "").trim(),
+      hostContactPhone: String(formData.get("hostContactPhone") || fallbackShared.hostContactPhone || "").trim(),
+      venueContactName: String(formData.get("venueContactName") || fallbackShared.venueContactName || "").trim(),
+      venueContactPhone: String(formData.get("venueContactPhone") || fallbackShared.venueContactPhone || "").trim(),
+      finalHeadcountLockedAt: String(
+        formData.get("finalHeadcountLockedAt") || fallbackShared.finalHeadcountLockedAt || ""
+      ).trim(),
+      dietaryServiceNotes: String(
+        formData.get("dietaryServiceNotes") || fallbackShared.dietaryServiceNotes || ""
+      ).trim(),
+      logisticsNotes: String(formData.get("logisticsNotes") || fallbackShared.logisticsNotes || "").trim(),
+      emergencyNotes: String(formData.get("emergencyNotes") || fallbackShared.emergencyNotes || "").trim()
+    },
+    kitchen: {
+      leadName: String(formData.get("kitchenLeadName") || fallbackKitchen.leadName || "").trim(),
+      leadPhone: String(formData.get("kitchenLeadPhone") || fallbackKitchen.leadPhone || "").trim(),
+      prepStartsAt: String(formData.get("kitchenPrepStartsAt") || fallbackKitchen.prepStartsAt || "").trim(),
+      serviceStartsAt: String(
+        formData.get("kitchenServiceStartsAt") || fallbackKitchen.serviceStartsAt || ""
+      ).trim(),
+      menuSummary: String(formData.get("kitchenMenuSummary") || fallbackKitchen.menuSummary || "").trim(),
+      specialMenus: String(formData.get("kitchenSpecialMenus") || fallbackKitchen.specialMenus || "").trim(),
+      productionNotes: String(
+        formData.get("kitchenProductionNotes") || fallbackKitchen.productionNotes || ""
+      ).trim(),
+      equipmentNotes: String(
+        formData.get("kitchenEquipmentNotes") || fallbackKitchen.equipmentNotes || ""
+      ).trim(),
+      deliveryNotes: String(formData.get("kitchenDeliveryNotes") || fallbackKitchen.deliveryNotes || "").trim(),
+      fallbackPlan: String(formData.get("kitchenFallbackPlan") || fallbackKitchen.fallbackPlan || "").trim()
+    },
+    service: {
+      leadName: String(formData.get("serviceLeadName") || fallbackService.leadName || "").trim(),
+      leadPhone: String(formData.get("serviceLeadPhone") || fallbackService.leadPhone || "").trim(),
+      serviceStyle: String(formData.get("serviceStyle") || fallbackService.serviceStyle || "plated"),
+      teamSize: parseTaskDurationInput(formData.get("serviceTeamSize"), fallbackService.teamSize ?? 0),
+      serviceStartsAt: String(
+        formData.get("serviceStartsAt") || fallbackService.serviceStartsAt || ""
+      ).trim(),
+      beveragePlan: String(formData.get("serviceBeveragePlan") || fallbackService.beveragePlan || "").trim(),
+      tablePlanNotes: String(
+        formData.get("serviceTablePlanNotes") || fallbackService.tablePlanNotes || ""
+      ).trim(),
+      clearingPlan: String(formData.get("serviceClearingPlan") || fallbackService.clearingPlan || "").trim(),
+      guestCommunicationPlan: String(
+        formData.get("serviceGuestCommunicationPlan") || fallbackService.guestCommunicationPlan || ""
+      ).trim(),
+      issueEscalationPlan: String(
+        formData.get("serviceIssueEscalationPlan") || fallbackService.issueEscalationPlan || ""
+      ).trim(),
+      notes: String(formData.get("serviceNotes") || fallbackService.notes || "").trim()
+    }
+  };
+}
+
+function createEmptyFinanceBudgetItem(index = 0) {
+  return {
+    id: `budget-item-${Date.now()}-${index}`,
+    label: "",
+    categoryKey: "uncategorized",
+    plannedAmount: 0,
+    notes: "",
+    orderIndex: index
+  };
+}
+
+function createEmptyFinanceSupplier(index = 0) {
+  return {
+    id: `supplier-${Date.now()}-${index}`,
+    name: "",
+    categoryKey: "uncategorized",
+    contactName: "",
+    email: "",
+    phone: "",
+    agreedAmount: 0,
+    paymentDueAt: "",
+    status: "planned",
+    notes: "",
+    orderIndex: index
+  };
+}
+
+function normalizeFinancePlanForEditor(financePlan = null) {
+  const safePlan = financePlan && typeof financePlan === "object" ? financePlan : {};
+  const budgetItems = Array.isArray(safePlan.budgetItems) ? safePlan.budgetItems : [];
+  const suppliers = Array.isArray(safePlan.suppliers) ? safePlan.suppliers : [];
+  const localAiOps = safePlan.localAiOps && typeof safePlan.localAiOps === "object" ? safePlan.localAiOps : {};
+
+  return {
+    budgetItems: budgetItems.map((item, index) => ({
+      ...createEmptyFinanceBudgetItem(index),
+      ...item,
+      plannedAmount: Number(item?.plannedAmount || 0),
+      orderIndex: index
+    })),
+    suppliers: suppliers.map((supplier, index) => ({
+      ...createEmptyFinanceSupplier(index),
+      ...supplier,
+      agreedAmount: Number(supplier?.agreedAmount || 0),
+      orderIndex: index
+    })),
+    localAiOps: {
+      mode: localAiOps.mode || "queue_worker",
+      machineLabel: localAiOps.machineLabel || "",
+      workerCommand: localAiOps.workerCommand || "npm run worker:watch",
+      bridgeCommand: localAiOps.bridgeCommand || "npm run ai:bridge",
+      notes: localAiOps.notes || ""
+    }
+  };
+}
+
+function getFinanceCategoryLabel(categoryKey) {
+  return FINANCE_CATEGORY_OPTIONS.find((option) => option.value === categoryKey)?.label || "Ufordelt";
+}
+
+function getFinanceSupplierStatusLabel(status) {
+  return FINANCE_SUPPLIER_STATUS_OPTIONS.find((option) => option.value === status)?.label || "Planlagt";
+}
+
+function getLocalAiModeLabel(mode) {
+  return LOCAL_AI_MODE_OPTIONS.find((option) => option.value === mode)?.label || "Koblet via ko og lokal worker";
 }
 
 function TaskBufferSettingsFields({
@@ -7565,11 +7704,895 @@ function ProjectTab({
   );
 }
 
+function HospitalityPlanPanel({ event, viewerAccess, onSaveHospitalityPlan }) {
+  const hospitalityBriefs = useMemo(() => buildHospitalityBriefs(event), [event]);
+
+  return (
+    <section className="panel stack">
+      <div className="panel-header-inline">
+        <div>
+          <h3>Kjokkenbrief og serveringsbrief</h3>
+          <p className="muted">
+            Denne delen samler det kjokken og serveringspersonell trenger, bygget oppaa gjesteliste,
+            sitteplan og intern agenda.
+          </p>
+        </div>
+        <div className="project-chip-row">
+          <span className="role-pill">{hospitalityBriefs.guestCounts.accepted} bekreftet</span>
+          {hospitalityBriefs.dietaryGuests.length ? (
+            <span className="data-tag warning-tag">
+              {hospitalityBriefs.dietaryGuests.length} med mathensyn
+            </span>
+          ) : (
+            <span className="data-tag success-tag">Ingen mathensyn registrert</span>
+          )}
+        </div>
+      </div>
+      <div className="overview-grid">
+        <InfoCard label="Totalt invitert" value={hospitalityBriefs.guestCounts.total} />
+        <InfoCard label="Kommer" value={hospitalityBriefs.guestCounts.accepted} tone="success" />
+        <InfoCard label="Kanskje / venter" value={hospitalityBriefs.guestCounts.maybe + hospitalityBriefs.guestCounts.pending} tone="warning" />
+        <InfoCard label="Seter i planen" value={hospitalityBriefs.seatingSummary.seatsTotal} />
+      </div>
+      <form className="stack" key={`${event.id}-hospitality-plan`} onSubmit={onSaveHospitalityPlan}>
+        <div className="compact-grid">
+          <label className="field">
+            <span>Hovedkontakt for drift</span>
+            <input
+              defaultValue={event.hospitalityPlan.shared.hostContactName}
+              disabled={!viewerAccess.canManagePlanning}
+              name="hostContactName"
+              placeholder="Navn"
+            />
+          </label>
+          <label className="field">
+            <span>Telefon hovedkontakt</span>
+            <input
+              defaultValue={event.hospitalityPlan.shared.hostContactPhone}
+              disabled={!viewerAccess.canManagePlanning}
+              name="hostContactPhone"
+              placeholder="+47 ..."
+            />
+          </label>
+          <label className="field">
+            <span>Lokale-kontakt</span>
+            <input
+              defaultValue={event.hospitalityPlan.shared.venueContactName}
+              disabled={!viewerAccess.canManagePlanning}
+              name="venueContactName"
+              placeholder="Navn"
+            />
+          </label>
+          <label className="field">
+            <span>Telefon lokale</span>
+            <input
+              defaultValue={event.hospitalityPlan.shared.venueContactPhone}
+              disabled={!viewerAccess.canManagePlanning}
+              name="venueContactPhone"
+              placeholder="+47 ..."
+            />
+          </label>
+          <label className="field">
+            <span>Lås endelig antall</span>
+            <input
+              defaultValue={event.hospitalityPlan.shared.finalHeadcountLockedAt}
+              disabled={!viewerAccess.canManagePlanning}
+              name="finalHeadcountLockedAt"
+              type="datetime-local"
+            />
+          </label>
+        </div>
+        <div className="two-col">
+          <article className="panel stack nested-panel">
+            <div className="panel-header-inline">
+              <div>
+                <h4>Kjokkenbrief</h4>
+                <p className="muted">
+                  Hvem leder kjokkenet, meny, produksjon, utstyr og leveranser.
+                </p>
+              </div>
+            </div>
+            <div className="compact-grid">
+              <label className="field">
+                <span>Kjokkenansvarlig</span>
+                <input
+                  defaultValue={event.hospitalityPlan.kitchen.leadName}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenLeadName"
+                  placeholder="Navn"
+                />
+              </label>
+              <label className="field">
+                <span>Telefon kjokken</span>
+                <input
+                  defaultValue={event.hospitalityPlan.kitchen.leadPhone}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenLeadPhone"
+                  placeholder="+47 ..."
+                />
+              </label>
+              <label className="field">
+                <span>Prep starter</span>
+                <input
+                  defaultValue={event.hospitalityPlan.kitchen.prepStartsAt}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenPrepStartsAt"
+                  type="datetime-local"
+                />
+              </label>
+              <label className="field">
+                <span>Foerste servering</span>
+                <input
+                  defaultValue={event.hospitalityPlan.kitchen.serviceStartsAt}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenServiceStartsAt"
+                  type="datetime-local"
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Meny og serveringsrekkefolge</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.kitchen.menuSummary}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenMenuSummary"
+                  rows={3}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Spesialmenyer og unntak</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.kitchen.specialMenus}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenSpecialMenus"
+                  rows={3}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Produksjonsnotater</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.kitchen.productionNotes}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenProductionNotes"
+                  rows={4}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Utstyr og lokasjon</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.kitchen.equipmentNotes}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenEquipmentNotes"
+                  rows={3}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Leveranser og mottak</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.kitchen.deliveryNotes}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenDeliveryNotes"
+                  rows={3}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Plan B ved forsinkelse</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.kitchen.fallbackPlan}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="kitchenFallbackPlan"
+                  rows={3}
+                />
+              </label>
+            </div>
+          </article>
+          <article className="panel stack nested-panel">
+            <div className="panel-header-inline">
+              <div>
+                <h4>Serveringsbrief</h4>
+                <p className="muted">
+                  Oppdekking, serveringsform, drikke og flyt ute i salen.
+                </p>
+              </div>
+            </div>
+            <div className="compact-grid">
+              <label className="field">
+                <span>Serviceansvarlig</span>
+                <input
+                  defaultValue={event.hospitalityPlan.service.leadName}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceLeadName"
+                  placeholder="Navn"
+                />
+              </label>
+              <label className="field">
+                <span>Telefon service</span>
+                <input
+                  defaultValue={event.hospitalityPlan.service.leadPhone}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceLeadPhone"
+                  placeholder="+47 ..."
+                />
+              </label>
+              <label className="field">
+                <span>Serveringsform</span>
+                <select
+                  defaultValue={event.hospitalityPlan.service.serviceStyle}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceStyle"
+                >
+                  {HOSPITALITY_SERVICE_STYLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Teamstorrelse</span>
+                <input
+                  defaultValue={event.hospitalityPlan.service.teamSize}
+                  disabled={!viewerAccess.canManagePlanning}
+                  min="0"
+                  name="serviceTeamSize"
+                  type="number"
+                />
+              </label>
+              <label className="field">
+                <span>Foerste servering i salen</span>
+                <input
+                  defaultValue={event.hospitalityPlan.service.serviceStartsAt}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceStartsAt"
+                  type="datetime-local"
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Drikkeplan</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.service.beveragePlan}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceBeveragePlan"
+                  rows={3}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Bord- og flytnotater</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.service.tablePlanNotes}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceTablePlanNotes"
+                  rows={3}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Rydding mellom retter</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.service.clearingPlan}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceClearingPlan"
+                  rows={3}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Kommunikasjon mot gjester</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.service.guestCommunicationPlan}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceGuestCommunicationPlan"
+                  rows={3}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Avvik og eskalering</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.service.issueEscalationPlan}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceIssueEscalationPlan"
+                  rows={3}
+                />
+              </label>
+              <label className="field field-span-full">
+                <span>Interne servicenotater</span>
+                <textarea
+                  defaultValue={event.hospitalityPlan.service.notes}
+                  disabled={!viewerAccess.canManagePlanning}
+                  name="serviceNotes"
+                  rows={3}
+                />
+              </label>
+            </div>
+          </article>
+        </div>
+        <div className="compact-grid">
+          <label className="field field-span-full">
+            <span>Mathensyn og merking</span>
+            <textarea
+              defaultValue={event.hospitalityPlan.shared.dietaryServiceNotes}
+              disabled={!viewerAccess.canManagePlanning}
+              name="dietaryServiceNotes"
+              rows={3}
+            />
+          </label>
+          <label className="field field-span-full">
+            <span>Logistikk, rigg og tilgang</span>
+            <textarea
+              defaultValue={event.hospitalityPlan.shared.logisticsNotes}
+              disabled={!viewerAccess.canManagePlanning}
+              name="logisticsNotes"
+              rows={3}
+            />
+          </label>
+          <label className="field field-span-full">
+            <span>Nodrutiner og avvik</span>
+            <textarea
+              defaultValue={event.hospitalityPlan.shared.emergencyNotes}
+              disabled={!viewerAccess.canManagePlanning}
+              name="emergencyNotes"
+              rows={3}
+            />
+          </label>
+        </div>
+        <div className="two-col">
+          <article className="panel stack nested-panel">
+            <h4>Automatisk oppsummert til drift</h4>
+            <ul className="compact-list hospitality-summary-list">
+              <li>
+                <strong>Bekreftet antall:</strong> {hospitalityBriefs.guestCounts.accepted}
+              </li>
+              <li>
+                <strong>Kanskje / venter:</strong>{" "}
+                {hospitalityBriefs.guestCounts.maybe + hospitalityBriefs.guestCounts.pending}
+              </li>
+              <li>
+                <strong>Bord / stasjoner:</strong> {hospitalityBriefs.seatingSummary.tableCount}
+              </li>
+              <li>
+                <strong>Seter totalt:</strong> {hospitalityBriefs.seatingSummary.seatsTotal}
+              </li>
+              <li>
+                <strong>Tildelte seter:</strong> {hospitalityBriefs.seatingSummary.assignedSeats}
+              </li>
+            </ul>
+            {hospitalityBriefs.seatingSummary.itemLabels.length ? (
+              <ul className="compact-list hospitality-inline-list">
+                {hospitalityBriefs.seatingSummary.itemLabels.map((item) => (
+                  <li key={`seating-${item.id}`}>
+                    <span>{item.label}</span>
+                    <strong>{item.seatCount} plasser</strong>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Ingen bord eller stoler med plasser er lagt inn enda.</p>
+            )}
+          </article>
+          <article className="panel stack nested-panel">
+            <h4>Mathensyn fra gjestelisten</h4>
+            {hospitalityBriefs.dietaryGuests.length ? (
+              <ul className="compact-list hospitality-inline-list">
+                {hospitalityBriefs.dietaryGuests.map((guest) => (
+                  <li key={`dietary-${guest.id}`}>
+                    <div className="compact-list-main">
+                      <strong>{guest.name}</strong>
+                      <small className="muted">
+                        {[guest.allergies, guest.dietaryNotes, guest.seatingNote].filter(Boolean).join(" · ") ||
+                          "Registrert uten detalj"}
+                      </small>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Ingen allergier eller matpreferanser registrert enda.</p>
+            )}
+          </article>
+        </div>
+        <article className="panel stack nested-panel">
+          <div className="panel-header-inline">
+            <div>
+              <h4>Servicekjoreplan fra agendaen</h4>
+              <p className="muted">
+                Bygger paa planleggingsagendaen og gir servering og kjokken ett felles tidsbilde.
+              </p>
+            </div>
+            <span className="role-pill">{hospitalityBriefs.serviceTimeline.length}</span>
+          </div>
+          {hospitalityBriefs.serviceTimeline.length ? (
+            <ul className="compact-list hospitality-inline-list">
+              {hospitalityBriefs.serviceTimeline.map((item) => (
+                <li key={`service-timeline-${item.id}`}>
+                  <div className="compact-list-main">
+                    <strong>
+                      {item.startAt ? formatClockTime(item.startAt) : "--:--"} {item.title}
+                    </strong>
+                    <small className="muted">
+                      {item.isGeneratedBuffer
+                        ? "Systembuffer"
+                        : [item.agendaComment, getTaskCategoryLabel(item.category)].filter(Boolean).join(" · ")}
+                    </small>
+                  </div>
+                  <strong>{item.endAt ? formatClockTime(item.endAt) : "--:--"}</strong>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Ingen planlagte agendaelementer enda.</p>
+          )}
+        </article>
+        {viewerAccess.canManagePlanning ? (
+          <button className="primary-button" type="submit">
+            Lagre briefene
+          </button>
+        ) : (
+          <p className="muted">Denne delen er lesemodus for planleggingen.</p>
+        )}
+      </form>
+    </section>
+  );
+}
+
+function FinancePlanningPanel({
+  event,
+  jobs,
+  financeSummary,
+  viewerAccess,
+  onSaveFinancePlan
+}) {
+  const [draftPlan, setDraftPlan] = useState(() => normalizeFinancePlanForEditor(event.financePlan));
+
+  useEffect(() => {
+    setDraftPlan(normalizeFinancePlanForEditor(event.financePlan));
+  }, [event.id, event.financePlan]);
+
+  const financeRoom = useMemo(
+    () =>
+      buildFinanceControlRoom(
+        {
+          ...event,
+          financePlan: draftPlan
+        },
+        jobs
+      ),
+    [draftPlan, event, jobs]
+  );
+
+  const plannedBudgetTotal = draftPlan.budgetItems.reduce(
+    (sum, item) => sum + Number(item.plannedAmount || 0),
+    0
+  );
+
+  function updateBudgetItem(itemId, changes) {
+    setDraftPlan((current) => ({
+      ...current,
+      budgetItems: current.budgetItems.map((item) =>
+        item.id === itemId ? { ...item, ...changes } : item
+      )
+    }));
+  }
+
+  function updateSupplier(itemId, changes) {
+    setDraftPlan((current) => ({
+      ...current,
+      suppliers: current.suppliers.map((supplier) =>
+        supplier.id === itemId ? { ...supplier, ...changes } : supplier
+      )
+    }));
+  }
+
+  function addBudgetItem() {
+    setDraftPlan((current) => ({
+      ...current,
+      budgetItems: [...current.budgetItems, createEmptyFinanceBudgetItem(current.budgetItems.length)]
+    }));
+  }
+
+  function addSupplier() {
+    setDraftPlan((current) => ({
+      ...current,
+      suppliers: [...current.suppliers, createEmptyFinanceSupplier(current.suppliers.length)]
+    }));
+  }
+
+  function removeBudgetItem(itemId) {
+    setDraftPlan((current) => ({
+      ...current,
+      budgetItems: current.budgetItems.filter((item) => item.id !== itemId)
+    }));
+  }
+
+  function removeSupplier(itemId) {
+    setDraftPlan((current) => ({
+      ...current,
+      suppliers: current.suppliers.filter((supplier) => supplier.id !== itemId)
+    }));
+  }
+
+  function updateLocalAiOps(changes) {
+    setDraftPlan((current) => ({
+      ...current,
+      localAiOps: {
+        ...current.localAiOps,
+        ...changes
+      }
+    }));
+  }
+
+  return (
+    <section className="panel stack">
+      <div className="panel-header-inline">
+        <div>
+          <h3>Budsjett, leverandorer og lokal AI-drift</h3>
+          <p className="muted">
+            Denne delen bygger videre paa dagens kvitteringsmotor, forskudd og oppgjor. Her planlegger
+            du budsjett, leverandorer og hvordan lokal AI skal brukes sammen med Vercel-oppsettet.
+          </p>
+        </div>
+        {!viewerAccess.canManageFinance ? <span className="role-pill">Lesetilgang</span> : null}
+      </div>
+      <div className="overview-grid">
+        <InfoCard label="Planlagt budsjett" value={formatCurrency(plannedBudgetTotal)} />
+        <InfoCard label="Faktisk brukt" value={formatCurrency(financeSummary.totalUsed)} tone="success" />
+        <InfoCard label="Avtalt hos leverandorer" value={formatCurrency(financeRoom.committedSupplierTotal)} />
+        <InfoCard label="Forfaller snart" value={financeRoom.dueSoonSupplierCount} tone={financeRoom.dueSoonSupplierCount ? "warning" : "success"} />
+      </div>
+      <div className="two-col">
+        <article className="panel stack nested-panel">
+          <div className="panel-header-inline">
+            <div>
+              <h4>Budsjettlinjer</h4>
+              <p className="muted">
+                Planlagt ramme per kostnadsomraade. Faktisk brukt hentes fra eksisterende kvitterings- og
+                fakturalogg der det finnes treff.
+              </p>
+            </div>
+            {viewerAccess.canManageFinance ? (
+              <button className="secondary-button task-inline-button" type="button" onClick={addBudgetItem}>
+                Legg til budsjettlinje
+              </button>
+            ) : null}
+          </div>
+          {draftPlan.budgetItems.length ? (
+            <div className="stack finance-plan-list">
+              {draftPlan.budgetItems.map((item) => {
+                const summaryRow = financeRoom.budgetRows.find((row) => row.id === item.id);
+
+                return (
+                  <article className="finance-plan-row" key={`budget-${item.id}`}>
+                    <div className="compact-grid">
+                      <label className="field">
+                        <span>Navn</span>
+                        <input
+                          value={item.label}
+                          disabled={!viewerAccess.canManageFinance}
+                          onChange={(eventObject) =>
+                            updateBudgetItem(item.id, { label: eventObject.currentTarget.value })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Kategori</span>
+                        <select
+                          value={item.categoryKey}
+                          disabled={!viewerAccess.canManageFinance}
+                          onChange={(eventObject) =>
+                            updateBudgetItem(item.id, { categoryKey: eventObject.currentTarget.value })
+                          }
+                        >
+                          {FINANCE_CATEGORY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Planlagt belop</span>
+                        <input
+                          value={item.plannedAmount}
+                          disabled={!viewerAccess.canManageFinance}
+                          min="0"
+                          step="0.01"
+                          type="number"
+                          onChange={(eventObject) =>
+                            updateBudgetItem(item.id, {
+                              plannedAmount: Number(eventObject.currentTarget.value || 0)
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="field field-span-full">
+                        <span>Notat</span>
+                        <input
+                          value={item.notes}
+                          disabled={!viewerAccess.canManageFinance}
+                          onChange={(eventObject) =>
+                            updateBudgetItem(item.id, { notes: eventObject.currentTarget.value })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="project-chip-row finance-plan-meta">
+                      <span className="data-tag">Faktisk {formatCurrency(summaryRow?.actualAmount || 0)}</span>
+                      <span className={`data-tag ${(summaryRow?.varianceAmount || 0) >= 0 ? "success-tag" : "warning-tag"}`}>
+                        Avvik {formatCurrency(summaryRow?.varianceAmount || 0)}
+                      </span>
+                      {viewerAccess.canManageFinance ? (
+                        <button
+                          className="danger-button compact-action-button"
+                          type="button"
+                          onClick={() => removeBudgetItem(item.id)}
+                        >
+                          Slett
+                        </button>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="muted">Ingen budsjettlinjer lagt inn enda.</p>
+          )}
+          {financeRoom.actualCategoryRows.length ? (
+            <div className="stack compact-stack">
+              <strong>Faktisk kostnadsbilde fra dagens bilag</strong>
+              <ul className="compact-list hospitality-inline-list">
+                {financeRoom.actualCategoryRows.map((row) => (
+                  <li key={`actual-category-${row.key}`}>
+                    <span>{row.label}</span>
+                    <strong>{formatCurrency(row.amount)}</strong>
+                  </li>
+                ))}
+                {financeRoom.unplannedActualTotal ? (
+                  <li>
+                    <span>Brukt uten egen budsjettlinje</span>
+                    <strong>{formatCurrency(financeRoom.unplannedActualTotal)}</strong>
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
+        </article>
+        <article className="panel stack nested-panel">
+          <div className="panel-header-inline">
+            <div>
+              <h4>Leverandorregister</h4>
+              <p className="muted">
+                Hvem som er booket, hva de koster og hva som snart forfaller.
+              </p>
+            </div>
+            {viewerAccess.canManageFinance ? (
+              <button className="secondary-button task-inline-button" type="button" onClick={addSupplier}>
+                Legg til leverandor
+              </button>
+            ) : null}
+          </div>
+          {draftPlan.suppliers.length ? (
+            <div className="stack finance-plan-list">
+              {draftPlan.suppliers.map((supplier) => {
+                const supplierSummary = financeRoom.supplierRows.find((row) => row.id === supplier.id);
+
+                return (
+                  <article className="finance-plan-row" key={`supplier-${supplier.id}`}>
+                    <div className="compact-grid">
+                      <label className="field">
+                        <span>Leverandor</span>
+                        <input
+                          value={supplier.name}
+                          disabled={!viewerAccess.canManageFinance}
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, { name: eventObject.currentTarget.value })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Kategori</span>
+                        <select
+                          value={supplier.categoryKey}
+                          disabled={!viewerAccess.canManageFinance}
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, { categoryKey: eventObject.currentTarget.value })
+                          }
+                        >
+                          {FINANCE_CATEGORY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Status</span>
+                        <select
+                          value={supplier.status}
+                          disabled={!viewerAccess.canManageFinance}
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, { status: eventObject.currentTarget.value })
+                          }
+                        >
+                          {FINANCE_SUPPLIER_STATUS_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Avtalt pris</span>
+                        <input
+                          value={supplier.agreedAmount}
+                          disabled={!viewerAccess.canManageFinance}
+                          min="0"
+                          step="0.01"
+                          type="number"
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, {
+                              agreedAmount: Number(eventObject.currentTarget.value || 0)
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Kontaktperson</span>
+                        <input
+                          value={supplier.contactName}
+                          disabled={!viewerAccess.canManageFinance}
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, { contactName: eventObject.currentTarget.value })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>E-post</span>
+                        <input
+                          value={supplier.email}
+                          disabled={!viewerAccess.canManageFinance}
+                          type="email"
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, { email: eventObject.currentTarget.value })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Telefon</span>
+                        <input
+                          value={supplier.phone}
+                          disabled={!viewerAccess.canManageFinance}
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, { phone: eventObject.currentTarget.value })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Forfallsdato</span>
+                        <input
+                          value={supplier.paymentDueAt}
+                          disabled={!viewerAccess.canManageFinance}
+                          type="datetime-local"
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, { paymentDueAt: eventObject.currentTarget.value })
+                          }
+                        />
+                      </label>
+                      <label className="field field-span-full">
+                        <span>Notat</span>
+                        <input
+                          value={supplier.notes}
+                          disabled={!viewerAccess.canManageFinance}
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, { notes: eventObject.currentTarget.value })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="project-chip-row finance-plan-meta">
+                      <span className="data-tag">{getFinanceSupplierStatusLabel(supplier.status)}</span>
+                      <span className="data-tag">Bilag {supplierSummary?.matchedReceiptCount || 0}</span>
+                      <span className="data-tag">Faktisk {formatCurrency(supplierSummary?.actualAmount || 0)}</span>
+                      {supplierSummary?.dueSoon ? <span className="data-tag warning-tag">Forfaller snart</span> : null}
+                      {viewerAccess.canManageFinance ? (
+                        <button
+                          className="danger-button compact-action-button"
+                          type="button"
+                          onClick={() => removeSupplier(supplier.id)}
+                        >
+                          Slett
+                        </button>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="muted">Ingen leverandorer registrert enda.</p>
+          )}
+        </article>
+      </div>
+      <article className="panel stack nested-panel">
+        <div className="panel-header-inline">
+          <div>
+            <h4>Lokal AI i Vercel-oppsettet</h4>
+            <p className="muted">
+              Vercel-versjonen sender bilag til ko. Din egen maskin kan fortsatt sta for bildeanalyse
+              ved aa kjore Ollama og worker lokalt mot samme Supabase-prosjekt.
+            </p>
+          </div>
+          <span className="role-pill">{getLocalAiModeLabel(draftPlan.localAiOps.mode)}</span>
+        </div>
+        <div className="compact-grid">
+          <label className="field">
+            <span>Driftsmodus</span>
+            <select
+              value={draftPlan.localAiOps.mode}
+              disabled={!viewerAccess.canManageFinance}
+              onChange={(eventObject) => updateLocalAiOps({ mode: eventObject.currentTarget.value })}
+            >
+              {LOCAL_AI_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Maskin / ansvarlig node</span>
+            <input
+              value={draftPlan.localAiOps.machineLabel}
+              disabled={!viewerAccess.canManageFinance}
+              placeholder="F.eks. Mac mini i stuen"
+              onChange={(eventObject) => updateLocalAiOps({ machineLabel: eventObject.currentTarget.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Worker-kommando</span>
+            <input
+              value={draftPlan.localAiOps.workerCommand}
+              disabled={!viewerAccess.canManageFinance}
+              onChange={(eventObject) => updateLocalAiOps({ workerCommand: eventObject.currentTarget.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Bridge-kommando</span>
+            <input
+              value={draftPlan.localAiOps.bridgeCommand}
+              disabled={!viewerAccess.canManageFinance}
+              onChange={(eventObject) => updateLocalAiOps({ bridgeCommand: eventObject.currentTarget.value })}
+            />
+          </label>
+          <label className="field field-span-full">
+            <span>Driftsnotater</span>
+            <textarea
+              value={draftPlan.localAiOps.notes}
+              disabled={!viewerAccess.canManageFinance}
+              rows={3}
+              onChange={(eventObject) => updateLocalAiOps({ notes: eventObject.currentTarget.value })}
+            />
+          </label>
+        </div>
+        <p className="notice">
+          Anbefalt flyt i produksjon: <code>RECEIPT_PROCESSING_MODE=queue</code> i Vercel, saa
+          kjores <code>npm run ai:serve</code> og <code>{draftPlan.localAiOps.workerCommand || "npm run worker:watch"}</code> paa din egen maskin.
+          Hvis du vil ha lokal helsesjekk separat, kan du ogsaa bruke <code>{draftPlan.localAiOps.bridgeCommand || "npm run ai:bridge"}</code>.
+        </p>
+        {viewerAccess.canManageFinance ? (
+          <button className="primary-button" type="button" onClick={() => void onSaveFinancePlan(draftPlan)}>
+            Lagre budsjett og driftsoppsett
+          </button>
+        ) : (
+          <p className="muted">Denne delen er lesemodus for fakturadelen.</p>
+        )}
+      </article>
+    </section>
+  );
+}
+
 function PlanningTab({
   event,
   viewerAccess,
   onSaveOverview,
   onSavePlanningSettings,
+  onSaveHospitalityPlan,
   onUpdateTaskLiveState
 }) {
   const planningAgenda = buildPlanningAgenda(event);
@@ -7821,6 +8844,12 @@ function PlanningTab({
           )}
         </form>
       </section>
+
+      <HospitalityPlanPanel
+        event={event}
+        viewerAccess={viewerAccess}
+        onSaveHospitalityPlan={onSaveHospitalityPlan}
+      />
 
       <section className="panel stack">
         <div className="panel-header-inline">
@@ -8185,6 +9214,7 @@ function FinanceTab({
   showSettlementPlan,
   onToggleSettlementPlan,
   onToggleEngine,
+  onSaveFinancePlan,
   onOpenAdvanceModal,
   onOpenSettlementModal,
   onDeleteLedgerEntry
@@ -8213,6 +9243,14 @@ function FinanceTab({
           og `gjenstaende`. Du skal ikke trekke det fra manuelt senere.
         </p>
       </section>
+
+      <FinancePlanningPanel
+        event={event}
+        jobs={jobs}
+        financeSummary={financeSummary}
+        onSaveFinancePlan={onSaveFinancePlan}
+        viewerAccess={viewerAccess}
+      />
 
       <section className="panel stack">
         <div className="panel-header-inline">
@@ -8903,6 +9941,38 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     if (nextEvent) {
       setStatusMessage("Kategorioppsettet for buffer og live ble oppdatert.");
     }
+  }
+
+  async function handleSaveHospitalityPlan(formEvent) {
+    formEvent.preventDefault();
+    if (!viewerAccess.canManagePlanning) {
+      return;
+    }
+
+    const formData = new FormData(formEvent.currentTarget);
+    const nextEvent = await patchEvent("update_hospitality_plan", {
+      hospitalityPlan: buildHospitalityPlanPayload(formData, selectedEvent?.hospitalityPlan)
+    });
+
+    if (nextEvent) {
+      setStatusMessage("Kjokkenbrief og serveringsbrief ble oppdatert.");
+    }
+  }
+
+  async function handleSaveFinancePlan(financePlan) {
+    if (!viewerAccess.canManageFinance) {
+      return null;
+    }
+
+    const nextEvent = await patchEvent("update_finance_plan", {
+      financePlan
+    });
+
+    if (nextEvent) {
+      setStatusMessage("Budsjett, leverandorer og lokal AI-oppsett ble oppdatert.");
+    }
+
+    return nextEvent;
   }
 
   async function handleSaveVenuePlan(venuePlan, successMessage = "Lokaleplanen ble oppdatert.") {
@@ -9824,6 +10894,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                   event={selectedEvent}
                   onSaveOverview={handleSaveOverview}
                   onSavePlanningSettings={handleSavePlanningSettings}
+                  onSaveHospitalityPlan={handleSaveHospitalityPlan}
                   onUpdateTaskLiveState={handleUpdateTaskLiveState}
                   viewerAccess={viewerAccess}
                 />
@@ -9841,6 +10912,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                   event={selectedEvent}
                   financeSummary={financeSummary}
                   jobs={selectedJobs}
+                  onSaveFinancePlan={handleSaveFinancePlan}
                   onDeleteLedgerEntry={handleDeleteLedgerEntry}
                   onToggleSettlementPlan={() => setShowSettlementPlan((current) => !current)}
                   onOpenAdvanceModal={() => setFinanceModal("advance")}

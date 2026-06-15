@@ -181,6 +181,44 @@ export const GUEST_PAGE_TEXT_WEIGHT_OPTIONS = [
   { value: "bold", label: "Fet" }
 ];
 
+export const HOSPITALITY_SERVICE_STYLE_OPTIONS = [
+  { value: "plated", label: "Tallerkenservering" },
+  { value: "buffet", label: "Buffet" },
+  { value: "family_style", label: "Fat pa bordet" },
+  { value: "cocktail", label: "Staende servering" },
+  { value: "mixed", label: "Blandet opplegg" }
+];
+
+export const FINANCE_CATEGORY_OPTIONS = [
+  { value: "venue", label: "Lokale" },
+  { value: "food_drink", label: "Mat og drikke" },
+  { value: "decor", label: "Dekor og blomster" },
+  { value: "photo_video", label: "Foto og video" },
+  { value: "entertainment", label: "Musikk og underholdning" },
+  { value: "transport", label: "Transport" },
+  { value: "logistics", label: "Logistikk og innkjop" },
+  { value: "attire", label: "Klaer og styling" },
+  { value: "admin", label: "Administrasjon" },
+  { value: "contingency", label: "Reserve og buffer" },
+  { value: "uncategorized", label: "Ufordelt" }
+];
+
+export const FINANCE_SUPPLIER_STATUS_OPTIONS = [
+  { value: "planned", label: "Planlagt" },
+  { value: "requested", label: "Forespurt" },
+  { value: "booked", label: "Booket" },
+  { value: "confirmed", label: "Bekreftet" },
+  { value: "invoiced", label: "Fakturert" },
+  { value: "paid", label: "Betalt" },
+  { value: "canceled", label: "Avlyst" }
+];
+
+export const LOCAL_AI_MODE_OPTIONS = [
+  { value: "queue_worker", label: "Koblet via ko og lokal worker" },
+  { value: "local_only", label: "Kun lokal analyse" },
+  { value: "disabled", label: "Ikke aktiv" }
+];
+
 const DEFAULT_CAPABILITIES = {
   canCreateEvents: false,
   canSubmitReceipts: false,
@@ -216,6 +254,54 @@ const DEFAULT_GUEST_SITE = {
 const DEFAULT_GUEST_SEATING_PAGE = {
   isPublished: false,
   navigationLabel: "Sitteplan"
+};
+const DEFAULT_HOSPITALITY_PLAN = {
+  shared: {
+    hostContactName: "",
+    hostContactPhone: "",
+    venueContactName: "",
+    venueContactPhone: "",
+    finalHeadcountLockedAt: "",
+    dietaryServiceNotes: "",
+    logisticsNotes: "",
+    emergencyNotes: ""
+  },
+  kitchen: {
+    leadName: "",
+    leadPhone: "",
+    prepStartsAt: "",
+    serviceStartsAt: "",
+    menuSummary: "",
+    specialMenus: "",
+    productionNotes: "",
+    equipmentNotes: "",
+    deliveryNotes: "",
+    fallbackPlan: ""
+  },
+  service: {
+    leadName: "",
+    leadPhone: "",
+    serviceStyle: "plated",
+    teamSize: 0,
+    serviceStartsAt: "",
+    beveragePlan: "",
+    tablePlanNotes: "",
+    clearingPlan: "",
+    guestCommunicationPlan: "",
+    issueEscalationPlan: "",
+    notes: ""
+  }
+};
+const DEFAULT_FINANCE_PLAN = {
+  budgetItems: [],
+  suppliers: [],
+  localAiOps: {
+    mode: "queue_worker",
+    machineLabel: "",
+    workerCommand: "npm run worker:watch",
+    bridgeCommand: "npm run ai:bridge",
+    notes: ""
+  }
 };
 
 const DEFAULT_TASK_DURATION_MINUTES = 60;
@@ -700,6 +786,189 @@ function normalizeGuestAgendaPage(source) {
       typeof safeSource.navigationLabel === "string" && safeSource.navigationLabel.trim()
         ? safeSource.navigationLabel.trim()
         : DEFAULT_GUEST_SITE.agendaPage.navigationLabel
+  };
+}
+
+function normalizeHospitalityServiceStyle(value) {
+  return HOSPITALITY_SERVICE_STYLE_OPTIONS.some((option) => option.value === value)
+    ? value
+    : DEFAULT_HOSPITALITY_PLAN.service.serviceStyle;
+}
+
+function normalizeFinanceCategoryKey(value) {
+  return FINANCE_CATEGORY_OPTIONS.some((option) => option.value === value)
+    ? value
+    : "uncategorized";
+}
+
+function normalizeFinanceSupplierStatus(value) {
+  return FINANCE_SUPPLIER_STATUS_OPTIONS.some((option) => option.value === value)
+    ? value
+    : "planned";
+}
+
+function normalizeLocalAiMode(value) {
+  return LOCAL_AI_MODE_OPTIONS.some((option) => option.value === value) ? value : "queue_worker";
+}
+
+function normalizeCurrencyAmount(value, fallback = 0) {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : Number.parseFloat(String(value ?? fallback).replace(/\s/g, "").replace(",", "."));
+
+  if (!Number.isFinite(parsed)) {
+    return roundCurrency(fallback);
+  }
+
+  return roundCurrency(parsed);
+}
+
+function createBudgetItem(item, fallbackIndex = 0) {
+  const normalized = item && typeof item === "object" ? item : {};
+
+  return {
+    id: typeof normalized.id === "string" ? normalized.id : "",
+    label:
+      typeof normalized.label === "string" && normalized.label.trim()
+        ? normalized.label.trim()
+        : "Ny budsjettlinje",
+    categoryKey: normalizeFinanceCategoryKey(normalized.categoryKey),
+    plannedAmount: normalizeCurrencyAmount(normalized.plannedAmount, 0),
+    notes: typeof normalized.notes === "string" ? normalized.notes.trim() : "",
+    orderIndex: Number.isFinite(normalized.orderIndex) ? normalized.orderIndex : fallbackIndex,
+    created_at: normalized.created_at || new Date(0).toISOString()
+  };
+}
+
+function createFinanceSupplier(supplier, fallbackIndex = 0) {
+  const normalized = supplier && typeof supplier === "object" ? supplier : {};
+
+  return {
+    id: typeof normalized.id === "string" ? normalized.id : "",
+    name:
+      typeof normalized.name === "string" && normalized.name.trim()
+        ? normalized.name.trim()
+        : "Ny leverandor",
+    categoryKey: normalizeFinanceCategoryKey(normalized.categoryKey),
+    contactName: typeof normalized.contactName === "string" ? normalized.contactName.trim() : "",
+    email: typeof normalized.email === "string" ? normalized.email.trim() : "",
+    phone: typeof normalized.phone === "string" ? normalized.phone.trim() : "",
+    agreedAmount: normalizeCurrencyAmount(normalized.agreedAmount, 0),
+    paymentDueAt: normalizeDateTimeString(normalized.paymentDueAt),
+    status: normalizeFinanceSupplierStatus(normalized.status),
+    notes: typeof normalized.notes === "string" ? normalized.notes.trim() : "",
+    orderIndex: Number.isFinite(normalized.orderIndex) ? normalized.orderIndex : fallbackIndex,
+    created_at: normalized.created_at || new Date(0).toISOString()
+  };
+}
+
+function normalizeHospitalityPlan(source) {
+  const safeSource = source && typeof source === "object" ? source : {};
+  const sharedSource = safeSource.shared && typeof safeSource.shared === "object" ? safeSource.shared : {};
+  const kitchenSource =
+    safeSource.kitchen && typeof safeSource.kitchen === "object" ? safeSource.kitchen : {};
+  const serviceSource =
+    safeSource.service && typeof safeSource.service === "object" ? safeSource.service : {};
+
+  return {
+    shared: {
+      hostContactName: typeof sharedSource.hostContactName === "string" ? sharedSource.hostContactName.trim() : "",
+      hostContactPhone:
+        typeof sharedSource.hostContactPhone === "string" ? sharedSource.hostContactPhone.trim() : "",
+      venueContactName:
+        typeof sharedSource.venueContactName === "string" ? sharedSource.venueContactName.trim() : "",
+      venueContactPhone:
+        typeof sharedSource.venueContactPhone === "string" ? sharedSource.venueContactPhone.trim() : "",
+      finalHeadcountLockedAt: normalizeDateTimeString(sharedSource.finalHeadcountLockedAt),
+      dietaryServiceNotes:
+        typeof sharedSource.dietaryServiceNotes === "string"
+          ? sharedSource.dietaryServiceNotes.trim()
+          : "",
+      logisticsNotes:
+        typeof sharedSource.logisticsNotes === "string" ? sharedSource.logisticsNotes.trim() : "",
+      emergencyNotes:
+        typeof sharedSource.emergencyNotes === "string" ? sharedSource.emergencyNotes.trim() : ""
+    },
+    kitchen: {
+      leadName: typeof kitchenSource.leadName === "string" ? kitchenSource.leadName.trim() : "",
+      leadPhone: typeof kitchenSource.leadPhone === "string" ? kitchenSource.leadPhone.trim() : "",
+      prepStartsAt: normalizeDateTimeString(kitchenSource.prepStartsAt),
+      serviceStartsAt: normalizeDateTimeString(kitchenSource.serviceStartsAt),
+      menuSummary:
+        typeof kitchenSource.menuSummary === "string" ? kitchenSource.menuSummary.trim() : "",
+      specialMenus:
+        typeof kitchenSource.specialMenus === "string" ? kitchenSource.specialMenus.trim() : "",
+      productionNotes:
+        typeof kitchenSource.productionNotes === "string"
+          ? kitchenSource.productionNotes.trim()
+          : "",
+      equipmentNotes:
+        typeof kitchenSource.equipmentNotes === "string"
+          ? kitchenSource.equipmentNotes.trim()
+          : "",
+      deliveryNotes:
+        typeof kitchenSource.deliveryNotes === "string" ? kitchenSource.deliveryNotes.trim() : "",
+      fallbackPlan:
+        typeof kitchenSource.fallbackPlan === "string" ? kitchenSource.fallbackPlan.trim() : ""
+    },
+    service: {
+      leadName: typeof serviceSource.leadName === "string" ? serviceSource.leadName.trim() : "",
+      leadPhone: typeof serviceSource.leadPhone === "string" ? serviceSource.leadPhone.trim() : "",
+      serviceStyle: normalizeHospitalityServiceStyle(serviceSource.serviceStyle),
+      teamSize: Math.max(0, parseInteger(serviceSource.teamSize, 0)),
+      serviceStartsAt: normalizeDateTimeString(serviceSource.serviceStartsAt),
+      beveragePlan:
+        typeof serviceSource.beveragePlan === "string" ? serviceSource.beveragePlan.trim() : "",
+      tablePlanNotes:
+        typeof serviceSource.tablePlanNotes === "string"
+          ? serviceSource.tablePlanNotes.trim()
+          : "",
+      clearingPlan:
+        typeof serviceSource.clearingPlan === "string" ? serviceSource.clearingPlan.trim() : "",
+      guestCommunicationPlan:
+        typeof serviceSource.guestCommunicationPlan === "string"
+          ? serviceSource.guestCommunicationPlan.trim()
+          : "",
+      issueEscalationPlan:
+        typeof serviceSource.issueEscalationPlan === "string"
+          ? serviceSource.issueEscalationPlan.trim()
+          : "",
+      notes: typeof serviceSource.notes === "string" ? serviceSource.notes.trim() : ""
+    }
+  };
+}
+
+function normalizeFinancePlan(source) {
+  const safeSource = source && typeof source === "object" ? source : {};
+  const localAiOpsSource =
+    safeSource.localAiOps && typeof safeSource.localAiOps === "object" ? safeSource.localAiOps : {};
+
+  return {
+    budgetItems: Array.isArray(safeSource.budgetItems)
+      ? safeSource.budgetItems
+          .map((item, index) => createBudgetItem(item, index))
+          .sort((left, right) => left.orderIndex - right.orderIndex)
+      : [],
+    suppliers: Array.isArray(safeSource.suppliers)
+      ? safeSource.suppliers
+          .map((supplier, index) => createFinanceSupplier(supplier, index))
+          .sort((left, right) => left.orderIndex - right.orderIndex)
+      : [],
+    localAiOps: {
+      mode: normalizeLocalAiMode(localAiOpsSource.mode),
+      machineLabel:
+        typeof localAiOpsSource.machineLabel === "string" ? localAiOpsSource.machineLabel.trim() : "",
+      workerCommand:
+        typeof localAiOpsSource.workerCommand === "string" && localAiOpsSource.workerCommand.trim()
+          ? localAiOpsSource.workerCommand.trim()
+          : DEFAULT_FINANCE_PLAN.localAiOps.workerCommand,
+      bridgeCommand:
+        typeof localAiOpsSource.bridgeCommand === "string" && localAiOpsSource.bridgeCommand.trim()
+          ? localAiOpsSource.bridgeCommand.trim()
+          : DEFAULT_FINANCE_PLAN.localAiOps.bridgeCommand,
+      notes: typeof localAiOpsSource.notes === "string" ? localAiOpsSource.notes.trim() : ""
+    }
   };
 }
 
@@ -1435,6 +1704,8 @@ export function ensureEventShape(event) {
       .map((person) => createFinanceMember(person)),
     subprojects: [...subprojects].sort((left, right) => left.orderIndex - right.orderIndex),
     tasks: normalizedTasks,
+    hospitalityPlan: normalizeHospitalityPlan(source.hospitalityPlan),
+    financePlan: normalizeFinancePlan(source.financePlan),
     venuePlan: normalizeVenuePlan(source.venuePlan),
     ledgerEntries: Array.isArray(source.ledgerEntries)
       ? source.ledgerEntries.map(createLedgerEntry)
@@ -2296,6 +2567,115 @@ export function buildPlanningAgenda(event) {
     taskCount: visibleTasks.length,
     bufferCount: Array.isArray(agenda.bufferItems) ? agenda.bufferItems.length : 0,
     unscheduledCount: unscheduledItems.length
+  };
+}
+
+function normalizeLookupText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function countGuestsByRsvp(people) {
+  return (Array.isArray(people) ? people : []).reduce(
+    (summary, person) => {
+      const status = person?.rsvpStatus || "pending";
+      summary.total += 1;
+
+      if (status === "accepted") {
+        summary.accepted += 1;
+      } else if (status === "maybe") {
+        summary.maybe += 1;
+      } else if (status === "declined") {
+        summary.declined += 1;
+      } else {
+        summary.pending += 1;
+      }
+
+      return summary;
+    },
+    {
+      total: 0,
+      accepted: 0,
+      maybe: 0,
+      declined: 0,
+      pending: 0
+    }
+  );
+}
+
+function buildDietaryGuestRows(people) {
+  return (Array.isArray(people) ? people : [])
+    .filter((person) => String(person?.allergies || "").trim() || String(person?.dietaryNotes || "").trim())
+    .map((person) => ({
+      id: person.id,
+      name: person.name || "Ukjent gjest",
+      allergies: String(person.allergies || "").trim(),
+      dietaryNotes: String(person.dietaryNotes || "").trim(),
+      seatingNote: String(person.seatingNote || "").trim()
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name, "nb"));
+}
+
+function buildVenueSeatSummary(venuePlan) {
+  const items = Array.isArray(venuePlan?.items) ? venuePlan.items : [];
+  const seatableItems = items.filter((item) => Number(item?.seatCount || 0) > 0);
+  const seatsTotal = seatableItems.reduce((sum, item) => sum + Number(item.seatCount || 0), 0);
+  const assignedSeats = seatableItems.reduce(
+    (sum, item) =>
+      sum +
+      (Array.isArray(item.seats) ? item.seats.filter((seat) => String(seat?.guestId || "").trim()).length : 0),
+    0
+  );
+
+  return {
+    tableCount: seatableItems.filter((item) => item.type === "round_table" || item.type === "long_table").length,
+    seatableItemCount: seatableItems.length,
+    seatsTotal,
+    assignedSeats,
+    unassignedSeats: Math.max(0, seatsTotal - assignedSeats),
+    itemLabels: seatableItems
+      .map((item) => ({
+        id: item.id,
+        label: item.label || "Uten navn",
+        seatCount: Number(item.seatCount || 0)
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label, "nb"))
+  };
+}
+
+function buildServiceTimelineRows(event) {
+  return buildPlanningAgenda(event).items
+    .filter((item) => item.isScheduled)
+    .map((item) => ({
+      id: item.id,
+      title: item.title,
+      startAt: item.displayStartAt,
+      endAt: item.displayEndAt,
+      agendaComment: item.agendaComment || "",
+      isGeneratedBuffer: Boolean(item.isGeneratedBuffer),
+      category: item.category || "general"
+    }));
+}
+
+export function buildHospitalityBriefs(event) {
+  const normalized = ensureEventShape(event);
+  const guestCounts = countGuestsByRsvp(normalized.people);
+  const dietaryGuests = buildDietaryGuestRows(normalized.people);
+  const seatingSummary = buildVenueSeatSummary(normalized.venuePlan);
+  const serviceTimeline = buildServiceTimelineRows(normalized);
+
+  return {
+    guestCounts,
+    dietaryGuests,
+    seatingSummary,
+    serviceTimeline,
+    kitchen: normalized.hospitalityPlan.kitchen,
+    service: normalized.hospitalityPlan.service,
+    shared: normalized.hospitalityPlan.shared
   };
 }
 
@@ -3485,6 +3865,143 @@ export function buildApprovalSummary(event) {
       processed: 0
     }
   );
+}
+
+function mapMerchantCategoryToFinanceCategory(merchantCategory) {
+  if (merchantCategory === "restaurant") {
+    return "food_drink";
+  }
+
+  if (merchantCategory === "store") {
+    return "logistics";
+  }
+
+  return "uncategorized";
+}
+
+function findMatchingSupplierForJob(job, suppliers) {
+  const merchantName = normalizeLookupText(job?.result?.merchantName || job?.original_filename || "");
+
+  if (!merchantName) {
+    return null;
+  }
+
+  return (
+    (Array.isArray(suppliers) ? suppliers : []).find((supplier) => {
+      const supplierName = normalizeLookupText(supplier?.name || "");
+
+      if (!supplierName) {
+        return false;
+      }
+
+      return (
+        merchantName === supplierName ||
+        merchantName.includes(supplierName) ||
+        supplierName.includes(merchantName)
+      );
+    }) || null
+  );
+}
+
+function buildFinanceCategoryTotals(jobs, suppliers) {
+  const totals = new Map(FINANCE_CATEGORY_OPTIONS.map((option) => [option.value, 0]));
+
+  (Array.isArray(jobs) ? jobs : [])
+    .filter((job) => job?.status === "completed" && job?.result)
+    .forEach((job) => {
+      const supplier = findMatchingSupplierForJob(job, suppliers);
+      const categoryKey = supplier?.categoryKey || mapMerchantCategoryToFinanceCategory(job.result?.merchantCategory);
+      const currentTotal = totals.get(categoryKey) || 0;
+      totals.set(categoryKey, roundCurrency(currentTotal + normalizeCurrencyAmount(job.result?.grandTotal, 0)));
+    });
+
+  return totals;
+}
+
+export function buildFinanceControlRoom(event, jobs) {
+  const normalized = ensureEventShape(event);
+  const relevantJobs = Array.isArray(jobs)
+    ? jobs.filter((job) => job?.event_id === normalized.id)
+    : [];
+  const approvedLedgerEntries = normalized.ledgerEntries.filter((entry) => entry.status === "approved");
+  const categoryTotals = buildFinanceCategoryTotals(relevantJobs, normalized.financePlan.suppliers);
+  const budgetRows = normalized.financePlan.budgetItems.map((item) => {
+    const actualAmount = roundCurrency(categoryTotals.get(item.categoryKey) || 0);
+    const plannedAmount = normalizeCurrencyAmount(item.plannedAmount, 0);
+
+    return {
+      ...item,
+      actualAmount,
+      varianceAmount: roundCurrency(plannedAmount - actualAmount)
+    };
+  });
+  const unplannedActualTotal = roundCurrency(
+    [...categoryTotals.entries()].reduce((sum, [categoryKey, amount]) => {
+      if (budgetRows.some((row) => row.categoryKey === categoryKey)) {
+        return sum;
+      }
+
+      return sum + amount;
+    }, 0)
+  );
+  const supplierRows = normalized.financePlan.suppliers.map((supplier) => {
+    const matchedJobs = relevantJobs.filter((job) => {
+      if (job?.status !== "completed" || !job?.result) {
+        return false;
+      }
+
+      const matchedSupplier = findMatchingSupplierForJob(job, [supplier]);
+      return Boolean(matchedSupplier);
+    });
+    const actualAmount = roundCurrency(
+      matchedJobs.reduce((sum, job) => sum + normalizeCurrencyAmount(job?.result?.grandTotal, 0), 0)
+    );
+    const agreedAmount = normalizeCurrencyAmount(supplier.agreedAmount, 0);
+    const dueAtMs = parseDateTimeValue(supplier.paymentDueAt);
+
+    return {
+      ...supplier,
+      actualAmount,
+      agreedAmount,
+      varianceAmount: roundCurrency(agreedAmount - actualAmount),
+      matchedReceiptCount: matchedJobs.length,
+      dueSoon:
+        Number.isFinite(dueAtMs) &&
+        dueAtMs >= Date.now() &&
+        dueAtMs - Date.now() <= 7 * 24 * 60 * 60 * 1000 &&
+        !["paid", "canceled"].includes(supplier.status)
+    };
+  });
+
+  return {
+    budgetRows,
+    supplierRows,
+    actualCategoryRows: FINANCE_CATEGORY_OPTIONS.map((option) => ({
+      key: option.value,
+      label: option.label,
+      amount: roundCurrency(categoryTotals.get(option.value) || 0)
+    })).filter((row) => row.amount > 0),
+    approvedLedgerCount: approvedLedgerEntries.length,
+    approvedAdvanceTotal: roundCurrency(
+      approvedLedgerEntries
+        .filter((entry) => entry.type === "advance_contribution")
+        .reduce((sum, entry) => sum + normalizeCurrencyAmount(entry.amount, 0), 0)
+    ),
+    approvedSettlementTotal: roundCurrency(
+      approvedLedgerEntries
+        .filter((entry) => entry.type === "settlement_transfer")
+        .reduce((sum, entry) => sum + normalizeCurrencyAmount(entry.amount, 0), 0)
+    ),
+    committedSupplierTotal: roundCurrency(
+      supplierRows
+        .filter((supplier) => !["canceled"].includes(supplier.status))
+        .reduce((sum, supplier) => sum + normalizeCurrencyAmount(supplier.agreedAmount, 0), 0)
+    ),
+    unpaidSupplierCount: supplierRows.filter((supplier) => !["paid", "canceled"].includes(supplier.status)).length,
+    dueSoonSupplierCount: supplierRows.filter((supplier) => supplier.dueSoon).length,
+    unplannedActualTotal,
+    localAiOps: normalized.financePlan.localAiOps
+  };
 }
 
 export function buildEventFinanceSummary(event, jobs) {

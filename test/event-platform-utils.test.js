@@ -4,9 +4,11 @@ import test from "node:test";
 import {
   buildAgendaHighlights,
   buildEventFinanceSummary,
+  buildFinanceControlRoom,
   buildGuestSiteBasePath,
   buildGuestSiteNavigationEntries,
   buildGuestSitePagePath,
+  buildHospitalityBriefs,
   buildLiveAgenda,
   buildPlanningAgenda,
   buildProjectDashboard,
@@ -362,6 +364,20 @@ test("ensureEventShape normalizes guest page design settings", () => {
   assert.equal(event.guestSite.agendaPage.navigationLabel, "Program");
 });
 
+test("ensureEventShape creates hospitality and finance planning defaults", () => {
+  const event = ensureEventShape({
+    id: "event-ops-defaults",
+    name: "Bryllup"
+  });
+
+  assert.equal(event.hospitalityPlan.kitchen.leadName, "");
+  assert.equal(event.hospitalityPlan.service.serviceStyle, "plated");
+  assert.equal(event.financePlan.budgetItems.length, 0);
+  assert.equal(event.financePlan.suppliers.length, 0);
+  assert.equal(event.financePlan.localAiOps.mode, "queue_worker");
+  assert.equal(event.financePlan.localAiOps.workerCommand, "npm run worker:watch");
+});
+
 test("canViewerSeeGuestPage hides guest-only pages from finance members", () => {
   const event = ensureEventShape({
     id: "event-pages-2",
@@ -474,6 +490,121 @@ test("ensureEventShape keeps receipt submission attachment metadata", () => {
   assert.equal(event.submissions[0].storedImagePath, "/tmp/submission.png");
   assert.equal(event.submissions[0].imageContentType, "image/png");
   assert.equal(event.submissions[0].imageOriginalFilename, "kvittering.png");
+});
+
+test("buildHospitalityBriefs combines guest, seating and agenda data for service teams", () => {
+  const briefs = buildHospitalityBriefs({
+    id: "event-hospitality-briefs",
+    name: "Bryllup",
+    people: [
+      {
+        id: "guest-1",
+        name: "Ada",
+        rsvpStatus: "accepted",
+        allergies: "Nøtter",
+        dietaryNotes: "Vegetar"
+      },
+      {
+        id: "guest-2",
+        name: "Bo",
+        rsvpStatus: "maybe"
+      }
+    ],
+    overview: {
+      startsAt: "2026-06-20T15:00"
+    },
+    tasks: [
+      {
+        id: "task-1",
+        title: "Middag",
+        durationMinutes: 60,
+        desiredStartAt: "2026-06-20T17:00",
+        isFixedTime: true,
+        showOnAgenda: true
+      }
+    ],
+    venuePlan: {
+      items: [
+        {
+          id: "table-1",
+          type: "round_table",
+          label: "Bord 1",
+          seatCount: 2,
+          seats: [
+            { id: "seat-1", guestId: "guest-1" },
+            { id: "seat-2", guestId: "" }
+          ]
+        }
+      ]
+    }
+  });
+
+  assert.equal(briefs.guestCounts.accepted, 1);
+  assert.equal(briefs.guestCounts.maybe, 1);
+  assert.equal(briefs.dietaryGuests.length, 1);
+  assert.equal(briefs.seatingSummary.tableCount, 1);
+  assert.equal(briefs.seatingSummary.assignedSeats, 1);
+  assert.equal(briefs.serviceTimeline.length, 1);
+  assert.equal(briefs.serviceTimeline[0].title, "Middag");
+});
+
+test("buildFinanceControlRoom maps budget and suppliers on top of existing finance jobs", () => {
+  const event = ensureEventShape({
+    id: "event-finance-room",
+    name: "Bryllup",
+    financePlan: {
+      budgetItems: [
+        {
+          id: "budget-1",
+          label: "Middag",
+          categoryKey: "food_drink",
+          plannedAmount: 5000
+        }
+      ],
+      suppliers: [
+        {
+          id: "supplier-1",
+          name: "Matboden",
+          categoryKey: "food_drink",
+          agreedAmount: 4200,
+          status: "confirmed",
+          paymentDueAt: "2099-06-20T12:00"
+        }
+      ]
+    },
+    ledgerEntries: [
+      {
+        id: "ledger-1",
+        type: "advance_contribution",
+        memberId: "member-1",
+        amount: 250,
+        status: "approved"
+      }
+    ]
+  });
+  const jobs = [
+    {
+      id: "job-1",
+      event_id: "event-finance-room",
+      status: "completed",
+      original_filename: "kvittering.png",
+      result: {
+        merchantName: "Matboden Catering",
+        merchantCategory: "restaurant",
+        grandTotal: 4000
+      }
+    }
+  ];
+
+  const controlRoom = buildFinanceControlRoom(event, jobs);
+
+  assert.equal(controlRoom.budgetRows.length, 1);
+  assert.equal(controlRoom.budgetRows[0].actualAmount, 4000);
+  assert.equal(controlRoom.budgetRows[0].varianceAmount, 1000);
+  assert.equal(controlRoom.supplierRows[0].matchedReceiptCount, 1);
+  assert.equal(controlRoom.supplierRows[0].actualAmount, 4000);
+  assert.equal(controlRoom.approvedAdvanceTotal, 250);
+  assert.equal(controlRoom.committedSupplierTotal, 4200);
 });
 
 test("buildEventFinanceSummary includes advances and settlement transfers in member balances", () => {

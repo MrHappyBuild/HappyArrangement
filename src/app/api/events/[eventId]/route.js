@@ -518,6 +518,26 @@ export async function PATCH(request, context) {
         };
       }
 
+      if (action === "update_hospitality_plan") {
+        return {
+          ...current,
+          hospitalityPlan:
+            payload?.hospitalityPlan && typeof payload.hospitalityPlan === "object"
+              ? payload.hospitalityPlan
+              : current.hospitalityPlan || {}
+        };
+      }
+
+      if (action === "update_finance_plan") {
+        return {
+          ...current,
+          financePlan:
+            payload?.financePlan && typeof payload.financePlan === "object"
+              ? payload.financePlan
+              : current.financePlan || {}
+        };
+      }
+
       if (action === "update_guest_site") {
         const currentGuestSite =
           current.guestSite && typeof current.guestSite === "object" ? current.guestSite : {};

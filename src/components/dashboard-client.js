@@ -28,6 +28,7 @@ import { createEmptyLineItem, rebuildReceiptFromEditor } from "@/receipt-utils";
 const DEFAULT_LOCAL_AI_HEALTH = {
   ready: false,
   reachable: false,
+  processingMode: "inline",
   configuredModel: "qwen2.5vl:3b",
   installedModels: [],
   message: "Sjekker lokal Ollama..."
@@ -115,6 +116,10 @@ function statusLabel(status) {
 }
 
 function localAiLabel(health) {
+  if (health.processingMode === "queue") {
+    return "Ko + lokal worker";
+  }
+
   if (health.ready) {
     return "Klar lokalt";
   }
@@ -127,6 +132,10 @@ function localAiLabel(health) {
 }
 
 function localAiTone(health) {
+  if (health.processingMode === "queue") {
+    return "success";
+  }
+
   if (health.ready) {
     return "success";
   }
@@ -136,6 +145,10 @@ function localAiTone(health) {
   }
 
   return "danger";
+}
+
+function localAiModeLabel(health) {
+  return health.processingMode === "queue" ? "Vercel + Supabase + lokal worker" : "Kun denne maskinen";
 }
 
 function cloneLineItem(item) {
@@ -1673,7 +1686,11 @@ export function DashboardClient({
     formData.set("eventId", selectedEventId);
 
     setSubmitting(true);
-    setStatus("Laster opp, saniterer og analyserer lokalt. Dette kan ta litt tid.");
+    setStatus(
+      localAiHealth.processingMode === "queue"
+        ? "Laster opp og sender til lokal AI-ko. Dette kan ta litt tid."
+        : "Laster opp, saniterer og analyserer lokalt. Dette kan ta litt tid."
+    );
 
     try {
       const response = await fetch("/api/receipts", {
@@ -1698,10 +1715,16 @@ export function DashboardClient({
       const failedCount = nextJobs.filter((job) => job.status === "failed").length;
       setStatus(
         nextJobs.length > 1
-          ? `Ferdig med ${nextJobs.length} kvitteringer. ${completedCount} ferdige, ${failedCount} feilet.`
+          ? localAiHealth.processingMode === "queue"
+            ? `La inn ${nextJobs.length} bilag i koen. ${completedCount} ferdige, ${failedCount} feilet.`
+            : `Ferdig med ${nextJobs.length} kvitteringer. ${completedCount} ferdige, ${failedCount} feilet.`
           : completedCount === 1
-            ? "Kvitteringen er analysert lokalt."
-            : "Analysen feilet. Se feilmeldingen under jobben."
+            ? localAiHealth.processingMode === "queue"
+              ? "Bilaget er ferdig behandlet via lokal worker."
+              : "Kvitteringen er analysert lokalt."
+            : localAiHealth.processingMode === "queue"
+              ? "Bilaget er sendt til ko eller feilet under lokal behandling."
+              : "Analysen feilet. Se feilmeldingen under jobben."
       );
       form.reset();
     } catch (error) {
@@ -2017,7 +2040,7 @@ export function DashboardClient({
         </article>
         <article className="stat">
           <div className="stat-label">Lokal modus</div>
-          <div className="stat-value">Kun denne maskinen</div>
+          <div className="stat-value">{localAiModeLabel(localAiHealth)}</div>
         </article>
         <article className="stat">
           <div className="stat-label">Lagring</div>
@@ -2046,12 +2069,23 @@ export function DashboardClient({
             {selectedEvent ? `Legg kvitteringer i ${selectedEvent.name}` : "Velg et arrangement først"}
           </h2>
           <p className="lede">
-            Bildet re-enkodes og lagres lokalt i prosjektmappen. Deretter sendes det direkte til
-            lokal Ollama over <code>localhost</code>.
+            {localAiHealth.processingMode === "queue"
+              ? "Bildet lagres i Supabase og legges i ko. Deretter hentes det av lokal worker paa din egen maskin for analyse med Ollama."
+              : "Bildet re-enkodes og lagres lokalt i prosjektmappen. Deretter sendes det direkte til lokal Ollama over "}
+            {localAiHealth.processingMode === "queue" ? null : <code>localhost</code>}
           </p>
           <p className="notice">
-            Før første analyse: kjør <code>npm run ai:serve</code> i ett terminalvindu, og
-            installer modellen med <code>npm run ai:pull</code> hvis den ikke allerede finnes.
+            {localAiHealth.processingMode === "queue" ? (
+              <>
+                For Vercel-oppsettet: kjør <code>npm run ai:serve</code> og{" "}
+                <code>npm run worker:watch</code> paa maskinen som skal analysere bilagene.
+              </>
+            ) : (
+              <>
+                Før første analyse: kjør <code>npm run ai:serve</code> i ett terminalvindu, og
+                installer modellen med <code>npm run ai:pull</code> hvis den ikke allerede finnes.
+              </>
+            )}
           </p>
         </div>
 
@@ -2071,13 +2105,21 @@ export function DashboardClient({
             <button
               className="button button-primary"
               type="submit"
-              disabled={submitting || !localAiHealth.ready || !selectedEvent}
+              disabled={
+                submitting ||
+                !selectedEvent ||
+                (localAiHealth.processingMode !== "queue" && !localAiHealth.ready)
+              }
             >
               {submitting
-                ? "Analyserer..."
-                : localAiHealth.ready
-                  ? "Analyser kvittering"
-                  : "Venter på lokal Ollama"}
+                ? localAiHealth.processingMode === "queue"
+                  ? "Sender til ko..."
+                  : "Analyserer..."
+                : localAiHealth.processingMode === "queue"
+                  ? "Send til lokal AI-ko"
+                  : localAiHealth.ready
+                    ? "Analyser kvittering"
+                    : "Venter på lokal Ollama"}
             </button>
             <button
               className="button button-secondary"

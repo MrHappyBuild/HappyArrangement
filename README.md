@@ -67,6 +67,10 @@ http://127.0.0.1:3000
   Katalog for lokale analyser og opplastede bilder
 - `RECEIPT_PROCESSING_MODE`
   `inline` for helt lokal analyse i app-serveren. `queue` for Vercel + Supabase + lokal Mac mini-worker. Standard blir `queue` hvis Supabase er konfigurert.
+- `LOCAL_AI_BRIDGE_PORT`
+  Lokal statusbro for Ollama og jobbkø. Standard er `4315`.
+- `LOCAL_AI_BRIDGE_HOST`
+  Host for den lokale AI-broen. Standard er `127.0.0.1`.
 - `SUPABASE_URL`
   URL til Supabase-prosjektet ditt. Hvis denne og service role key er satt, bruker appen Supabase i stedet for lokal fil-lagring.
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -89,6 +93,7 @@ For skydeploy trenger du:
 ```bash
 npm run ai:serve
 npm run worker:watch
+npm run ai:bridge
 ```
 
 I dagens versjon brukes Supabase via server-side service role. Det betyr at løsningen er klar for organizer/admin-drift i Vercel, men full innlogging og per-bruker tilgangsstyring bor fortsatt i neste fase. Kvitteringsanalyse i skyoppsettet skjer gjennom kø + lokal worker, ikke direkte inne i Vercel-funksjonen.
