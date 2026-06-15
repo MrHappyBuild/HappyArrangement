@@ -723,6 +723,59 @@ test("buildTaskAgenda reorders sibling underaktiviteter to respect later depende
   assert.equal(agenda.tasks[2].scheduledEndAt, "2026-06-20T18:15");
 });
 
+test("buildTaskAgenda visits a dependency parent before a dependent child in another branch", () => {
+  const agenda = buildTaskAgenda({
+    id: "event-cross-branch-child-dependency",
+    name: "Bryllup",
+    overview: {
+      startsAt: "2026-06-20T16:00"
+    },
+    tasks: [
+      {
+        id: "task-parent-wait",
+        title: "Mottak",
+        durationMinutes: 0,
+        desiredStartAt: "2026-06-20T16:00",
+        isFixedTime: true,
+        orderIndex: 0
+      },
+      {
+        id: "task-wait",
+        title: "Vente på Vetle",
+        parentTaskId: "task-parent-wait",
+        durationMinutes: 5,
+        dependencyIds: ["task-arrival"],
+        orderIndex: 1
+      },
+      {
+        id: "task-parent-arrival",
+        title: "Ankomst",
+        durationMinutes: 0,
+        desiredStartAt: "2026-06-20T16:30",
+        isFixedTime: true,
+        orderIndex: 2
+      },
+      {
+        id: "task-arrival",
+        title: "Brudeparet ankommer",
+        parentTaskId: "task-parent-arrival",
+        durationMinutes: 10,
+        orderIndex: 3
+      }
+    ]
+  });
+
+  assert.equal(agenda.warningCount, 0);
+  assert.deepEqual(
+    agenda.tasks.map((task) => task.title),
+    ["Mottak", "Ankomst", "Brudeparet ankommer", "Vente på Vetle"]
+  );
+  assert.equal(agenda.tasks[2].scheduledStartAt, "2026-06-20T16:30");
+  assert.equal(agenda.tasks[2].scheduledEndAt, "2026-06-20T16:40");
+  assert.equal(agenda.tasks[3].scheduledStartAt, "2026-06-20T16:40");
+  assert.equal(agenda.tasks[3].scheduledEndAt, "2026-06-20T16:45");
+});
+
 test("buildTaskAgenda keeps fixed-time tasks at desired start without warning on unrelated overlap", () => {
   const agenda = buildTaskAgenda({
     id: "event-fixed-task",

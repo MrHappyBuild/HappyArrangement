@@ -810,12 +810,29 @@ function orderTasksByHierarchy(tasks) {
 
     visiting.add(task.id);
 
+    const parentTask =
+      task.parentTaskId && taskMap.has(task.parentTaskId) ? taskMap.get(task.parentTaskId) : null;
+
+    if (parentTask) {
+      visit(parentTask);
+    }
+
+    if (visited.has(task.id)) {
+      visiting.delete(task.id);
+      return;
+    }
+
     const dependencies = (Array.isArray(task.dependencyIds) ? task.dependencyIds : [])
       .map((dependencyId) => taskMap.get(dependencyId))
       .filter(Boolean)
       .sort(compareTaskSequence);
 
     dependencies.forEach((dependencyTask) => visit(dependencyTask));
+
+    if (visited.has(task.id)) {
+      visiting.delete(task.id);
+      return;
+    }
 
     orderedTasks.push(task);
     visited.add(task.id);
