@@ -423,6 +423,8 @@ function createEmptyFinanceSupplier(index = 0) {
     contactName: "",
     email: "",
     phone: "",
+    deliverySummary: "",
+    quotedAmount: 0,
     agreedAmount: 0,
     paymentDueAt: "",
     status: "planned",
@@ -447,6 +449,7 @@ function normalizeFinancePlanForEditor(financePlan = null) {
     suppliers: suppliers.map((supplier, index) => ({
       ...createEmptyFinanceSupplier(index),
       ...supplier,
+      quotedAmount: Number(supplier?.quotedAmount || 0),
       agreedAmount: Number(supplier?.agreedAmount || 0),
       orderIndex: index
     })),
@@ -8711,7 +8714,8 @@ function FinancePlanningPanel({
   jobs,
   financeSummary,
   viewerAccess,
-  onSaveFinancePlan
+  onSaveFinancePlan,
+  section = "all"
 }) {
   const [draftPlan, setDraftPlan] = useState(() => normalizeFinancePlanForEditor(event.financePlan));
 
@@ -8735,6 +8739,25 @@ function FinancePlanningPanel({
     (sum, item) => sum + Number(item.plannedAmount || 0),
     0
   );
+  const showBudgetSection = section === "all" || section === "budget";
+  const showSupplierSection = section === "all" || section === "suppliers";
+  const showLocalAiSection = section === "all" || section === "operations";
+  const panelTitle =
+    section === "budget"
+      ? "Budsjett"
+      : section === "suppliers"
+        ? "Leverandorer"
+        : section === "operations"
+          ? "Drift og lokal AI"
+          : "Budsjett, leverandorer og lokal AI-drift";
+  const panelDescription =
+    section === "budget"
+      ? "Planlagt ramme per kostnadsomraade, sammenlignet med det som allerede er brukt i arrangementet."
+      : section === "suppliers"
+        ? "Hold oversikt over leverandorer, hva de skal levere, tilbud, avtalt pris og betalingsstatus."
+        : section === "operations"
+          ? "Styr hvordan lokal AI skal brukes sammen med Vercel-oppsettet for bilag og analyse."
+          : "Denne delen bygger videre paa dagens kvitteringsmotor, forskudd og oppgjor. Her planlegger du budsjett, leverandorer og hvordan lokal AI skal brukes sammen med Vercel-oppsettet.";
 
   function updateBudgetItem(itemId, changes) {
     setDraftPlan((current) => ({
@@ -8796,21 +8819,20 @@ function FinancePlanningPanel({
     <section className="panel stack">
       <div className="panel-header-inline">
         <div>
-          <h3>Budsjett, leverandorer og lokal AI-drift</h3>
-          <p className="muted">
-            Denne delen bygger videre paa dagens kvitteringsmotor, forskudd og oppgjor. Her planlegger
-            du budsjett, leverandorer og hvordan lokal AI skal brukes sammen med Vercel-oppsettet.
-          </p>
+          <h3>{panelTitle}</h3>
+          <p className="muted">{panelDescription}</p>
         </div>
         {!viewerAccess.canManageFinance ? <span className="role-pill">Lesetilgang</span> : null}
       </div>
       <div className="overview-grid">
         <InfoCard label="Planlagt budsjett" value={formatCurrency(plannedBudgetTotal)} />
         <InfoCard label="Faktisk brukt" value={formatCurrency(financeSummary.totalUsed)} tone="success" />
+        <InfoCard label="Tilbud totalt" value={formatCurrency(financeRoom.quotedSupplierTotal || 0)} />
         <InfoCard label="Avtalt hos leverandorer" value={formatCurrency(financeRoom.committedSupplierTotal)} />
         <InfoCard label="Forfaller snart" value={financeRoom.dueSoonSupplierCount} tone={financeRoom.dueSoonSupplierCount ? "warning" : "success"} />
       </div>
       <div className="two-col">
+        {showBudgetSection ? (
         <article className="panel stack nested-panel">
           <div className="panel-header-inline">
             <div>
@@ -8928,6 +8950,8 @@ function FinancePlanningPanel({
             </div>
           ) : null}
         </article>
+        ) : null}
+        {showSupplierSection ? (
         <article className="panel stack nested-panel">
           <div className="panel-header-inline">
             <div>
@@ -8991,6 +9015,34 @@ function FinancePlanningPanel({
                             </option>
                           ))}
                         </select>
+                      </label>
+                      <label className="field field-span-full">
+                        <span>Hva skal leveres</span>
+                        <input
+                          value={supplier.deliverySummary}
+                          disabled={!viewerAccess.canManageFinance}
+                          placeholder="F.eks. 3-retters middag, blomsteroppsats, DJ fra 18-01"
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, {
+                              deliverySummary: eventObject.currentTarget.value
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Tilbudspris</span>
+                        <input
+                          value={supplier.quotedAmount}
+                          disabled={!viewerAccess.canManageFinance}
+                          min="0"
+                          step="0.01"
+                          type="number"
+                          onChange={(eventObject) =>
+                            updateSupplier(supplier.id, {
+                              quotedAmount: Number(eventObject.currentTarget.value || 0)
+                            })
+                          }
+                        />
                       </label>
                       <label className="field">
                         <span>Avtalt pris</span>
@@ -9062,6 +9114,9 @@ function FinancePlanningPanel({
                     </div>
                     <div className="project-chip-row finance-plan-meta">
                       <span className="data-tag">{getFinanceSupplierStatusLabel(supplier.status)}</span>
+                      {supplier.quotedAmount ? (
+                        <span className="data-tag">Tilbud {formatCurrency(supplier.quotedAmount)}</span>
+                      ) : null}
                       <span className="data-tag">Bilag {supplierSummary?.matchedReceiptCount || 0}</span>
                       <span className="data-tag">Faktisk {formatCurrency(supplierSummary?.actualAmount || 0)}</span>
                       {supplierSummary?.dueSoon ? <span className="data-tag warning-tag">Forfaller snart</span> : null}
@@ -9083,7 +9138,9 @@ function FinancePlanningPanel({
             <p className="muted">Ingen leverandorer registrert enda.</p>
           )}
         </article>
+        ) : null}
       </div>
+      {showLocalAiSection ? (
       <article className="panel stack nested-panel">
         <div className="panel-header-inline">
           <div>
@@ -9158,6 +9215,7 @@ function FinancePlanningPanel({
           <p className="muted">Denne delen er lesemodus for fakturadelen.</p>
         )}
       </article>
+      ) : null}
     </section>
   );
 }
@@ -9979,11 +10037,57 @@ function FinanceTab({
   onOpenSettlementModal,
   onDeleteLedgerEntry
 }) {
+  const [financeWorkspaceView, setFinanceWorkspaceView] = useState("overview");
+  const hospitalityBriefs = useMemo(() => buildHospitalityBriefs(event), [event]);
+  const financeRoom = useMemo(() => buildFinanceControlRoom(event, jobs), [event, jobs]);
+  const acceptedDietaryCount = hospitalityBriefs.dietaryGuests.filter(
+    (guest) => guest.rsvpStatus === "accepted"
+  ).length;
+  const standardMealCount = Math.max(0, hospitalityBriefs.guestCounts.accepted - acceptedDietaryCount);
+  const serviceStyleLabel =
+    HOSPITALITY_SERVICE_STYLE_OPTIONS.find(
+      (option) => option.value === hospitalityBriefs.service.serviceStyle
+    )?.label || "Ikke satt";
+  const supplierRows = useMemo(
+    () =>
+      [...financeRoom.supplierRows].sort((left, right) => {
+        if (left.dueSoon && !right.dueSoon) {
+          return -1;
+        }
+
+        if (!left.dueSoon && right.dueSoon) {
+          return 1;
+        }
+
+        return String(left.name || "").localeCompare(String(right.name || ""), "nb");
+      }),
+    [financeRoom.supplierRows]
+  );
+  const supplierStatusRows = useMemo(
+    () =>
+      FINANCE_SUPPLIER_STATUS_OPTIONS.map((option) => ({
+        ...option,
+        count: supplierRows.filter((row) => row.status === option.value).length
+      })).filter((row) => row.count > 0),
+    [supplierRows]
+  );
+  const planningSection =
+    financeWorkspaceView === "suppliers"
+      ? "suppliers"
+      : financeWorkspaceView === "operations"
+        ? "operations"
+        : "budget";
+  const showPlanningSections = ["budget", "suppliers", "operations"].includes(financeWorkspaceView);
+
+  useEffect(() => {
+    setFinanceWorkspaceView("overview");
+  }, [event.id]);
+
   if (!viewerAccess.canViewFinance) {
     return (
       <EmptyState
-        title="Ingen fakturatilgang"
-        body="Denne personen skal ikke se finansdelen av arrangementet."
+        title="Ingen okonomitilgang"
+        body="Denne personen skal ikke se okonomidelen av arrangementet."
       />
     );
   }
@@ -9991,249 +10095,493 @@ function FinanceTab({
   return (
     <div className="stack">
       <section className="panel stack">
-        <div className="overview-grid">
-          <InfoCard label="Kvitteringer betalt" value={formatCurrency(financeSummary.totalPaid)} />
-          <InfoCard label="Totalt innbetalt" value={formatCurrency(financeSummary.totalContributed)} />
-          <InfoCard label="Brukt" value={formatCurrency(financeSummary.totalUsed)} />
-          <InfoCard label="Forskudd" value={formatCurrency(financeSummary.totalAdvances)} />
-          <InfoCard label="Ufordelt" value={formatCurrency(financeSummary.unassignedTotal)} tone="warning" />
-        </div>
-        <p className="notice">
-          Forskudd lagres som egen post og brukes automatisk i `totalt innbetalt`, `balanse for oppgjor`
-          og `gjenstaende`. Du skal ikke trekke det fra manuelt senere.
-        </p>
-      </section>
-
-      <FinancePlanningPanel
-        event={event}
-        jobs={jobs}
-        financeSummary={financeSummary}
-        onSaveFinancePlan={onSaveFinancePlan}
-        viewerAccess={viewerAccess}
-      />
-
-      <section className="panel stack">
         <div className="panel-header-inline">
           <div>
-            <h3>Arbeidsrom for faktura</h3>
+            <h3>Økonomi</h3>
             <p className="muted">
-              Kvitteringsmotor, forskudd og oppgjor bor ligge i samme fakturaflyt. Her er det samlet i et tydeligere kontrollrom.
+              Samlet kontrollrom for budsjett, leverandorer, fakturaer, oppgjor og lokal AI-drift.
             </p>
           </div>
         </div>
-        <div className="action-tile-grid">
-          <ActionTile
-            title="Kvitteringsmotor"
-            body="Den ble holdt utenfor V2 i forrige steg for aa unnga aa blande ny tilgangsmodell med gammel kvitteringsflyt for tidlig. Na er den koblet direkte inn her for fakturaforvaltere."
-            actions={
-              <>
-                {viewerAccess.canManageFinance ? (
-                  <button className="primary-button" type="button" onClick={onToggleEngine}>
-                    {engineOpen ? "Skjul kvitteringsmotor" : "Aapne kvitteringsmotor"}
-                  </button>
-                ) : (
-                  <span className="muted">Kun fakturaforvaltere kan aapne hele motoren.</span>
-                )}
-                <Link className="secondary-link" href={`/?eventId=${event.id}`}>
-                  Aapne fullskjerm
-                </Link>
-              </>
-            }
-          />
-          <ActionTile
-            title="Registrer forskudd / innbetaling"
-            body="Bruk dette nar noen sender inn penger i forkant. Det teller pa betalt, men ikke pa brukt."
-            actions={
-              viewerAccess.canManageFinance ? (
-                <button className="secondary-button" type="button" onClick={onOpenAdvanceModal}>
-                  Ny innbetaling
-                </button>
-              ) : (
-                <span className="muted">Kun forvaltere kan registrere dette.</span>
-              )
-            }
-          />
-          <ActionTile
-            title="Registrer oppgjor"
-            body="Bruk dette nar medlemmer sender penger til hverandre etter at varene er fordelt."
-            actions={
-              viewerAccess.canManageFinance ? (
-                <button className="secondary-button" type="button" onClick={onOpenSettlementModal}>
-                  Nytt oppgjor
-                </button>
-              ) : (
-                <span className="muted">Kun forvaltere kan registrere dette.</span>
-              )
-            }
-          />
-          <ActionTile
-            title="Regn ut oppgjor"
-            body="Bruk gjenstaende balanse for aa foresla hvem som skal overfore hva til hvem for at arrangementet skal ga i null."
-            actions={
-              viewerAccess.canManageFinance ? (
-                <button className="secondary-button" type="button" onClick={onToggleSettlementPlan}>
-                  {showSettlementPlan ? "Skjul oppgjorsforslag" : "Regn ut oppgjorsforslag"}
-                </button>
-              ) : (
-                <span className="muted">Kun forvaltere kan se hele oppgjorsforslaget.</span>
-              )
-            }
-          />
+        <div className="tab-row" role="tablist" aria-label="Undermeny for okonomi">
+          <button
+            aria-selected={financeWorkspaceView === "overview"}
+            className={`tab-chip ${financeWorkspaceView === "overview" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setFinanceWorkspaceView("overview")}
+          >
+            Oversikt
+          </button>
+          <button
+            aria-selected={financeWorkspaceView === "budget"}
+            className={`tab-chip ${financeWorkspaceView === "budget" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setFinanceWorkspaceView("budget")}
+          >
+            Budsjett
+          </button>
+          <button
+            aria-selected={financeWorkspaceView === "suppliers"}
+            className={`tab-chip ${financeWorkspaceView === "suppliers" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setFinanceWorkspaceView("suppliers")}
+          >
+            Leverandorer
+          </button>
+          <button
+            aria-selected={financeWorkspaceView === "invoices"}
+            className={`tab-chip ${financeWorkspaceView === "invoices" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setFinanceWorkspaceView("invoices")}
+          >
+            Fakturaer
+          </button>
+          <button
+            aria-selected={financeWorkspaceView === "settlements"}
+            className={`tab-chip ${financeWorkspaceView === "settlements" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setFinanceWorkspaceView("settlements")}
+          >
+            Oppgjor
+          </button>
+          <button
+            aria-selected={financeWorkspaceView === "operations"}
+            className={`tab-chip ${financeWorkspaceView === "operations" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setFinanceWorkspaceView("operations")}
+          >
+            Drift
+          </button>
         </div>
       </section>
 
-      {viewerAccess.canManageFinance && engineOpen ? (
-        <section className="panel stack embedded-engine-panel">
-          <div className="panel-header-inline">
-            <div>
-              <h3>Kvitteringsmotor for {event.name}</h3>
-              <p className="muted">
-                Opplasting, kontroll, fordeling og eksport bruker den eksisterende motoren direkte i denne flaten.
-              </p>
+      {financeWorkspaceView === "overview" ? (
+        <>
+          <section className="panel stack">
+            <div className="overview-grid">
+              <InfoCard
+                label="Planlagt budsjett"
+                value={formatCurrency(
+                  event.financePlan.budgetItems.reduce(
+                    (sum, item) => sum + Number(item.plannedAmount || 0),
+                    0
+                  )
+                )}
+              />
+              <InfoCard label="Tilbud totalt" value={formatCurrency(financeRoom.quotedSupplierTotal || 0)} />
+              <InfoCard label="Avtalt hos leverandorer" value={formatCurrency(financeRoom.committedSupplierTotal)} />
+              <InfoCard label="Kvitteringer betalt" value={formatCurrency(financeSummary.totalPaid)} />
+              <InfoCard label="Totalt innbetalt" value={formatCurrency(financeSummary.totalContributed)} />
+              <InfoCard label="Brukt" value={formatCurrency(financeSummary.totalUsed)} />
+              <InfoCard label="Forskudd" value={formatCurrency(financeSummary.totalAdvances)} />
+              <InfoCard
+                label="Ubetalte leverandorer"
+                value={financeRoom.unpaidSupplierCount}
+                tone={financeRoom.unpaidSupplierCount ? "warning" : "success"}
+              />
             </div>
-          </div>
-          <DashboardClient
-            embeddedMode
-            initialEvents={[event]}
-            initialJobs={jobs}
-            initialSelectedEventId={event.id}
-          />
-        </section>
-      ) : null}
+            <p className="notice">
+              Oversikten trekker sammen eksisterende kvitteringsflyt, budsjettlinjer, leverandorer
+              og serveringsbehov. Forskudd brukes automatisk i innbetalinger og oppgjor.
+            </p>
+          </section>
 
-      {showSettlementPlan ? (
-        <section className="panel stack">
-          <div className="panel-header-inline">
-            <div>
-              <h3>Oppgjorsforslag</h3>
-              <p className="muted">
-                Forslaget bruker `gjenstaende balanse` etter at forskudd og registrerte oppgjor er tatt med.
-              </p>
-            </div>
-          </div>
-          {settlementPlan.alreadyBalanced ? (
-            <p className="notice success">Arrangementet ser allerede oppgjort ut. Ingen nye overforinger trengs.</p>
-          ) : settlementPlan.suggestions.length ? (
-            <div className="stack">
-              <ul className="suggestion-list">
-                {settlementPlan.suggestions.map((suggestion, index) => (
-                  <li className="suggestion-card" key={`${suggestion.fromId}-${suggestion.toId}-${index}`}>
-                    <strong>{suggestion.fromName}</strong>
-                    <span>betaler</span>
-                    <strong>{suggestion.toName}</strong>
-                    <span className="suggestion-amount">{formatCurrency(suggestion.amount)} kr</span>
-                  </li>
-                ))}
-              </ul>
-              {settlementPlan.unmatchedOutgoing.length || settlementPlan.unmatchedIncoming.length ? (
-                <p className="notice warning">
-                  Det er et lite restavvik etter avrunding. Sjekk oppgjor og balanse en gang til.
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="notice">Fant ingen konkrete overforinger akkurat na.</p>
-          )}
-        </section>
-      ) : null}
-
-      <section className="panel stack">
-        <h3>Medlemsbalanse</h3>
-        {financeSummary.members.length === 0 ? (
-          <EmptyState
-            title="Ingen fakturamedlemmer"
-            body="Legg personer inn med fakturatilgang for aa fa balanse og oppgjor."
-          />
-        ) : (
-          <table className="mini-table">
-            <thead>
-              <tr>
-                <th>Medlem</th>
-                <th>Kvitt. betalt</th>
-                <th>Forskudd</th>
-                <th>Totalt innbetalt</th>
-                <th>Brukt</th>
-                <th>Mottatt</th>
-                <th>Sendt</th>
-                <th>Balanse for oppgjor</th>
-                <th>Gjenstaende</th>
-              </tr>
-            </thead>
-            <tbody>
-              {financeSummary.members.map((member) => (
-                <tr key={member.id}>
-                  <td>{member.name}</td>
-                  <td>{formatCurrency(member.receiptPaidTotal)}</td>
-                  <td>{formatCurrency(member.advanceTotal)}</td>
-                  <td>{formatCurrency(member.totalContributed)}</td>
-                  <td>{formatCurrency(member.usedTotal)}</td>
-                  <td>{formatCurrency(member.receivedSettlementTotal)}</td>
-                  <td>{formatCurrency(member.sentSettlementTotal)}</td>
-                  <td>{formatCurrency(member.balanceBeforeSettlements)}</td>
-                  <td>{formatCurrency(member.remainingBalance)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="two-col">
-        <article className="panel stack">
-          <h3>Kvitteringer i arrangementet</h3>
-          <ul className="compact-list">
-            {jobs.length === 0 ? (
-              <li>Ingen kvitteringer er koblet til dette arrangementet enda.</li>
-            ) : (
-              jobs.map((job) => (
-                <li key={job.id}>
-                  <span>{job.result?.merchantName || job.original_filename}</span>
-                  <strong>{formatCurrency(job.result?.grandTotal || 0)}</strong>
+          <section className="two-col">
+            <article className="panel stack">
+              <div className="panel-header-inline">
+                <div>
+                  <h3>Retter og servering</h3>
+                  <p className="muted">
+                    Praktisk oversikt over hva som skal serveres og hvor mange som trenger vanlig eller spesialmat.
+                  </p>
+                </div>
+              </div>
+              <ul className="compact-list hospitality-inline-list">
+                <li>
+                  <span>Serveringsform</span>
+                  <strong>{serviceStyleLabel}</strong>
                 </li>
-              ))
-            )}
-          </ul>
-        </article>
-        <article className="panel stack">
-          <h3>Ledger-poster</h3>
-          <ul className="compact-list">
-            {event.ledgerEntries.length === 0 ? (
-              <li>Ingen forskudd eller oppgjor registrert enda.</li>
-            ) : (
-              event.ledgerEntries.map((entry) => {
-                const from = event.members.find((member) => member.id === entry.memberId)?.name || "Ukjent";
-                const to =
-                  event.members.find((member) => member.id === entry.counterpartyMemberId)?.name || "";
-                const label =
-                  entry.type === "settlement_transfer"
-                    ? `${from} til ${to}`
-                    : `${from} - ${entry.type === "advance_contribution" ? "forskudd" : "justering"}`;
+                <li>
+                  <span>Bekreftet antall gjester</span>
+                  <strong>{hospitalityBriefs.guestCounts.accepted}</strong>
+                </li>
+                <li>
+                  <span>Vanlig meny</span>
+                  <strong>{standardMealCount}</strong>
+                </li>
+                <li>
+                  <span>Spesialmat / allergier</span>
+                  <strong>{acceptedDietaryCount}</strong>
+                </li>
+                <li>
+                  <span>Forste servering</span>
+                  <strong>
+                    {formatDateTime(
+                      hospitalityBriefs.service.serviceStartsAt ||
+                        hospitalityBriefs.kitchen.serviceStartsAt
+                    )}
+                  </strong>
+                </li>
+              </ul>
+              {hospitalityBriefs.kitchen.menuSummary ? (
+                <div className="stack compact-stack">
+                  <strong>Planlagte retter</strong>
+                  <p style={{ whiteSpace: "pre-wrap" }}>{hospitalityBriefs.kitchen.menuSummary}</p>
+                </div>
+              ) : (
+                <p className="muted">Ingen retter er lagt inn enda.</p>
+              )}
+              {hospitalityBriefs.kitchen.specialMenus ? (
+                <div className="stack compact-stack">
+                  <strong>Spesialmenyer og unntak</strong>
+                  <p style={{ whiteSpace: "pre-wrap" }}>{hospitalityBriefs.kitchen.specialMenus}</p>
+                </div>
+              ) : null}
+            </article>
 
-                return (
-                  <li key={entry.id}>
-                    <div className="compact-list-main">
-                      <span>{label}</span>
-                      <small className="muted">{formatDateTime(entry.created_at)}</small>
-                    </div>
-                    <div className="compact-list-actions">
-                      <strong>{formatCurrency(entry.amount)}</strong>
-                      {viewerAccess.canManageFinance ? (
-                        <button
-                          className="danger-button compact-action-button"
-                          type="button"
-                          onClick={() => onDeleteLedgerEntry(entry)}
-                        >
-                          Slett
-                        </button>
-                      ) : null}
-                    </div>
+            <article className="panel stack">
+              <div className="panel-header-inline">
+                <div>
+                  <h3>Leverandorstatus</h3>
+                  <p className="muted">
+                    Se hvor mange leverandorer som er pa hvert steg, og hva som trenger oppfolging videre.
+                  </p>
+                </div>
+              </div>
+              {supplierStatusRows.length ? (
+                <ul className="compact-list hospitality-inline-list">
+                  {supplierStatusRows.map((row) => (
+                    <li key={`supplier-status-${row.value}`}>
+                      <span>{row.label}</span>
+                      <strong>{row.count}</strong>
+                    </li>
+                  ))}
+                  <li>
+                    <span>Forfaller snart</span>
+                    <strong>{financeRoom.dueSoonSupplierCount}</strong>
                   </li>
-                );
-              })
+                </ul>
+              ) : (
+                <p className="muted">Ingen leverandorer registrert ennå.</p>
+              )}
+            </article>
+          </section>
+
+          <section className="panel stack">
+            <div className="panel-header-inline">
+              <div>
+                <h3>Leverandorer og leveranser</h3>
+                <p className="muted">
+                  Hvem som skal levere hva, hvor langt de er i lopet, og hva som er tilbudt eller avtalt.
+                </p>
+              </div>
+            </div>
+            {supplierRows.length ? (
+              <table className="mini-table">
+                <thead>
+                  <tr>
+                    <th>Leverandor</th>
+                    <th>Leverer</th>
+                    <th>Status</th>
+                    <th>Tilbud</th>
+                    <th>Avtalt</th>
+                    <th>Faktisk</th>
+                    <th>Forfaller</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supplierRows.map((supplier) => (
+                    <tr key={`finance-overview-supplier-${supplier.id}`}>
+                      <td>{supplier.name}</td>
+                      <td>{supplier.deliverySummary || supplier.notes || "Ikke beskrevet"}</td>
+                      <td>{getFinanceSupplierStatusLabel(supplier.status)}</td>
+                      <td>{formatCurrency(supplier.quotedAmount || 0)}</td>
+                      <td>{formatCurrency(supplier.agreedAmount || 0)}</td>
+                      <td>{formatCurrency(supplier.actualAmount || 0)}</td>
+                      <td>{supplier.paymentDueAt ? formatDateTime(supplier.paymentDueAt) : "Ikke satt"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="muted">Ingen leverandorer er registrert ennå.</p>
             )}
-          </ul>
-        </article>
-      </section>
+          </section>
+        </>
+      ) : null}
+
+      <div hidden={!showPlanningSections}>
+        <FinancePlanningPanel
+          event={event}
+          jobs={jobs}
+          financeSummary={financeSummary}
+          onSaveFinancePlan={onSaveFinancePlan}
+          viewerAccess={viewerAccess}
+          section={planningSection}
+        />
+      </div>
+
+      {financeWorkspaceView === "invoices" ? (
+        <>
+          <section className="panel stack">
+            <div className="panel-header-inline">
+              <div>
+                <h3>Fakturaer og bilag</h3>
+                <p className="muted">
+                  Kvitteringsmotoren, bilagene og eksporten ligger her samlet i ett arbeidsrom.
+                </p>
+              </div>
+            </div>
+            <div className="action-tile-grid">
+              <ActionTile
+                title="Kvitteringsmotor"
+                body="Aapne hele motoren for opplasting, kontroll, fordeling og eksport av fakturaer og kvitteringer."
+                actions={
+                  <>
+                    {viewerAccess.canManageFinance ? (
+                      <button className="primary-button" type="button" onClick={onToggleEngine}>
+                        {engineOpen ? "Skjul kvitteringsmotor" : "Aapne kvitteringsmotor"}
+                      </button>
+                    ) : (
+                      <span className="muted">Kun fakturaforvaltere kan aapne hele motoren.</span>
+                    )}
+                    <Link className="secondary-link" href={`/?eventId=${event.id}`}>
+                      Aapne fullskjerm
+                    </Link>
+                  </>
+                }
+              />
+            </div>
+          </section>
+
+          {viewerAccess.canManageFinance && engineOpen ? (
+            <section className="panel stack embedded-engine-panel">
+              <div className="panel-header-inline">
+                <div>
+                  <h3>Kvitteringsmotor for {event.name}</h3>
+                  <p className="muted">
+                    Opplasting, kontroll, fordeling og eksport bruker den eksisterende motoren direkte i denne flaten.
+                  </p>
+                </div>
+              </div>
+              <DashboardClient
+                embeddedMode
+                initialEvents={[event]}
+                initialJobs={jobs}
+                initialSelectedEventId={event.id}
+              />
+            </section>
+          ) : null}
+
+          <section className="panel stack">
+            <h3>Bilag i arrangementet</h3>
+            {jobs.length === 0 ? (
+              <EmptyState
+                title="Ingen bilag enda"
+                body="Kvitteringer og fakturaer dukker opp her nar de er behandlet eller lagt inn i arrangementet."
+              />
+            ) : (
+              <table className="mini-table">
+                <thead>
+                  <tr>
+                    <th>Navn</th>
+                    <th>Leverandor</th>
+                    <th>Belop</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {jobs.map((job) => (
+                    <tr key={`invoice-job-${job.id}`}>
+                      <td>{job.original_filename || "Uten filnavn"}</td>
+                      <td>{job.result?.merchantName || "Ikke tolket enda"}</td>
+                      <td>{formatCurrency(job.result?.grandTotal || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        </>
+      ) : null}
+
+      {financeWorkspaceView === "settlements" ? (
+        <>
+          <section className="panel stack">
+            <div className="panel-header-inline">
+              <div>
+                <h3>Oppgjor og innbetalinger</h3>
+                <p className="muted">
+                  Registrer forskudd, overforinger og bruk balansen til aa foresla hvem som skal betale hvem.
+                </p>
+              </div>
+            </div>
+            <div className="action-tile-grid">
+              <ActionTile
+                title="Registrer forskudd / innbetaling"
+                body="Bruk dette nar noen sender inn penger i forkant. Det teller pa betalt, men ikke pa brukt."
+                actions={
+                  viewerAccess.canManageFinance ? (
+                    <button className="secondary-button" type="button" onClick={onOpenAdvanceModal}>
+                      Ny innbetaling
+                    </button>
+                  ) : (
+                    <span className="muted">Kun forvaltere kan registrere dette.</span>
+                  )
+                }
+              />
+              <ActionTile
+                title="Registrer oppgjor"
+                body="Bruk dette nar medlemmer sender penger til hverandre etter at varene er fordelt."
+                actions={
+                  viewerAccess.canManageFinance ? (
+                    <button className="secondary-button" type="button" onClick={onOpenSettlementModal}>
+                      Nytt oppgjor
+                    </button>
+                  ) : (
+                    <span className="muted">Kun forvaltere kan registrere dette.</span>
+                  )
+                }
+              />
+              <ActionTile
+                title="Regn ut oppgjor"
+                body="Bruk gjenstaende balanse for aa foresla hvem som skal overfore hva til hvem for at arrangementet skal ga i null."
+                actions={
+                  viewerAccess.canManageFinance ? (
+                    <button className="secondary-button" type="button" onClick={onToggleSettlementPlan}>
+                      {showSettlementPlan ? "Skjul oppgjorsforslag" : "Regn ut oppgjorsforslag"}
+                    </button>
+                  ) : (
+                    <span className="muted">Kun forvaltere kan se hele oppgjorsforslaget.</span>
+                  )
+                }
+              />
+            </div>
+          </section>
+
+          {showSettlementPlan ? (
+            <section className="panel stack">
+              <div className="panel-header-inline">
+                <div>
+                  <h3>Oppgjorsforslag</h3>
+                  <p className="muted">
+                    Forslaget bruker `gjenstaende balanse` etter at forskudd og registrerte oppgjor er tatt med.
+                  </p>
+                </div>
+              </div>
+              {settlementPlan.alreadyBalanced ? (
+                <p className="notice success">Arrangementet ser allerede oppgjort ut. Ingen nye overforinger trengs.</p>
+              ) : settlementPlan.suggestions.length ? (
+                <div className="stack">
+                  <ul className="suggestion-list">
+                    {settlementPlan.suggestions.map((suggestion, index) => (
+                      <li className="suggestion-card" key={`${suggestion.fromId}-${suggestion.toId}-${index}`}>
+                        <strong>{suggestion.fromName}</strong>
+                        <span>betaler</span>
+                        <strong>{suggestion.toName}</strong>
+                        <span className="suggestion-amount">{formatCurrency(suggestion.amount)} kr</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {settlementPlan.unmatchedOutgoing.length || settlementPlan.unmatchedIncoming.length ? (
+                    <p className="notice warning">
+                      Det er et lite restavvik etter avrunding. Sjekk oppgjor og balanse en gang til.
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="notice">Fant ingen konkrete overforinger akkurat na.</p>
+              )}
+            </section>
+          ) : null}
+
+          <section className="panel stack">
+            <h3>Medlemsbalanse</h3>
+            {financeSummary.members.length === 0 ? (
+              <EmptyState
+                title="Ingen fakturamedlemmer"
+                body="Legg personer inn med fakturatilgang for aa fa balanse og oppgjor."
+              />
+            ) : (
+              <table className="mini-table">
+                <thead>
+                  <tr>
+                    <th>Medlem</th>
+                    <th>Kvitt. betalt</th>
+                    <th>Forskudd</th>
+                    <th>Totalt innbetalt</th>
+                    <th>Brukt</th>
+                    <th>Mottatt</th>
+                    <th>Sendt</th>
+                    <th>Balanse for oppgjor</th>
+                    <th>Gjenstaende</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {financeSummary.members.map((member) => (
+                    <tr key={member.id}>
+                      <td>{member.name}</td>
+                      <td>{formatCurrency(member.receiptPaidTotal)}</td>
+                      <td>{formatCurrency(member.advanceTotal)}</td>
+                      <td>{formatCurrency(member.totalContributed)}</td>
+                      <td>{formatCurrency(member.usedTotal)}</td>
+                      <td>{formatCurrency(member.receivedSettlementTotal)}</td>
+                      <td>{formatCurrency(member.sentSettlementTotal)}</td>
+                      <td>{formatCurrency(member.balanceBeforeSettlements)}</td>
+                      <td>{formatCurrency(member.remainingBalance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+
+          <section className="panel stack">
+            <h3>Ledger-poster</h3>
+            <ul className="compact-list">
+              {event.ledgerEntries.length === 0 ? (
+                <li>Ingen forskudd eller oppgjor registrert enda.</li>
+              ) : (
+                event.ledgerEntries.map((entry) => {
+                  const from = event.members.find((member) => member.id === entry.memberId)?.name || "Ukjent";
+                  const to =
+                    event.members.find((member) => member.id === entry.counterpartyMemberId)?.name || "";
+                  const label =
+                    entry.type === "settlement_transfer"
+                      ? `${from} til ${to}`
+                      : `${from} - ${entry.type === "advance_contribution" ? "forskudd" : "justering"}`;
+
+                  return (
+                    <li key={entry.id}>
+                      <div className="compact-list-main">
+                        <span>{label}</span>
+                        <small className="muted">{formatDateTime(entry.created_at)}</small>
+                      </div>
+                      <div className="compact-list-actions">
+                        <strong>{formatCurrency(entry.amount)}</strong>
+                        {viewerAccess.canManageFinance ? (
+                          <button
+                            className="danger-button compact-action-button"
+                            type="button"
+                            onClick={() => onDeleteLedgerEntry(entry)}
+                          >
+                            Slett
+                          </button>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </section>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -10501,7 +10849,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     { id: "project", label: "Oppgaver", visible: viewerAccess.canViewProject },
     { id: "planning", label: "Planlegging", visible: viewerAccess.canViewPlanning },
     { id: "venue", label: "Lokale", visible: viewerAccess.canViewPlanning },
-    { id: "finance", label: "Faktura", visible: viewerAccess.canViewFinance },
+    { id: "finance", label: "Økonomi", visible: viewerAccess.canViewFinance },
     { id: "approvals", label: "Godkjenning", visible: viewerAccess.canViewApprovals }
   ].filter((tab) => tab.visible);
   const currentTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : "overview";

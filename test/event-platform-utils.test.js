@@ -378,6 +378,32 @@ test("ensureEventShape creates hospitality and finance planning defaults", () =>
   assert.equal(event.financePlan.localAiOps.workerCommand, "npm run worker:watch");
 });
 
+test("ensureEventShape keeps extended supplier planning fields", () => {
+  const event = ensureEventShape({
+    id: "event-supplier-fields",
+    name: "Bryllup",
+    financePlan: {
+      suppliers: [
+        {
+          id: "supplier-1",
+          name: "Matboden",
+          categoryKey: "food_drink",
+          deliverySummary: "Tre retter og serveringspersonell",
+          quotedAmount: 3900,
+          agreedAmount: 4200,
+          status: "quote_received"
+        }
+      ]
+    }
+  });
+
+  assert.equal(event.financePlan.suppliers.length, 1);
+  assert.equal(event.financePlan.suppliers[0].deliverySummary, "Tre retter og serveringspersonell");
+  assert.equal(event.financePlan.suppliers[0].quotedAmount, 3900);
+  assert.equal(event.financePlan.suppliers[0].agreedAmount, 4200);
+  assert.equal(event.financePlan.suppliers[0].status, "quote_received");
+});
+
 test("canViewerSeeGuestPage hides guest-only pages from finance members", () => {
   const event = ensureEventShape({
     id: "event-pages-2",
@@ -571,6 +597,8 @@ test("buildFinanceControlRoom maps budget and suppliers on top of existing finan
           id: "supplier-1",
           name: "Matboden",
           categoryKey: "food_drink",
+          deliverySummary: "Middag og dessert",
+          quotedAmount: 3900,
           agreedAmount: 4200,
           status: "confirmed",
           paymentDueAt: "2099-06-20T12:00"
@@ -607,8 +635,10 @@ test("buildFinanceControlRoom maps budget and suppliers on top of existing finan
   assert.equal(controlRoom.budgetRows[0].actualAmount, 4000);
   assert.equal(controlRoom.budgetRows[0].varianceAmount, 1000);
   assert.equal(controlRoom.supplierRows[0].matchedReceiptCount, 1);
+  assert.equal(controlRoom.supplierRows[0].quotedAmount, 3900);
   assert.equal(controlRoom.supplierRows[0].actualAmount, 4000);
   assert.equal(controlRoom.approvedAdvanceTotal, 250);
+  assert.equal(controlRoom.quotedSupplierTotal, 3900);
   assert.equal(controlRoom.committedSupplierTotal, 4200);
 });
 

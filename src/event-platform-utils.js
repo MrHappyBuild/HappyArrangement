@@ -205,9 +205,12 @@ export const FINANCE_CATEGORY_OPTIONS = [
 
 export const FINANCE_SUPPLIER_STATUS_OPTIONS = [
   { value: "planned", label: "Planlagt" },
-  { value: "requested", label: "Forespurt" },
+  { value: "requested", label: "Tilbud forespurt" },
+  { value: "quote_received", label: "Tilbud mottatt" },
+  { value: "selected", label: "Valgt videre" },
   { value: "booked", label: "Booket" },
   { value: "confirmed", label: "Bekreftet" },
+  { value: "delivered", label: "Levert / gjennomfort" },
   { value: "invoiced", label: "Fakturert" },
   { value: "paid", label: "Betalt" },
   { value: "canceled", label: "Avlyst" }
@@ -854,6 +857,9 @@ function createFinanceSupplier(supplier, fallbackIndex = 0) {
     contactName: typeof normalized.contactName === "string" ? normalized.contactName.trim() : "",
     email: typeof normalized.email === "string" ? normalized.email.trim() : "",
     phone: typeof normalized.phone === "string" ? normalized.phone.trim() : "",
+    deliverySummary:
+      typeof normalized.deliverySummary === "string" ? normalized.deliverySummary.trim() : "",
+    quotedAmount: normalizeCurrencyAmount(normalized.quotedAmount, 0),
     agreedAmount: normalizeCurrencyAmount(normalized.agreedAmount, 0),
     paymentDueAt: normalizeDateTimeString(normalized.paymentDueAt),
     status: normalizeFinanceSupplierStatus(normalized.status),
@@ -4043,12 +4049,14 @@ export function buildFinanceControlRoom(event, jobs) {
     const actualAmount = roundCurrency(
       matchedJobs.reduce((sum, job) => sum + normalizeCurrencyAmount(job?.result?.grandTotal, 0), 0)
     );
+    const quotedAmount = normalizeCurrencyAmount(supplier.quotedAmount, 0);
     const agreedAmount = normalizeCurrencyAmount(supplier.agreedAmount, 0);
     const dueAtMs = parseDateTimeValue(supplier.paymentDueAt);
 
     return {
       ...supplier,
       actualAmount,
+      quotedAmount,
       agreedAmount,
       varianceAmount: roundCurrency(agreedAmount - actualAmount),
       matchedReceiptCount: matchedJobs.length,
@@ -4078,6 +4086,11 @@ export function buildFinanceControlRoom(event, jobs) {
       approvedLedgerEntries
         .filter((entry) => entry.type === "settlement_transfer")
         .reduce((sum, entry) => sum + normalizeCurrencyAmount(entry.amount, 0), 0)
+    ),
+    quotedSupplierTotal: roundCurrency(
+      supplierRows
+        .filter((supplier) => !["canceled"].includes(supplier.status))
+        .reduce((sum, supplier) => sum + normalizeCurrencyAmount(supplier.quotedAmount, 0), 0)
     ),
     committedSupplierTotal: roundCurrency(
       supplierRows
