@@ -9170,6 +9170,7 @@ function PlanningTab({
   onSaveHospitalityPlan,
   onUpdateTaskLiveState
 }) {
+  const [planningWorkspaceView, setPlanningWorkspaceView] = useState("overview");
   const planningAgenda = buildPlanningAgenda(event);
   const liveAgenda = buildLiveAgenda(event);
   const agendaHighlightGroups = [];
@@ -9343,6 +9344,65 @@ function PlanningTab({
   return (
     <div className="stack">
       <section className="panel stack">
+        <div className="panel-header-inline">
+          <div>
+            <h3>Planlegging</h3>
+            <p className="muted">
+              Bytt mellom oversikt, briefs, standarder, agenda og live-kjoring for dette arrangementet.
+            </p>
+          </div>
+        </div>
+        <div className="tab-row" role="tablist" aria-label="Undermeny for planlegging">
+          <button
+            aria-selected={planningWorkspaceView === "overview"}
+            className={`tab-chip ${planningWorkspaceView === "overview" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setPlanningWorkspaceView("overview")}
+          >
+            Oversikt
+          </button>
+          <button
+            aria-selected={planningWorkspaceView === "briefs"}
+            className={`tab-chip ${planningWorkspaceView === "briefs" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setPlanningWorkspaceView("briefs")}
+          >
+            Briefs
+          </button>
+          <button
+            aria-selected={planningWorkspaceView === "standards"}
+            className={`tab-chip ${planningWorkspaceView === "standards" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setPlanningWorkspaceView("standards")}
+          >
+            Standarder
+          </button>
+          <button
+            aria-selected={planningWorkspaceView === "agenda"}
+            className={`tab-chip ${planningWorkspaceView === "agenda" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setPlanningWorkspaceView("agenda")}
+          >
+            Agenda
+          </button>
+          <button
+            aria-selected={planningWorkspaceView === "live"}
+            className={`tab-chip ${planningWorkspaceView === "live" ? "active" : ""}`}
+            role="tab"
+            type="button"
+            onClick={() => setPlanningWorkspaceView("live")}
+          >
+            Live
+          </button>
+        </div>
+      </section>
+
+      {planningWorkspaceView === "overview" ? (
+        <section className="panel stack">
         <h3>Planleggingsrom</h3>
         <form className="grid-form compact-grid" key={event.id} onSubmit={onSaveOverview}>
           <label className="field">
@@ -9442,14 +9502,18 @@ function PlanningTab({
           )}
         </form>
       </section>
+      ) : null}
 
-      <HospitalityPlanPanel
-        event={event}
-        viewerAccess={viewerAccess}
-        onSaveHospitalityPlan={onSaveHospitalityPlan}
-      />
+      {planningWorkspaceView === "briefs" ? (
+        <HospitalityPlanPanel
+          event={event}
+          viewerAccess={viewerAccess}
+          onSaveHospitalityPlan={onSaveHospitalityPlan}
+        />
+      ) : null}
 
-      <section className="panel stack">
+      {planningWorkspaceView === "standards" ? (
+        <section className="panel stack">
         <div className="panel-header-inline">
           <div>
             <h3>Kategori-standarder</h3>
@@ -9472,8 +9536,10 @@ function PlanningTab({
           ) : null}
         </form>
       </section>
+      ) : null}
 
-      <section className="panel stack">
+      {planningWorkspaceView === "agenda" ? (
+        <section className="panel stack">
         <div className="panel-header-inline">
           <div>
             <h3>Vises pa agenda</h3>
@@ -9539,8 +9605,10 @@ function PlanningTab({
           </div>
         )}
       </section>
+      ) : null}
 
-      <section className="panel stack">
+      {planningWorkspaceView === "live" ? (
+        <section className="panel stack">
         <div className="panel-header-inline">
           <div>
             <h3>Live agenda / kjoring</h3>
@@ -9891,6 +9959,7 @@ function PlanningTab({
           </section>
         ) : null}
       </section>
+      ) : null}
     </div>
   );
 }
