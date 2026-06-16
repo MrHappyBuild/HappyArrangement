@@ -9191,9 +9191,32 @@ function PlanningTab({
   });
 
   const liveAgendaGroups = [];
+  const liveOpenItems = liveAgenda.items.filter(
+    (item) => item.liveStatus !== "done" && item.liveStatus !== "skipped"
+  );
+  const liveCompletedItems = liveAgenda.items
+    .filter((item) => item.liveStatus === "done" || item.liveStatus === "skipped")
+    .sort((left, right) => {
+      const leftMoment =
+        left.actualEndMs ??
+        left.scheduledEndMs ??
+        left.timelineEndMs ??
+        left.actualStartMs ??
+        left.scheduledStartMs ??
+        0;
+      const rightMoment =
+        right.actualEndMs ??
+        right.scheduledEndMs ??
+        right.timelineEndMs ??
+        right.actualStartMs ??
+        right.scheduledStartMs ??
+        0;
+
+      return rightMoment - leftMoment;
+    });
   let currentLiveAgendaGroup = null;
 
-  liveAgenda.items.forEach((item) => {
+  liveOpenItems.forEach((item) => {
     const groupKey = item.displayStartAt ? String(item.displayStartAt).slice(0, 10) : "__missing_date";
 
     if (!currentLiveAgendaGroup || currentLiveAgendaGroup.key !== groupKey) {
@@ -9535,6 +9558,9 @@ function PlanningTab({
             {liveAgenda.remainingTaskCount ? (
               <span className="data-tag">{liveAgenda.remainingTaskCount} igjen</span>
             ) : null}
+            {liveCompletedItems.length ? (
+              <span className="data-tag success-tag">{liveCompletedItems.length} gjennomfort</span>
+            ) : null}
           </div>
         </div>
         <div className="overview-grid">
@@ -9638,11 +9664,18 @@ function PlanningTab({
             {liveAgenda.unscheduledCount} aktiviteter mangler fortsatt starttid og vil vaere vanskeligere aa bruke live. Sett tid paa dem i Oppgaver om de skal brukes i kjoringen.
           </p>
         ) : null}
-        {liveAgenda.items.length === 0 ? (
-          <EmptyState
-            title="Ingen aktiviteter aa kjore live enda"
-            body="Legg inn oppgaver i prosjektrommet for aa bruke live agendaen."
-          />
+        {liveOpenItems.length === 0 ? (
+          liveCompletedItems.length ? (
+            <p className="notice success">
+              Alle planlagte aktiviteter er na enten gjennomfort eller hoppet over. Se oversikten
+              over gjennomforte oppgaver nederst.
+            </p>
+          ) : (
+            <EmptyState
+              title="Ingen aktiviteter aa kjore live enda"
+              body="Legg inn oppgaver i prosjektrommet for aa bruke live agendaen."
+            />
+          )
         ) : (
           <div className="planning-live-groups">
             {liveAgendaGroups.map((group) => (
@@ -9774,6 +9807,89 @@ function PlanningTab({
             ))}
           </div>
         )}
+        {liveCompletedItems.length ? (
+          <section className="panel stack nested-panel">
+            <div className="panel-header-inline">
+              <div>
+                <h4>Gjennomforte oppgaver</h4>
+                <p className="muted">
+                  Her samles aktiviteter som er markert ferdig eller hoppet over, slik at hovedlisten
+                  bare viser det som fortsatt er relevant live.
+                </p>
+              </div>
+              <span className="role-pill">{liveCompletedItems.length}</span>
+            </div>
+            <ul className="compact-list planning-live-list">
+              {liveCompletedItems.map((item) => (
+                <li
+                  className={`planning-live-item ${item.liveStatus === "skipped" ? "is-unscheduled" : ""}`}
+                  key={`planning-live-completed-${item.id}`}
+                >
+                  <div className="planning-live-time">
+                    <strong>
+                      {item.actualEndAt
+                        ? formatClockTime(item.actualEndAt)
+                        : item.displayEndAt
+                          ? formatClockTime(item.displayEndAt)
+                          : item.displayStartAt
+                            ? formatClockTime(item.displayStartAt)
+                            : "Ikke satt"}
+                    </strong>
+                    <span>
+                      {item.actualEndAt
+                        ? "Ferdig"
+                        : item.liveStatus === "skipped"
+                          ? "Hoppet over"
+                          : "Avsluttet"}
+                    </span>
+                  </div>
+                  <div className="planning-live-main">
+                    <div className="planning-live-title-row">
+                      <strong>{item.title}</strong>
+                      <span className={`data-tag ${item.liveStatus === "skipped" ? "warning-tag" : "success-tag"}`}>
+                        {getTaskLiveStatusLabel(item.liveStatus)}
+                      </span>
+                    </div>
+                    <div className="planning-live-meta">
+                      <span>
+                        Planlagt:{" "}
+                        {item.displayStartAt && item.displayEndAt
+                          ? `${formatDateTime(item.displayStartAt)} - ${formatClockTime(item.displayEndAt)}`
+                          : "Mangler planlagt tid"}
+                      </span>
+                      <span>
+                        Faktisk:{" "}
+                        {item.actualStartAt
+                          ? `${formatDateTime(item.actualStartAt)}${
+                              item.actualEndAt ? ` - ${formatClockTime(item.actualEndAt)}` : ""
+                            }`
+                          : item.actualEndAt
+                            ? formatDateTime(item.actualEndAt)
+                            : "Ikke registrert"}
+                      </span>
+                    </div>
+                    {item.agendaComment ? (
+                      <span className="muted planning-live-comment">{item.agendaComment}</span>
+                    ) : null}
+                  </div>
+                  <div className="planning-live-actions">
+                    {viewerAccess.canManagePlanning && item.canReset ? (
+                      <button
+                        className="secondary-button task-inline-button"
+                        type="button"
+                        onClick={() => void handleResetLiveTask(item)}
+                      >
+                        Nullstill
+                      </button>
+                    ) : (
+                      <span className="muted">Avsluttet</span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </section>
     </div>
   );
