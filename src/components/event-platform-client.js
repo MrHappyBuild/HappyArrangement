@@ -10035,7 +10035,10 @@ function FinanceTab({
   onSaveFinancePlan,
   onOpenAdvanceModal,
   onOpenSettlementModal,
-  onDeleteLedgerEntry
+  onDeleteLedgerEntry,
+  onAddReceiptSubmission,
+  onAddSubmission,
+  onUpdateSubmission
 }) {
   const [financeWorkspaceView, setFinanceWorkspaceView] = useState("overview");
   const hospitalityBriefs = useMemo(() => buildHospitalityBriefs(event), [event]);
@@ -10071,23 +10074,43 @@ function FinanceTab({
       })).filter((row) => row.count > 0),
     [supplierRows]
   );
+  const canAccessFinanceWorkspace = viewerAccess.canViewFinance || viewerAccess.canViewApprovals;
+  const visibleFinanceViews = [
+    { id: "overview", label: "Oversikt", visible: viewerAccess.canViewFinance },
+    { id: "budget", label: "Budsjett", visible: viewerAccess.canViewFinance },
+    { id: "suppliers", label: "Leverandorer", visible: viewerAccess.canViewFinance },
+    { id: "invoices", label: "Fakturaer", visible: viewerAccess.canViewFinance },
+    { id: "settlements", label: "Oppgjor", visible: viewerAccess.canViewFinance },
+    { id: "operations", label: "Drift", visible: viewerAccess.canViewFinance },
+    { id: "approvals", label: "Godkjenning", visible: viewerAccess.canViewApprovals }
+  ].filter((view) => view.visible);
+  const preferredFinanceView = viewerAccess.canViewFinance
+    ? "overview"
+    : viewerAccess.canViewApprovals
+      ? "approvals"
+      : "overview";
+  const currentFinanceWorkspaceView = visibleFinanceViews.some(
+    (view) => view.id === financeWorkspaceView
+  )
+    ? financeWorkspaceView
+    : preferredFinanceView;
   const planningSection =
-    financeWorkspaceView === "suppliers"
+    currentFinanceWorkspaceView === "suppliers"
       ? "suppliers"
-      : financeWorkspaceView === "operations"
+      : currentFinanceWorkspaceView === "operations"
         ? "operations"
         : "budget";
-  const showPlanningSections = ["budget", "suppliers", "operations"].includes(financeWorkspaceView);
+  const showPlanningSections = ["budget", "suppliers", "operations"].includes(currentFinanceWorkspaceView);
 
   useEffect(() => {
-    setFinanceWorkspaceView("overview");
-  }, [event.id]);
+    setFinanceWorkspaceView(preferredFinanceView);
+  }, [event.id, preferredFinanceView]);
 
-  if (!viewerAccess.canViewFinance) {
+  if (!canAccessFinanceWorkspace) {
     return (
       <EmptyState
         title="Ingen okonomitilgang"
-        body="Denne personen skal ikke se okonomidelen av arrangementet."
+        body="Denne personen skal ikke se okonomi eller godkjenning i arrangementet."
       />
     );
   }
@@ -10104,64 +10127,22 @@ function FinanceTab({
           </div>
         </div>
         <div className="tab-row" role="tablist" aria-label="Undermeny for okonomi">
-          <button
-            aria-selected={financeWorkspaceView === "overview"}
-            className={`tab-chip ${financeWorkspaceView === "overview" ? "active" : ""}`}
-            role="tab"
-            type="button"
-            onClick={() => setFinanceWorkspaceView("overview")}
-          >
-            Oversikt
-          </button>
-          <button
-            aria-selected={financeWorkspaceView === "budget"}
-            className={`tab-chip ${financeWorkspaceView === "budget" ? "active" : ""}`}
-            role="tab"
-            type="button"
-            onClick={() => setFinanceWorkspaceView("budget")}
-          >
-            Budsjett
-          </button>
-          <button
-            aria-selected={financeWorkspaceView === "suppliers"}
-            className={`tab-chip ${financeWorkspaceView === "suppliers" ? "active" : ""}`}
-            role="tab"
-            type="button"
-            onClick={() => setFinanceWorkspaceView("suppliers")}
-          >
-            Leverandorer
-          </button>
-          <button
-            aria-selected={financeWorkspaceView === "invoices"}
-            className={`tab-chip ${financeWorkspaceView === "invoices" ? "active" : ""}`}
-            role="tab"
-            type="button"
-            onClick={() => setFinanceWorkspaceView("invoices")}
-          >
-            Fakturaer
-          </button>
-          <button
-            aria-selected={financeWorkspaceView === "settlements"}
-            className={`tab-chip ${financeWorkspaceView === "settlements" ? "active" : ""}`}
-            role="tab"
-            type="button"
-            onClick={() => setFinanceWorkspaceView("settlements")}
-          >
-            Oppgjor
-          </button>
-          <button
-            aria-selected={financeWorkspaceView === "operations"}
-            className={`tab-chip ${financeWorkspaceView === "operations" ? "active" : ""}`}
-            role="tab"
-            type="button"
-            onClick={() => setFinanceWorkspaceView("operations")}
-          >
-            Drift
-          </button>
+          {visibleFinanceViews.map((view) => (
+            <button
+              aria-selected={currentFinanceWorkspaceView === view.id}
+              className={`tab-chip ${currentFinanceWorkspaceView === view.id ? "active" : ""}`}
+              key={view.id}
+              role="tab"
+              type="button"
+              onClick={() => setFinanceWorkspaceView(view.id)}
+            >
+              {view.label}
+            </button>
+          ))}
         </div>
       </section>
 
-      {financeWorkspaceView === "overview" ? (
+      {currentFinanceWorkspaceView === "overview" ? (
         <>
           <section className="panel stack">
             <div className="overview-grid">
@@ -10327,7 +10308,7 @@ function FinanceTab({
         />
       </div>
 
-      {financeWorkspaceView === "invoices" ? (
+      {currentFinanceWorkspaceView === "invoices" ? (
         <>
           <section className="panel stack">
             <div className="panel-header-inline">
@@ -10410,7 +10391,7 @@ function FinanceTab({
         </>
       ) : null}
 
-      {financeWorkspaceView === "settlements" ? (
+      {currentFinanceWorkspaceView === "settlements" ? (
         <>
           <section className="panel stack">
             <div className="panel-header-inline">
@@ -10581,6 +10562,16 @@ function FinanceTab({
             </ul>
           </section>
         </>
+      ) : null}
+
+      {currentFinanceWorkspaceView === "approvals" ? (
+        <ApprovalsTab
+          event={event}
+          onAddReceiptSubmission={onAddReceiptSubmission}
+          onAddSubmission={onAddSubmission}
+          onUpdateSubmission={onUpdateSubmission}
+          viewerAccess={viewerAccess}
+        />
       ) : null}
     </div>
   );
@@ -10849,8 +10840,11 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
     { id: "project", label: "Oppgaver", visible: viewerAccess.canViewProject },
     { id: "planning", label: "Planlegging", visible: viewerAccess.canViewPlanning },
     { id: "venue", label: "Lokale", visible: viewerAccess.canViewPlanning },
-    { id: "finance", label: "Økonomi", visible: viewerAccess.canViewFinance },
-    { id: "approvals", label: "Godkjenning", visible: viewerAccess.canViewApprovals }
+    {
+      id: "finance",
+      label: "Økonomi",
+      visible: viewerAccess.canViewFinance || viewerAccess.canViewApprovals
+    }
   ].filter((tab) => tab.visible);
   const currentTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : "overview";
 
@@ -10900,7 +10894,7 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
   }
 
   useEffect(() => {
-    if (!selectedEvent || (currentTab !== "finance" && currentTab !== "approvals")) {
+    if (!selectedEvent || currentTab !== "finance") {
       return undefined;
     }
 
@@ -12022,21 +12016,15 @@ export function EventPlatformClient({ initialEvents, initialJobs }) {
                   jobs={selectedJobs}
                   onSaveFinancePlan={handleSaveFinancePlan}
                   onDeleteLedgerEntry={handleDeleteLedgerEntry}
+                  onAddReceiptSubmission={handleAddReceiptSubmission}
+                  onAddSubmission={handleAddSubmission}
+                  onUpdateSubmission={handleUpdateSubmission}
                   onToggleSettlementPlan={() => setShowSettlementPlan((current) => !current)}
                   onOpenAdvanceModal={() => setFinanceModal("advance")}
                   onOpenSettlementModal={() => setFinanceModal("settlement")}
                   onToggleEngine={() => setFinanceEngineOpen((current) => !current)}
                   settlementPlan={settlementPlan}
                   showSettlementPlan={showSettlementPlan}
-                  viewerAccess={viewerAccess}
-                />
-              ) : null}
-              {currentTab === "approvals" ? (
-                <ApprovalsTab
-                  event={selectedEvent}
-                  onAddReceiptSubmission={handleAddReceiptSubmission}
-                  onAddSubmission={handleAddSubmission}
-                  onUpdateSubmission={handleUpdateSubmission}
                   viewerAccess={viewerAccess}
                 />
               ) : null}
