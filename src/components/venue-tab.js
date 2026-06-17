@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   VENUE_CUSTOM_SHAPE_OPTIONS,
+  VENUE_GUEST_NAME_DISPLAY_OPTIONS,
   VENUE_ITEM_LIBRARY,
   VENUE_LONG_TABLE_SEAT_LAYOUT_OPTIONS,
   assignGuestToVenueSeat,
@@ -18,6 +19,12 @@ import {
   updateVenueSeatOffsetInPlan,
   updateVenueItemInPlan
 } from "@/venue-layout-utils";
+import {
+  buildVenuePdfExportData,
+  buildVenuePdfFilename,
+  buildVenueSeatingChartSvg,
+  buildVenueSeatingListPdfLines
+} from "@/venue-pdf-utils";
 
 function formatGuestInitials(name) {
   const parts = String(name || "")
@@ -165,10 +172,134 @@ function VenueEmptyState({ title, body }) {
   );
 }
 
+function VenueModalShell({ title, body, onClose, children }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <div
+        aria-modal="true"
+        className="modal-panel"
+        role="dialog"
+        onClick={(eventObject) => eventObject.stopPropagation()}
+      >
+        <div className="modal-head">
+          <div className="stack">
+            <h3>{title}</h3>
+            {body ? <p className="muted">{body}</p> : null}
+          </div>
+          <button className="secondary-button" type="button" onClick={onClose}>
+            Lukk
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function downloadBlobFile(filename, content, mimeType) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
+function wrapPdfLine(line, font, fontSize, maxWidth) {
+  const source = String(line || "");
+
+  if (!source) {
+    return [""];
+  }
+
+  const words = source.split(/\s+/);
+  const lines = [];
+  let currentLine = "";
+
+  words.forEach((word) => {
+    const candidateLine = currentLine ? `${currentLine} ${word}` : word;
+
+    if (!currentLine || font.widthOfTextAtSize(candidateLine, fontSize) <= maxWidth) {
+      currentLine = candidateLine;
+      return;
+    }
+
+    lines.push(currentLine);
+    currentLine = word;
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
+async function renderVenueSvgToPngBytes(svgMarkup, width, height) {
+  if (typeof window === "undefined") {
+    throw new Error("PDF-eksport krever en nettleser.");
+  }
+
+  const svgBlob = new Blob([svgMarkup], { type: "image/svg+xml;charset=utf-8" });
+  const objectUrl = URL.createObjectURL(svgBlob);
+
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const nextImage = new Image();
+      nextImage.onload = () => resolve(nextImage);
+      nextImage.onerror = () => reject(new Error("Kunne ikke lese sitteplanen som bilde."));
+      nextImage.src = objectUrl;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Kunne ikke opprette tegneflate for PDF-eksporten.");
+    }
+
+    context.fillStyle = "#fffdf8";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    const pngBlob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+            return;
+          }
+
+          reject(new Error("Kunne ikke gjore om sitteplanen til PNG."));
+        },
+        "image/png",
+        1
+      );
+    });
+
+    return new Uint8Array(await pngBlob.arrayBuffer());
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
   const canManageVenue = viewerAccess.canManagePlanning;
   const [venueMode, setVenueMode] = useState("room");
   const [showFullSeatNames, setShowFullSeatNames] = useState(false);
+  const [showSeatingPdfModal, setShowSeatingPdfModal] = useState(false);
+  const [pdfNameDisplay, setPdfNameDisplay] = useState("full");
+  const [pdfIncludeTableList, setPdfIncludeTableList] = useState(true);
+  const [pdfExportStatus, setPdfExportStatus] = useState("");
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState("");
   const [guestFilter, setGuestFilter] = useState("active");
   const [guestSearch, setGuestSearch] = useState("");
@@ -253,6 +384,10 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
 
   const venueState = useMemo(
     () => buildVenuePlanningState({ ...event, venuePlan: planDraft }),
+    [event, planDraft]
+  );
+  const venuePdfExportData = useMemo(
+    () => buildVenuePdfExportData({ ...event, venuePlan: planDraft }),
     [event, planDraft]
   );
   const roomWidthMeters = venueState.venuePlan.room.widthMeters;
@@ -757,6 +892,137 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
     await commitPlan(nextPlan, `Plassene pa ${selectedItem.label} ble satt tilbake til standard.`, previousPlan);
   }
 
+  function openSeatingPdfModal() {
+    setPdfNameDisplay(
+      venueState.venuePlan.guestSeatingPage?.guestNameDisplay === "hidden"
+        ? "full"
+        : venueState.venuePlan.guestSeatingPage?.guestNameDisplay || "full"
+    );
+    setPdfIncludeTableList(true);
+    setPdfExportStatus("");
+    setShowSeatingPdfModal(true);
+  }
+
+  async function handleDownloadSeatingPdf() {
+    if (venuePdfExportData.visibleItems.length === 0) {
+      setPdfExportStatus("Legg inn minst ett synlig bord eller objekt for du eksporterer.");
+      return;
+    }
+
+    setIsExportingPdf(true);
+    setPdfExportStatus("");
+
+    try {
+      const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+      const pdfDocument = await PDFDocument.create();
+      const regularFont = await pdfDocument.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdfDocument.embedFont(StandardFonts.HelveticaBold);
+      const { svgMarkup, width, height } = buildVenueSeatingChartSvg(venuePdfExportData, {
+        nameDisplay: pdfNameDisplay
+      });
+      const pngBytes = await renderVenueSvgToPngBytes(svgMarkup, width, height);
+      const mapImage = await pdfDocument.embedPng(pngBytes);
+      const landscapePage = pdfDocument.addPage([841.89, 595.28]);
+      const pageMargin = 42;
+      const mapTopOffset = 90;
+      const maxMapWidth = landscapePage.getWidth() - pageMargin * 2;
+      const maxMapHeight = landscapePage.getHeight() - pageMargin * 2 - mapTopOffset;
+      const mapScale = Math.min(maxMapWidth / width, maxMapHeight / height);
+      const renderedMapWidth = width * mapScale;
+      const renderedMapHeight = height * mapScale;
+      const mapX = (landscapePage.getWidth() - renderedMapWidth) / 2;
+      const mapY = landscapePage.getHeight() - pageMargin - mapTopOffset - renderedMapHeight;
+
+      landscapePage.drawText(`${venuePdfExportData.eventName} - Sitteplan`, {
+        x: pageMargin,
+        y: landscapePage.getHeight() - pageMargin,
+        size: 19,
+        font: boldFont,
+        color: rgb(0.18, 0.14, 0.08)
+      });
+      landscapePage.drawText(
+        `${venuePdfExportData.roomName} • ${venuePdfExportData.assignedSeats} av ${venuePdfExportData.totalSeats} plasser fylt`,
+        {
+          x: pageMargin,
+          y: landscapePage.getHeight() - pageMargin - 22,
+          size: 11,
+          font: regularFont,
+          color: rgb(0.35, 0.27, 0.17)
+        }
+      );
+      landscapePage.drawText(
+        `Navnevisning: ${pdfNameDisplay === "initials" ? "Forkortelser" : "Fulle navn"}`,
+        {
+          x: pageMargin,
+          y: landscapePage.getHeight() - pageMargin - 40,
+          size: 11,
+          font: regularFont,
+          color: rgb(0.35, 0.27, 0.17)
+        }
+      );
+      landscapePage.drawImage(mapImage, {
+        x: mapX,
+        y: mapY,
+        width: renderedMapWidth,
+        height: renderedMapHeight
+      });
+
+      if (pdfIncludeTableList) {
+        const lines = buildVenueSeatingListPdfLines(venuePdfExportData, {
+          nameDisplay: pdfNameDisplay,
+          includeSeatLabels: venuePdfExportData.showSeatLabels
+        });
+        const listPageSize = [595.28, 841.89];
+        const listMargin = 48;
+        const fontSize = 11;
+        const lineHeight = 16;
+        const maxWidth = listPageSize[0] - listMargin * 2;
+        let page = pdfDocument.addPage(listPageSize);
+        let currentY = page.getHeight() - listMargin;
+
+        lines.forEach((line, index) => {
+          const isTitle = index === 0;
+          const isSection = !isTitle && line && line.includes("•") && !line.includes(":");
+          const activeFont = isTitle || isSection ? boldFont : regularFont;
+          const activeSize = isTitle ? 15 : isSection ? 12 : fontSize;
+          const wrappedLines = wrapPdfLine(line || " ", activeFont, activeSize, maxWidth);
+
+          wrappedLines.forEach((wrappedLine) => {
+            if (currentY < listMargin) {
+              page = pdfDocument.addPage(listPageSize);
+              currentY = page.getHeight() - listMargin;
+            }
+
+            page.drawText(wrappedLine, {
+              x: listMargin,
+              y: currentY,
+              size: activeSize,
+              font: activeFont,
+              color: rgb(0.18, 0.14, 0.08)
+            });
+            currentY -= lineHeight;
+          });
+        });
+      }
+
+      const pdfBytes = await pdfDocument.save();
+      downloadBlobFile(buildVenuePdfFilename(event), pdfBytes, "application/pdf");
+      setPdfExportStatus(
+        pdfIncludeTableList
+          ? "Sitteplanen og bordlisten er eksportert som PDF."
+          : "Sitteplanen er eksportert som PDF."
+      );
+      setShowSeatingPdfModal(false);
+    } catch (error) {
+      console.error(error);
+      setPdfExportStatus(
+        error instanceof Error ? error.message : "Kunne ikke eksportere sitteplanen som PDF."
+      );
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   function handleZoomStep(direction) {
     const zoomBounds = getVenueZoomBounds(isFocusMode);
 
@@ -899,6 +1165,14 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
             >
               {isFocusMode ? "Lukk fokusmodus" : "Fokusmodus"}
             </button>
+            <button
+              className="primary-button"
+              disabled={venuePdfExportData.visibleItems.length === 0}
+              type="button"
+              onClick={openSeatingPdfModal}
+            >
+              Eksporter sitteplan som PDF
+            </button>
           </div>
         </div>
         <div className="overview-grid">
@@ -936,6 +1210,7 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
             <p>Du har nok stoler, minst en nodutgang og ingen aapenbare sittekonflikter akkurat na.</p>
           </div>
         )}
+        {pdfExportStatus && !showSeatingPdfModal ? <p className="notice">{pdfExportStatus}</p> : null}
       </section>
 
       <section className={`venue-planner-grid ${isFocusMode ? "is-focus-mode" : ""}`}>
@@ -1769,6 +2044,90 @@ export function VenueTab({ event, viewerAccess, onSaveVenuePlan }) {
         </div>
       </section>
       </div>
+      {showSeatingPdfModal ? (
+        <VenueModalShell
+          title="Eksporter sitteplan som PDF"
+          body="Velg hvordan navnene skal vises, og om PDF-en skal inneholde bare kartet eller ogsa bordliste med plasseringene."
+          onClose={() => {
+            if (isExportingPdf) {
+              return;
+            }
+
+            setShowSeatingPdfModal(false);
+          }}
+        >
+          <div className="stack">
+            <div className="notice">
+              <strong>Eksporten bruker gjeldende sitteplan</strong>
+              <p>
+                PDF-en bygger paa rommet slik det ser ut naa, og bruker de samme synlige objektene som gjestenes sitteplan.
+              </p>
+            </div>
+            <div className="compact-grid">
+              <label className="field">
+                <span>Vis gjestene som</span>
+                <select
+                  disabled={isExportingPdf}
+                  value={pdfNameDisplay}
+                  onChange={(eventObject) => setPdfNameDisplay(eventObject.currentTarget.value)}
+                >
+                  {VENUE_GUEST_NAME_DISPLAY_OPTIONS.filter((option) => option.value !== "hidden").map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.value === "initials" ? "Forkortelser" : option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Innhold i PDF</span>
+                <select
+                  disabled={isExportingPdf}
+                  value={pdfIncludeTableList ? "map_and_list" : "map_only"}
+                  onChange={(eventObject) =>
+                    setPdfIncludeTableList(eventObject.currentTarget.value === "map_and_list")
+                  }
+                >
+                  <option value="map_only">Kun bordkart</option>
+                  <option value="map_and_list">Bordkart + bordliste</option>
+                </select>
+              </label>
+            </div>
+            <div className="nested-panel stack">
+              <strong>Dette kommer med</strong>
+              <ul className="detail-list">
+                <li>{venuePdfExportData.visibleItems.length} synlige objekter fra sitteplanen</li>
+                <li>
+                  {venuePdfExportData.assignedSeats} av {venuePdfExportData.totalSeats} plasser er fylt
+                </li>
+                <li>
+                  {pdfIncludeTableList
+                    ? `${venuePdfExportData.seatableItems.length} bord/stolgrupper med i bordlisten`
+                    : "Kun selve kartet eksporteres"}
+                </li>
+              </ul>
+            </div>
+            {pdfExportStatus ? <p className="notice">{pdfExportStatus}</p> : null}
+            <div className="button-row">
+              <button
+                className="secondary-button"
+                disabled={isExportingPdf}
+                type="button"
+                onClick={() => setShowSeatingPdfModal(false)}
+              >
+                Avbryt
+              </button>
+              <button
+                className="primary-button"
+                disabled={isExportingPdf}
+                type="button"
+                onClick={() => void handleDownloadSeatingPdf()}
+              >
+                {isExportingPdf ? "Lager PDF..." : "Last ned PDF"}
+              </button>
+            </div>
+          </div>
+        </VenueModalShell>
+      ) : null}
     </>
   );
 }
